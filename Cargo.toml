@@ -1,0 +1,9 @@
+[package]
+name = "Proton"
+authors = ["Cryptex", "jay3332"]
+version = "0.0.1"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
