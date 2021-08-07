@@ -1,2 +1,2 @@
 # proton-rs
-Proton made in Rust
+The Rust implementation of Proton.
