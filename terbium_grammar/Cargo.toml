@@ -1,5 +1,5 @@
 [package]
-name = "prion_grammar"
+name = "terbium_grammar"
 version = "0.1.0"
 edition = "2021"
 

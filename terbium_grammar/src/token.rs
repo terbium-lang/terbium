@@ -1,6 +1,7 @@
 use chumsky::prelude::*;
 
 use std::fmt::Display;
+use crate::Token::Operator;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Operator {
@@ -65,7 +66,7 @@ impl Operator {
 
 impl Display for Operator {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, match self {
+        f.write_str(match self {
             Self::Add => "+",
             Self::Sub => "-",
             Self::Mul => "*",
@@ -89,7 +90,7 @@ impl Display for Operator {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum StringLiteral {
     String(String),
     ByteString(String),
@@ -99,12 +100,14 @@ pub enum StringLiteral {
 
 impl Display for StringLiteral {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, match self {
+        f.write_str(match self {
             Self::String(s) => format!("\"{}\"", s),
             Self::ByteString(s) => format!("~\"{}\"", s),
             Self::RawString(s) => format!("r\"{}\"", s),
             Self::InterpolatedString(s) => format!("$\"{}\"", s),
-        })
+        }
+            .as_str()
+        )
     }
 }
 
@@ -117,11 +120,14 @@ pub enum Literal {
 
 impl Display for Literal {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, match self {
+        f.write_str(match self {
             Self::String(s) => s,
             Self::Integer(i) => i,
             Self::Float(f) => f,
-        })
+        }
+            .to_string()
+            .as_str()
+        )
     }
 }
 
@@ -154,7 +160,7 @@ pub enum Keyword {
 
 impl Display for Keyword {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, match self {
+        f.write_str(match self {
             Self::Func => "func",
             Self::Class => "class",
             Self::Require => "require",
@@ -222,11 +228,12 @@ pub enum Token {
     Cast, // ::
     Question,
     Semicolon,
+    Assign, // =
 }
 
 impl Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, match self {
+        f.write_str(match self {
             Self::Invalid(c) => c,
             Self::Operator(o) => o,
             Self::Literal(l) => l,
@@ -249,7 +256,11 @@ impl Display for Token {
             Self::Cast => "::",
             Self::Question => "?",
             Self::Semicolon => ";",
-        })
+            Self::Assign => "=",
+        }
+            .to_string()
+            .as_str()
+        )
     }
 }
 
@@ -305,14 +316,67 @@ pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Simple<String>> {
         .labelled("escape sequence");
 
     let string = just('"')
-        .ignore_then(filter(|c| *c != '\\' && *c != '"').or(escape).repeated())
-        .then_ignore(just('"'))
+        .ignore_then(filter(|c: &char| *c != '\\' && *c != '"').or(escape).repeated())
+        .then_ignore(just::<_, char, _>('"'))
         .or(
             just('\'')
-            .ignore_then(filter(|c| *c != '\\' && *c != '\'').or(escape).repeated())
-            .then_ignore(just('\''))
+            .ignore_then(filter(|c: &char| *c != '\\' && *c != '\'').or(escape).repeated())
+            .then_ignore(just::<_, char, _>('\''))
         )
         .collect::<String>()
         .map(Literal::String)
         .labelled("string literal");
+    
+    let ident_or_keyword = text::ident().map(|s: String| match s.as_str() {
+        "func" => Token::Keyword(Keyword::Func),
+        "class" => Token::Keyword(Keyword::Class),
+        "require" => Token::Keyword(Keyword::Require),
+        "export" => Token::Keyword(Keyword::Export),
+        "let" => Token::Keyword(Keyword::Let),
+        "const" => Token::Keyword(Keyword::Const),
+        "immut" => Token::Keyword(Keyword::Immut),
+        "private" => Token::Keyword(Keyword::Private),
+        "if" => Token::Keyword(Keyword::If),
+        "else" => Token::Keyword(Keyword::Else),
+        "match" => Token::Keyword(Keyword::Match),
+        "for" => Token::Keyword(Keyword::For),
+        "in" => Token::Keyword(Keyword::In),
+        "while" => Token::Keyword(Keyword::While),
+        "break" => Token::Keyword(Keyword::Break),
+        "continue" => Token::Keyword(Keyword::Continue),
+        "return" => Token::Keyword(Keyword::Return),
+        "with" => Token::Keyword(Keyword::With),
+        "throws" => Token::Keyword(Keyword::Throws),
+        _ => Token::Identifier(s),
+    });
+
+    let comment = just("//")
+        .then_ignore(none_of('\n').ignored().repeated())
+        .padded()
+        .or(just("/*").ignore_then(none_of("*/").ignored().repeated()))
+        .ignored()
+        .repeated();
+
+    let symbol = choice((
+        just('+').map(|_| Token::Operator(Operator::Add)),
+        just('-').map(|_| Token::Operator(Operator::Sub)),
+        just("**").map(|_| Token::Operator(Operator::Pow)),
+        just('*').map(|_| Token::Operator(Operator::Mul)),
+        just('/').map(|_| Token::Operator(Operator::Div)),
+        just('%').map(|_| Token::Operator(Operator::Mod)),
+        just('=').to(Token::Assign),
+        just("==").map(|_| Token::Operator(Operator::Eq)),
+        just("!=").map(|_| Token::Operator(Operator::Ne)),
+        just("<=").map(|_| Token::Operator(Operator::Le)),
+        just(">=").map(|_| Token::Operator(Operator::Ge)),
+        just('<').map(|_| Token::Operator(Operator::Lt)),
+        just('>').map(|_| Token::Operator(Operator::Gt)),
+        just("||").map(|_| Token::Operator(Operator::Or)),
+        just("&&").map(|_| Token::Operator(Operator::And)),
+        just('|').map(|_| Token::Operator(Operator::BitOr)),
+        just('^').map(|_| Token::Operator(Operator::BitXor)),
+        just('&').map(|_| Token::Operator(Operator::BitAnd)),
+        just('~').map(|_| Token::Operator(Operator::BitNot)),
+        just("..").map(|_| Token::Operator(Operator::Range)),
+    ));
 }
