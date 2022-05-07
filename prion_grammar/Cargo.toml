@@ -1,15 +1,8 @@
 [package]
-name = "prion"
-authors = ["jay3332", "Cryptex"]
-version = "0.0.1"
+name = "prion_grammar"
+version = "0.1.0"
 edition = "2021"
-
-[workspace]
-members = ["prion_grammar"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-
-[profile.dev]
-opt-level = 2
