@@ -99,13 +99,14 @@ pub enum StringLiteral {
 
 impl Display for StringLiteral {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::String(s) => format!("\"{}\"", s),
-            Self::ByteString(s) => format!("~\"{}\"", s),
-            Self::RawString(s) => format!("r\"{}\"", s),
-            Self::InterpolatedString(s) => format!("$\"{}\"", s),
-        }
-            .as_str()
+        f.write_str(
+            match self {
+                Self::String(s) => format!("\"{}\"", s),
+                Self::ByteString(s) => format!("~\"{}\"", s),
+                Self::RawString(s) => format!("r\"{}\"", s),
+                Self::InterpolatedString(s) => format!("$\"{}\"", s),
+            }
+            .as_str(),
         )
     }
 }
@@ -119,12 +120,13 @@ pub enum Literal {
 
 impl Display for Literal {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        f.write_str(match self {
-            Self::String(s) => s.to_string(),
-            Self::Integer(i) => i.to_string(),
-            Self::Float(f) => f.to_string(),
-        }
-            .as_str()
+        f.write_str(
+            match self {
+                Self::String(s) => s.to_string(),
+                Self::Integer(i) => i.to_string(),
+                Self::Float(f) => f.to_string(),
+            }
+            .as_str(),
         )
     }
 }
@@ -233,31 +235,32 @@ impl Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let s: String;
 
-        f.write_str(match self {
-            Self::StartBracket(b) => match b {
-                Bracket::Paren => "(",
-                Bracket::Bracket => "[",
-                Bracket::Brace => "{",
-                Bracket::Angle => "<",
-            },
-            Self::EndBracket(b) => match b {
-                Bracket::Paren => ")",
-                Bracket::Bracket => "]",
-                Bracket::Brace => "}",
-                Bracket::Angle => ">",
-            },
-            Self::Comma => ",",
-            Self::Dot => ".",
-            Self::Cast => "::",
-            Self::Question => "?",
-            Self::Semicolon => ";",
-            Self::Assign => "=",
-            o => {
-                s = o.to_string();
-                s.as_str()
+        f.write_str(
+            match self {
+                Self::StartBracket(b) => match b {
+                    Bracket::Paren => "(",
+                    Bracket::Bracket => "[",
+                    Bracket::Brace => "{",
+                    Bracket::Angle => "<",
+                },
+                Self::EndBracket(b) => match b {
+                    Bracket::Paren => ")",
+                    Bracket::Bracket => "]",
+                    Bracket::Brace => "}",
+                    Bracket::Angle => ">",
+                },
+                Self::Comma => ",",
+                Self::Dot => ".",
+                Self::Cast => "::",
+                Self::Question => "?",
+                Self::Semicolon => ";",
+                Self::Assign => "=",
+                o => {
+                    s = o.to_string();
+                    s.as_str()
+                }
             }
-        }
-            .clone()
+            .clone(),
         )
     }
 }
@@ -270,17 +273,18 @@ macro_rules! escape_hex {
                 .exactly($radix)
                 .collect::<String>()
                 .validate(|digits, span, emit| {
-                    char::from_u32(u32::from_str_radix(&digits, $radix).unwrap())
-                        .unwrap_or_else(|| {
-                            emit(Simple::custom(span, format!(
-                                "invalid unicode character {}",
-                                digits,
-                            )));
+                    char::from_u32(u32::from_str_radix(&digits, $radix).unwrap()).unwrap_or_else(
+                        || {
+                            emit(Simple::custom(
+                                span,
+                                format!("invalid unicode character {}", digits,),
+                            ));
                             '\u{FFFD}' // unicode replacement character
-                        })
+                        },
+                    )
                 }),
         )
-    }}
+    }};
 }
 
 pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Simple<char>> {
@@ -292,14 +296,8 @@ pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Simple<char>> {
         .labelled("integer literal");
 
     let float = text::int(10)
-        .chain::<char, _, _>(just('.')
-            .chain(text::digits(10))
-            .or_not()
-            .flatten()
-        )
-        .or(just('.')
-            .chain::<char, _, _>(text::digits(10))
-        )
+        .chain::<char, _, _>(just('.').chain(text::digits(10)).or_not().flatten())
+        .or(just('.').chain::<char, _, _>(text::digits(10)))
         .collect::<String>()
         .from_str::<f64>()
         .unwrapped()
@@ -307,33 +305,40 @@ pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Simple<char>> {
         .map(Token::Literal)
         .labelled("float literal");
 
-    let escape = just('\\').ignore_then(
-        just('\\')
-            .or(just('"'))
-            .or(just('\''))
-            .or(just('b').to('\x08'))
-            .or(just('f').to('\x0C'))
-            .or(just('n').to('\n'))
-            .or(just('r').to('\r'))
-            .or(just('t').to('\t'))
-            .or(escape_hex!('x', 2))
-            .or(escape_hex!('u', 4))
-            .or(escape_hex!('U', 8)),
-    )
+    let escape = just('\\')
+        .ignore_then(
+            just('\\')
+                .or(just('"'))
+                .or(just('\''))
+                .or(just('b').to('\x08'))
+                .or(just('f').to('\x0C'))
+                .or(just('n').to('\n'))
+                .or(just('r').to('\r'))
+                .or(just('t').to('\t'))
+                .or(escape_hex!('x', 2))
+                .or(escape_hex!('u', 4))
+                .or(escape_hex!('U', 8)),
+        )
         .labelled("escape sequence");
 
     let string = just('"')
-        .ignore_then(filter(|c: &char| *c != '\\' && *c != '"').or(escape).repeated())
-        .then_ignore(just::<_, char, _>('"'))
-        .or(
-            just('\'')
-            .ignore_then(filter(|c: &char| *c != '\\' && *c != '\'').or(escape).repeated())
-            .then_ignore(just::<_, char, _>('\''))
+        .ignore_then(
+            filter(|c: &char| *c != '\\' && *c != '"')
+                .or(escape)
+                .repeated(),
         )
+        .then_ignore(just::<_, char, _>('"'))
+        .or(just('\'')
+            .ignore_then(
+                filter(|c: &char| *c != '\\' && *c != '\'')
+                    .or(escape)
+                    .repeated(),
+            )
+            .then_ignore(just::<_, char, _>('\'')))
         .collect::<String>()
         .map(|s| Token::Literal(Literal::String(StringLiteral::String(s))))
         .labelled("string literal");
-    
+
     let ident_or_keyword = text::ident().map(|s: String| match s.as_str() {
         "func" => Token::Keyword(Keyword::Func),
         "class" => Token::Keyword(Keyword::Class),
@@ -404,20 +409,11 @@ pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Simple<char>> {
         just('}').map(|_| Token::EndBracket(Bracket::Brace)),
     ));
 
-    choice::<_, Simple<char>>((
-        symbol,
-        brackets,
-        ident_or_keyword,
-        string,
-        integer,
-        float,
-    ))
-        .or(any()
-            .map(Token::Invalid)
-            .validate(|token, span, emit| {
-                emit(Simple::custom(span, "invalid token"));
-                token
-            }))
+    choice::<_, Simple<char>>((symbol, brackets, ident_or_keyword, string, integer, float))
+        .or(any().map(Token::Invalid).validate(|token, span, emit| {
+            emit(Simple::custom(span, "invalid token"));
+            token
+        }))
         // .map_with_span(move |token, span| (token, span)) Could be useful for debugging
         .padded()
         .recover_with(skip_then_retry_until([]))
@@ -429,8 +425,8 @@ pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Simple<char>> {
 
 #[cfg(test)]
 mod tests {
-    use chumsky::Parser;
     use crate::token::*;
+    use chumsky::Parser;
 
     #[test]
     fn test_lexer() {
@@ -457,7 +453,9 @@ mod tests {
                 Token::Dot,
                 Token::Identifier("println".to_string()),
                 Token::StartBracket(Bracket::Paren),
-                Token::Literal(Literal::String(StringLiteral::String("Hello, world!".to_string()))),
+                Token::Literal(Literal::String(StringLiteral::String(
+                    "Hello, world!".to_string()
+                ))),
                 Token::EndBracket(Bracket::Paren),
                 Token::Semicolon,
                 Token::Keyword(Keyword::If),
