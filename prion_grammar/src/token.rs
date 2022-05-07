@@ -1,3 +1,5 @@
+use chumsky::prelude::*;
+
 use std::fmt::Display;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -109,7 +111,7 @@ impl Display for StringLiteral {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Literal {
     String(StringLiteral),
-    Integer(i128),
+    Integer(u128), // This can be unsigned since unary minus is parsed separate from Literal
     Float(f64),
 }
 
@@ -249,4 +251,68 @@ impl Display for Token {
             Self::Semicolon => ";",
         })
     }
+}
+
+macro_rules! escape_hex {
+    ($c:expr, $radix:expr) => {{
+        just($c).ignore_then(
+            filter(|c: &char| c.is_digit(16))
+                .repeated()
+                .exactly($radix)
+                .collect::<String>()
+                .validate(|digits, span, emit| {
+                    char::from_u32(u32::from_str_radix(&digits, $radix).unwrap())
+                        .unwrap_or_else(|| {
+                            emit(Simple::custom(span, format!(
+                                "invalid unicode character {}",
+                                digits,
+                            )));
+                            '\u{FFFD}' // unicode replacement character
+                        })
+                }),
+        )
+    }}
+}
+
+pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Simple<String>> {
+    let integer = text::int(10).map(Literal::Int)
+        .labelled("integer literal");
+
+    let float = text::int(10)
+        .chain(just('.'))
+        .chain::<char, _, _>(text::digits(10).or_not().flatten())
+        .or(
+            just('.')
+                .chain::<char, _, _>(text::digits(10))
+        )
+        .collect::<String>()
+        .map(Literal::Float)
+        .labelled("float literal");
+
+    let escape = just('\\').ignore_then(
+        just('\\')
+            .or(just('"'))
+            .or(just('\''))
+            .or(just('b').to('\x08'))
+            .or(just('f').to('\x0C'))
+            .or(just('n').to('\n'))
+            .or(just('r').to('\r'))
+            .or(just('t').to('\t'))
+            .or(escape_hex!('x', 2))
+            .or(escape_hex!('u', 4))
+            .or(escape_hex!('U', 8)),
+    )
+        .labelled("escape sequence");
+
+    let string = just('"')
+        .ignore_then(filter(|c| *c != '\\' && *c != '"').or(escape).repeated())
+        .then_ignore(just('"'))
+        .or(
+            just('\'')
+            .ignore_then(filter(|c| *c != '\\' && *c != '\'').or(escape).repeated())
+            .then_ignore(just('\''))
+        )
+        .collect::<String>()
+        .map(Literal::String)
+        .labelled("string literal");
 }
