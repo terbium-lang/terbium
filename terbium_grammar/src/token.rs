@@ -1,7 +1,6 @@
 use chumsky::prelude::*;
 
 use std::fmt::Display;
-use crate::Token::Operator;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Operator {
@@ -111,7 +110,7 @@ impl Display for StringLiteral {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Literal {
     String(StringLiteral),
     Integer(u128), // This can be unsigned since unary minus is parsed separate from Literal
@@ -121,17 +120,16 @@ pub enum Literal {
 impl Display for Literal {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.write_str(match self {
-            Self::String(s) => s,
-            Self::Integer(i) => i,
-            Self::Float(f) => f,
+            Self::String(s) => s.to_string(),
+            Self::Integer(i) => i.to_string(),
+            Self::Float(f) => f.to_string(),
         }
-            .to_string()
             .as_str()
         )
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Hash)]
 pub enum Keyword {
     Func,
     Class,
@@ -206,7 +204,7 @@ impl Keyword {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Bracket {
     Paren,   // ()
     Bracket, // []
@@ -214,7 +212,7 @@ pub enum Bracket {
     Angle,   // <>
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Token {
     Invalid(char),
     Operator(Operator),
@@ -233,12 +231,9 @@ pub enum Token {
 
 impl Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let s: String;
+
         f.write_str(match self {
-            Self::Invalid(c) => c,
-            Self::Operator(o) => o,
-            Self::Literal(l) => l,
-            Self::Keyword(k) => k,
-            Self::Identifier(s) => s,
             Self::StartBracket(b) => match b {
                 Bracket::Paren => "(",
                 Bracket::Bracket => "[",
@@ -257,9 +252,12 @@ impl Display for Token {
             Self::Question => "?",
             Self::Semicolon => ";",
             Self::Assign => "=",
+            o => {
+                s = o.to_string();
+                s.as_str()
+            }
         }
-            .to_string()
-            .as_str()
+            .clone()
         )
     }
 }
@@ -285,19 +283,28 @@ macro_rules! escape_hex {
     }}
 }
 
-pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Simple<String>> {
-    let integer = text::int(10).map(Literal::Int)
+pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Simple<char>> {
+    let integer = text::int(10)
+        .from_str::<u128>()
+        .unwrapped()
+        .map(Literal::Integer)
+        .map(Token::Literal)
         .labelled("integer literal");
 
     let float = text::int(10)
-        .chain(just('.'))
-        .chain::<char, _, _>(text::digits(10).or_not().flatten())
-        .or(
-            just('.')
-                .chain::<char, _, _>(text::digits(10))
+        .chain::<char, _, _>(just('.')
+            .chain(text::digits(10))
+            .or_not()
+            .flatten()
+        )
+        .or(just('.')
+            .chain::<char, _, _>(text::digits(10))
         )
         .collect::<String>()
+        .from_str::<f64>()
+        .unwrapped()
         .map(Literal::Float)
+        .map(Token::Literal)
         .labelled("float literal");
 
     let escape = just('\\').ignore_then(
@@ -324,7 +331,7 @@ pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Simple<String>> {
             .then_ignore(just::<_, char, _>('\''))
         )
         .collect::<String>()
-        .map(Literal::String)
+        .map(|s| Token::Literal(Literal::String(StringLiteral::String(s))))
         .labelled("string literal");
     
     let ident_or_keyword = text::ident().map(|s: String| match s.as_str() {
@@ -350,23 +357,32 @@ pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Simple<String>> {
         _ => Token::Identifier(s),
     });
 
-    let comment = just("//")
-        .then_ignore(none_of('\n').ignored().repeated())
-        .padded()
-        .or(just("/*").ignore_then(none_of("*/").ignored().repeated()))
-        .ignored()
-        .repeated();
+    let single_line = just::<_, _, Simple<char>>("//")
+        .then(take_until(text::newline()))
+        .ignored();
+
+    let multi_line = just::<_, _, Simple<char>>("/*")
+        .then(take_until(just("*/")))
+        .ignored();
+
+    let comment = single_line.or(multi_line).or_not();
 
     let symbol = choice((
+        just(',').to(Token::Comma),
+        just(';').to(Token::Semicolon),
+        just('?').to(Token::Question),
+        just("::").to(Token::Cast),
+        just("..").map(|_| Token::Operator(Operator::Range)),
+        just('.').to(Token::Dot),
         just('+').map(|_| Token::Operator(Operator::Add)),
         just('-').map(|_| Token::Operator(Operator::Sub)),
         just("**").map(|_| Token::Operator(Operator::Pow)),
         just('*').map(|_| Token::Operator(Operator::Mul)),
         just('/').map(|_| Token::Operator(Operator::Div)),
         just('%').map(|_| Token::Operator(Operator::Mod)),
-        just('=').to(Token::Assign),
         just("==").map(|_| Token::Operator(Operator::Eq)),
         just("!=").map(|_| Token::Operator(Operator::Ne)),
+        just('=').to(Token::Assign),
         just("<=").map(|_| Token::Operator(Operator::Le)),
         just(">=").map(|_| Token::Operator(Operator::Ge)),
         just('<').map(|_| Token::Operator(Operator::Lt)),
@@ -377,6 +393,84 @@ pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Simple<String>> {
         just('^').map(|_| Token::Operator(Operator::BitXor)),
         just('&').map(|_| Token::Operator(Operator::BitAnd)),
         just('~').map(|_| Token::Operator(Operator::BitNot)),
-        just("..").map(|_| Token::Operator(Operator::Range)),
     ));
+
+    let brackets = choice((
+        just('(').map(|_| Token::StartBracket(Bracket::Paren)),
+        just('[').map(|_| Token::StartBracket(Bracket::Bracket)),
+        just('{').map(|_| Token::StartBracket(Bracket::Brace)),
+        just(')').map(|_| Token::EndBracket(Bracket::Paren)),
+        just(']').map(|_| Token::EndBracket(Bracket::Bracket)),
+        just('}').map(|_| Token::EndBracket(Bracket::Brace)),
+    ));
+
+    choice::<_, Simple<char>>((
+        symbol,
+        brackets,
+        ident_or_keyword,
+        string,
+        integer,
+        float,
+    ))
+        .or(any()
+            .map(Token::Invalid)
+            .validate(|token, span, emit| {
+                emit(Simple::custom(span, "invalid token"));
+                token
+            }))
+        // .map_with_span(move |token, span| (token, span)) Could be useful for debugging
+        .padded()
+        .recover_with(skip_then_retry_until([]))
+        .padded_by(comment)
+        .repeated()
+        .padded()
+        .then_ignore(end())
+}
+
+#[cfg(test)]
+mod tests {
+    use chumsky::Parser;
+    use crate::token::*;
+
+    #[test]
+    fn test_lexer() {
+        let raw = r#"
+            func main() {
+                std.println("Hello, world!");
+                if 1 + 2 == 3 {
+                    // Here is a comment
+                }
+            }
+        "#;
+
+        let (tokens, errors) = get_lexer().parse_recovery(raw);
+
+        assert_eq!(
+            tokens,
+            Some(vec![
+                Token::Keyword(Keyword::Func),
+                Token::Identifier("main".to_string()),
+                Token::StartBracket(Bracket::Paren),
+                Token::EndBracket(Bracket::Paren),
+                Token::StartBracket(Bracket::Brace),
+                Token::Identifier("std".to_string()),
+                Token::Dot,
+                Token::Identifier("println".to_string()),
+                Token::StartBracket(Bracket::Paren),
+                Token::Literal(Literal::String(StringLiteral::String("Hello, world!".to_string()))),
+                Token::EndBracket(Bracket::Paren),
+                Token::Semicolon,
+                Token::Keyword(Keyword::If),
+                Token::Literal(Literal::Integer(1)),
+                Token::Operator(Operator::Add),
+                Token::Literal(Literal::Integer(2)),
+                Token::Operator(Operator::Eq),
+                Token::Literal(Literal::Integer(3)),
+                Token::StartBracket(Bracket::Brace),
+                Token::EndBracket(Bracket::Brace),
+                Token::EndBracket(Bracket::Brace),
+            ]),
+        );
+        assert_eq!(errors, vec![]);
+    }
 }
