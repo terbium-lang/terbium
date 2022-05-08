@@ -9,6 +9,10 @@ homepage = "https://github.com/TerbiumLang/Terbium"
 repository = "https://github.com/TerbiumLang/Terbium"
 readme = "README.md"
 
+[[bin]]
+name = "terbium"
+path = "src/bin/terbium.rs"
+
 [workspace]
 members = ["terbium_grammar"]
 
