@@ -1,6 +1,7 @@
 use chumsky::prelude::*;
 
 use std::fmt::Display;
+use std::hash::Hash;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Operator {
@@ -20,6 +21,7 @@ pub enum Operator {
     Ge,
     Or,
     And,
+    Not,
     // Bitwise
     BitOr,
     BitXor,
@@ -33,7 +35,7 @@ impl Operator {
     pub fn supports_unary(&self) -> bool {
         match self {
             // TODO: &ident could retrieve memory address of the object
-            Self::Add | Self::Sub | Self::BitNot => true,
+            Self::Add | Self::Sub | Self::Not | Self::BitNot => true,
             _ => false,
         }
     }
@@ -54,6 +56,7 @@ impl Operator {
             | Self::Ge
             | Self::Or
             | Self::And
+            | Self::Not
             | Self::BitOr
             | Self::BitXor
             | Self::BitAnd
@@ -80,6 +83,7 @@ impl Display for Operator {
             Self::Ge => ">=",
             Self::Or => "||",
             Self::And => "&&",
+            Self::Not => "!",
             Self::BitOr => "|",
             Self::BitXor => "^",
             Self::BitAnd => "&",
@@ -111,11 +115,11 @@ impl Display for StringLiteral {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Hash)]
 pub enum Literal {
     String(StringLiteral),
     Integer(u128), // This can be unsigned since unary minus is parsed separate from Literal
-    Float(f64),
+    Float(String), // Rust floats are not hashable, additionally we want to avoid as much floating point precision loss as possible
 }
 
 impl Display for Literal {
@@ -124,7 +128,7 @@ impl Display for Literal {
             match self {
                 Self::String(s) => s.to_string(),
                 Self::Integer(i) => i.to_string(),
-                Self::Float(f) => f.to_string(),
+                Self::Float(f) => f.clone(),
             }
             .as_str(),
         )
@@ -214,7 +218,7 @@ pub enum Bracket {
     Angle,   // <>
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Hash)]
 pub enum Token {
     Invalid(char),
     Operator(Operator),
@@ -299,8 +303,6 @@ pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Simple<char>> {
         .chain::<char, _, _>(just('.').chain(text::digits(10)).or_not().flatten())
         .or(just('.').chain::<char, _, _>(text::digits(10)))
         .collect::<String>()
-        .from_str::<f64>()
-        .unwrapped()
         .map(Literal::Float)
         .map(Token::Literal)
         .labelled("float literal");
@@ -386,6 +388,7 @@ pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Simple<char>> {
         just('/').map(|_| Token::Operator(Operator::Div)),
         just('%').map(|_| Token::Operator(Operator::Mod)),
         just("==").map(|_| Token::Operator(Operator::Eq)),
+        just('!').map(|_| Token::Operator(Operator::Not)),
         just("!=").map(|_| Token::Operator(Operator::Ne)),
         just('=').to(Token::Assign),
         just("<=").map(|_| Token::Operator(Operator::Le)),
