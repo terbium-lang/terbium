@@ -45,5 +45,5 @@ See [CONTRIBUTING.md](https://github.com/TerbiumLang/Terbium/blob/main/CONTRIBUT
 ## Credits
 Terbium is a project by **[jay3332](https://github.com/jay3332)**.
 
-Thanks to the following contributors:
+Thanks to the following core contributors:
 - [Cryptex-github](https://github.com/Cryptex-github): Creating workflows + General contributions
