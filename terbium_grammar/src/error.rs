@@ -1,17 +1,16 @@
 use super::*;
-use chumsky::prelude::*;
 
 use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::ops::Range;
 
 type Span = Range<usize>;
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Hash)]
 pub enum TargetKind {
     Char(char),
     Token(Token),
     Literal,
-    Ident,
+    Identifier,
     End,
 }
 
@@ -33,7 +32,7 @@ impl Display for TargetKind {
             TargetKind::Token(token) => write!(f, "{}", token),
             TargetKind::Char(c) => write!(f, "{:?}", c),
             TargetKind::Literal => write!(f, "literal"),
-            TargetKind::Ident => write!(f, "identifier"),
+            TargetKind::Identifier => write!(f, "identifier"),
             TargetKind::End => write!(f, "end"),
         }
     }
@@ -54,7 +53,7 @@ pub enum ErrorKind {
 pub struct Error {
     pub kind: ErrorKind,
     pub span: Span,
-    pub expected: Vec<ErrorKind>,
+    pub expected: Vec<TargetKind>,
     pub label: Option<&'static str>,
 }
 
@@ -76,7 +75,7 @@ impl<T: Into<TargetKind>> chumsky::Error<T> for Error {
             expected: expected
                 .into_iter()
                 .map(|x| x.map(Into::into).unwrap_or(TargetKind::End))
-                .collect(),
+                .collect::<Vec<TargetKind>>(),
             label: None,
         }
     }
@@ -106,6 +105,11 @@ impl<T: Into<TargetKind>> chumsky::Error<T> for Error {
     }
 
     fn merge(self, other: Self) -> Self {
-        Error::merge(self, other)
+        Self {
+            kind: self.kind,
+            span: self.span.start..other.span.end,
+            expected: self.expected,
+            label: self.label,
+        }
     }
 }

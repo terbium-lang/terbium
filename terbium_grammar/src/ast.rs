@@ -1,8 +1,7 @@
-use crate::Error;
-use crate::token::{Bracket, get_lexer};
 use super::token::{Literal, Operator, StringLiteral, Token};
+use crate::token::{get_lexer, Bracket};
+use crate::Error;
 
-use chumsky::Error as _;
 use chumsky::prelude::*;
 use chumsky::primitive::FilterMap;
 
@@ -32,19 +31,20 @@ pub enum Expr {
 }
 
 impl Expr {
-    pub fn from_tokens(tokens: Vec<Token>) -> Self {
-        let (expr, _) = get_expr_parser().parse_recovery(tokens);
+    pub fn from_tokens(tokens: Vec<Token>) -> (Self, Vec<Error>) {
+        let (expr, errors) = get_expr_parser().parse_recovery(tokens);
 
-        expr.unwrap()
+        (expr.unwrap(), errors)
     }
 
-    pub fn from_string(s: String) -> Self {
+    pub fn from_string(s: String) -> (Self, Vec<Error>) {
         Self::from_tokens(get_lexer().parse(s.as_str()).unwrap())
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Target { // Could represent a variable or a parameter. Supports destructuring.
+pub enum Target {
+    // Could represent a variable or a parameter. Supports destructuring.
     Ident(String),
     Array(Vec<Target>),
     Attr(Box<Target>, String), // Invalid as a parameter or when let/immut is used.
@@ -73,7 +73,7 @@ pub trait CommonParser<T> = Parser<Token, T, Error = Error> + Clone;
 
 pub fn get_expr_parser() -> impl CommonParser<Expr> {
     recursive(|e: Recursive<Token, Expr, Error>| {
-        let literal: FilterMap<_, Expr> = select! {
+        let literal: FilterMap<_, Error> = select! {
             Token::Literal(lit) => match lit {
                 Literal::Integer(i) => Expr::Integer(i),
                 Literal::Float(f) => Expr::Float(f),
@@ -93,81 +93,272 @@ pub fn get_expr_parser() -> impl CommonParser<Expr> {
         };
 
         let array = e
+            .clone()
             .separated_by(just::<_, Token, _>(Token::Comma))
+            .allow_trailing()
             .delimited_by(
                 just(Token::StartBracket(Bracket::Bracket)),
                 just(Token::EndBracket(Bracket::Bracket)),
             )
-            .padded()
             .map(Expr::Array);
 
-        let unary = filter(|token: &Token| match token {
-            Token::Operator(op) => op.supports_unary(),
-            _ => false,
-        })
-            .map(select! { Token::Operator(op) => op })
-            .then(e.clone())
-            .padded()
-            .map(|(operator, value)| Expr::UnaryExpr { operator, value: Box::new(value) });
-
-        let binary = e
-            .then(
-                filter(|token: &Token| match token {
-                    Token::Operator(op) => op.supports_binary(),
-                    _ => false,
-                }).map(select! {
-                    Token::Operator(op) => op,
-                }),
-            )
-            .then(e.clone())
-            .padded()
-            .map(|((lhs, operator), rhs)| Expr::BinaryExpr {
-                operator,
-                lhs: Box::new(lhs),
-                rhs: Box::new(rhs),
-            });
-
-        let attr = e
-            .clone()
-            .then_ignore(Token::Dot)
-            .then(filter(|token: &Token| match token {
-                Token::Identifier(_) => true,
-                _ => false,
-            })
-            .map(|i| -> String { i.0 }))
-            .padded()
-            .map(|(obj, value)| Expr::Attr(Box::new(obj), value));
-
-        let call = e
-            .then(e
-                .clone()
-                .separated_by(just::<_, Token, _>(Token::Comma))
+        let atom = choice((
+            literal,
+            ident,
+            e.clone()
                 .delimited_by(
                     just(Token::StartBracket(Bracket::Paren)),
                     just(Token::EndBracket(Bracket::Paren)),
                 )
-                .padded()
-            )
-            .padded()
-            .map(|(val, args)| Expr::Call {
-                value: Box::new(val),
-                args,
-                kwargs: vec![],
-            });
+                .boxed(),
+            array,
+        ))
+        .boxed();
 
-        choice((literal, ident, array, unary, binary, attr, call))
+        let attr = atom
+            .clone()
+            .then(
+                just::<_, Token, _>(Token::Dot)
+                    .ignore_then(ident)
+                    .repeated(),
+            )
+            .foldl(|a, b| {
+                Expr::Attr(
+                    Box::new(a),
+                    match b {
+                        Expr::Ident(s) => s,
+                        Expr::Bool(b) => b.to_string(),
+                        _ => unreachable!(),
+                    },
+                )
+            })
+            .boxed();
+
+        let call = attr
+            .clone()
+            .then(
+                e.clone()
+                    .separated_by(just::<_, Token, _>(Token::Comma))
+                    .allow_trailing()
+                    .delimited_by(
+                        just(Token::StartBracket(Bracket::Paren)),
+                        just(Token::EndBracket(Bracket::Paren)),
+                    )
+                    .or_not(),
+            )
+            .map(|(expr, args)| match args {
+                Some(args) => Expr::Call {
+                    value: Box::new(expr),
+                    args,
+                    kwargs: vec![],
+                },
+                None => expr,
+            })
+            .boxed();
+
+        let unary = just(Token::Operator(Operator::Sub))
+            .or(just(Token::Operator(Operator::Add)))
+            .or(just(Token::Operator(Operator::Not)))
+            .or(just(Token::Operator(Operator::BitNot)))
+            .repeated()
+            .then(call.clone())
+            .foldr(|operator, expr| match operator {
+                Token::Operator(operator) => Expr::UnaryExpr {
+                    operator,
+                    value: Box::new(expr),
+                },
+                _ => unreachable!(),
+            })
+            .boxed();
+
+        let binary_pow = unary
+            .clone()
+            .then(
+                just(Token::Operator(Operator::Pow))
+                    .map(|o| match o {
+                        Token::Operator(op) => op,
+                        _ => unreachable!(),
+                    })
+                    .then(unary)
+                    .repeated(),
+            )
+            .foldl(|lhs, (operator, rhs)| Expr::BinaryExpr {
+                operator,
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            })
+            .boxed();
+
+        let op = just(Token::Operator(Operator::Mul))
+            .or(just(Token::Operator(Operator::Div)))
+            .or(just(Token::Operator(Operator::Mod)))
+            .map(|o| match o {
+                Token::Operator(op) => op,
+                _ => unreachable!(),
+            });
+        let binary_product = binary_pow
+            .clone()
+            .then(op.then(binary_pow).repeated())
+            .foldl(|lhs, (operator, rhs)| Expr::BinaryExpr {
+                operator,
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            })
+            .boxed();
+
+        let op = just(Token::Operator(Operator::Add))
+            .or(just(Token::Operator(Operator::Sub)))
+            .map(|o| match o {
+                Token::Operator(op) => op,
+                _ => unreachable!(),
+            });
+        let binary_sum = binary_product
+            .clone()
+            .then(op.then(binary_product).repeated())
+            .foldl(|lhs, (operator, rhs)| Expr::BinaryExpr {
+                operator,
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            })
+            .boxed();
+
+        let op = just(Token::Operator(Operator::Eq))
+            .or(just(Token::Operator(Operator::Ne)))
+            .or(just(Token::Operator(Operator::Lt)))
+            .or(just(Token::Operator(Operator::Gt)))
+            .or(just(Token::Operator(Operator::Le)))
+            .or(just(Token::Operator(Operator::Ge)))
+            .map(|o| match o {
+                Token::Operator(op) => op,
+                _ => unreachable!(),
+            });
+        let binary_cmp = binary_sum
+            .clone()
+            .then(op.then(binary_sum).repeated())
+            .foldl(|lhs, (operator, rhs)| Expr::BinaryExpr {
+                operator,
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            })
+            .boxed();
+
+        let binary_logical_and = binary_cmp
+            .clone()
+            .then(
+                just(Token::Operator(Operator::And))
+                    .map(|o| match o {
+                        Token::Operator(op) => op,
+                        _ => unreachable!(),
+                    })
+                    .then(binary_cmp)
+                    .repeated(),
+            )
+            .foldl(|lhs, (operator, rhs)| Expr::BinaryExpr {
+                operator,
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            })
+            .boxed();
+
+        let binary_logical_or = binary_logical_and
+            .clone()
+            .then(
+                just(Token::Operator(Operator::Or))
+                    .map(|o| match o {
+                        Token::Operator(op) => op,
+                        _ => unreachable!(),
+                    })
+                    .then(binary_logical_and)
+                    .repeated(),
+            )
+            .foldl(|lhs, (operator, rhs)| Expr::BinaryExpr {
+                operator,
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            })
+            .boxed();
+
+        let op = just(Token::Operator(Operator::BitAnd))
+            .or(just(Token::Operator(Operator::BitOr)))
+            .or(just(Token::Operator(Operator::BitXor)))
+            .map(|o| match o {
+                Token::Operator(op) => op,
+                _ => unreachable!(),
+            });
+        binary_logical_or
+            .clone()
+            .then(op.then(binary_logical_or).repeated())
+            .foldl(|lhs, (operator, rhs)| Expr::BinaryExpr {
+                operator,
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            })
+            .boxed()
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ast::Expr::*;
 
     #[test]
     fn test_expr_parser() {
-        let code = "-1 + 2 * (5 - [2, a.b() - (c + -d)])";
-        let tree = Expr::from_string(code.to_string());
+        let code = "-1 + 2 * (5 - [2, a.b() - (c + -d), e(5, f())])";
+        let (tree, errors) = Expr::from_string(code.to_string());
 
-        println!("{:#?}", tree);
+        assert_eq!(
+            tree,
+            BinaryExpr {
+                operator: Operator::Add,
+                lhs: Box::new(UnaryExpr {
+                    operator: Operator::Sub,
+                    value: Box::new(Integer(1)),
+                }),
+                rhs: Box::new(BinaryExpr {
+                    operator: Operator::Mul,
+                    lhs: Box::new(Integer(2)),
+                    rhs: Box::new(BinaryExpr {
+                        operator: Operator::Sub,
+                        lhs: Box::new(Integer(5)),
+                        rhs: Box::new(Array(vec![
+                            Integer(2),
+                            BinaryExpr {
+                                operator: Operator::Sub,
+                                lhs: Box::new(Call {
+                                    value: Box::new(Attr(
+                                        Box::new(Ident("a".to_string())),
+                                        "b".to_string()
+                                    ),),
+                                    args: vec![],
+                                    kwargs: vec![],
+                                }),
+                                rhs: Box::new(BinaryExpr {
+                                    operator: Operator::Add,
+                                    lhs: Box::new(Ident("c".to_string())),
+                                    rhs: Box::new(UnaryExpr {
+                                        operator: Operator::Sub,
+                                        value: Box::new(Ident("d".to_string())),
+                                    }),
+                                }),
+                            },
+                            Call {
+                                value: Box::new(Ident("e".to_string())),
+                                args: vec![
+                                    Integer(5),
+                                    Call {
+                                        value: Box::new(Ident("f".to_string())),
+                                        args: vec![],
+                                        kwargs: vec![],
+                                    },
+                                ],
+                                kwargs: vec![],
+                            },
+                        ])),
+                    }),
+                }),
+            }
+        );
+        assert_eq!(errors.len(), 0);
     }
 }

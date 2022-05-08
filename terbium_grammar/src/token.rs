@@ -1,5 +1,6 @@
 use chumsky::prelude::*;
 
+use chumsky::text::Character;
 use std::fmt::Display;
 use std::hash::Hash;
 
@@ -299,7 +300,7 @@ pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Simple<char>> {
         .map(Token::Literal)
         .labelled("integer literal");
 
-    let float = text::int(10)
+    let float = text::int::<_, Simple<char>>(10)
         .chain::<char, _, _>(just('.').chain(text::digits(10)).or_not().flatten())
         .or(just('.').chain::<char, _, _>(text::digits(10)))
         .collect::<String>()
@@ -307,7 +308,7 @@ pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Simple<char>> {
         .map(Token::Literal)
         .labelled("float literal");
 
-    let escape = just('\\')
+    let escape = just::<_, _, Simple<char>>('\\')
         .ignore_then(
             just('\\')
                 .or(just('"'))
@@ -323,7 +324,7 @@ pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Simple<char>> {
         )
         .labelled("escape sequence");
 
-    let string = just('"')
+    let string = just::<_, _, Simple<char>>('"')
         .ignore_then(
             filter(|c: &char| *c != '\\' && *c != '"')
                 .or(escape)
@@ -374,7 +375,7 @@ pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Simple<char>> {
 
     let comment = single_line.or(multi_line).or_not();
 
-    let symbol = choice((
+    let symbol = choice::<_, Simple<char>>((
         just(',').to(Token::Comma),
         just(';').to(Token::Semicolon),
         just('?').to(Token::Question),
@@ -388,7 +389,7 @@ pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Simple<char>> {
         just('/').map(|_| Token::Operator(Operator::Div)),
         just('%').map(|_| Token::Operator(Operator::Mod)),
         just("==").map(|_| Token::Operator(Operator::Eq)),
-        just('!').map(|_| Token::Operator(Operator::Not)),
+        // just('!').map(|_| Token::Operator(Operator::Not)), TODO: this is causing errors for some reason
         just("!=").map(|_| Token::Operator(Operator::Ne)),
         just('=').to(Token::Assign),
         just("<=").map(|_| Token::Operator(Operator::Le)),
@@ -403,7 +404,7 @@ pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Simple<char>> {
         just('~').map(|_| Token::Operator(Operator::BitNot)),
     ));
 
-    let brackets = choice((
+    let brackets = choice::<_, Simple<char>>((
         just('(').map(|_| Token::StartBracket(Bracket::Paren)),
         just('[').map(|_| Token::StartBracket(Bracket::Bracket)),
         just('{').map(|_| Token::StartBracket(Bracket::Brace)),
