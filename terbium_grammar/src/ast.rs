@@ -59,7 +59,7 @@ pub enum Node {
         body: Vec<Node>,
     },
     Expr(Expr),
-    // e.g. x.y = z becomes Assign { lhs: Attr(Ident("x"), "y"), rhs: Ident("z") }
+    // e.g. x.y = z becomes Assign { target: Attr(Ident("x"), "y"), value: Ident("z"), .. }
     Assign {
         target: Target,
         value: Expr,
@@ -329,7 +329,7 @@ mod tests {
                                     value: Box::new(Attr(
                                         Box::new(Ident("a".to_string())),
                                         "b".to_string()
-                                    ),),
+                                    )),
                                     args: vec![],
                                     kwargs: vec![],
                                 }),
