@@ -3,6 +3,11 @@ name = "terbium"
 authors = ["jay3332", "Cryptex"]
 version = "0.0.1"
 edition = "2021"
+description = "The performant yet elegant and feature-packed programming language. Made with Rust. "
+license = "MIT"
+homepage = "https://github.com/TerbiumLang/Terbium"
+repository = "https://github.com/TerbiumLang/Terbium"
+readme = "README.md"
 
 [workspace]
 members = ["terbium_grammar"]
