@@ -18,9 +18,25 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v3
+
     - name: Build
       run: cargo build --verbose
+
     - name: Test terbium
       run: cargo test --verbose
+
     - name: Test terbium_grammar
       run: cargo test -p terbium_grammar --verbose
+
+    - uses: actions/upload-artifact@v3
+      if: ${{ matrix.os == 'windows-latest'}}
+      with:
+        name: ${{ matrix.os }}-build
+        path: target/debug/terbium.exe
+
+    - uses: actions/upload-artifact@v3
+      if: ${{ matrix.os != 'windows-latest'}}
+      with:
+        name: ${{ matrix.os }}-build
+        path: target/debug/terbium
+        
