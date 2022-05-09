@@ -40,4 +40,22 @@ jobs:
       if: ${{ matrix.os != 'windows-latest'}}
       with:
         name: ${{ matrix.os }}-build
-        path: target/debug/terbium        
+        path: target/debug/terbium
+
+    - name: Build release build
+      run: cargo build --release --verbose
+
+    - name: Upload Windows release artifact
+      uses: actions/upload-artifact@v3
+      if: ${{ matrix.os == 'windows-latest'}}
+      with:
+        name: ${{ matrix.os }}-release-build
+        path: target/release/terbium.exe
+
+    - name: Upload Linux / MacOS release Artifact
+      uses: actions/upload-artifact@v3
+      if: ${{ matrix.os != 'windows-latest'}}
+      with:
+        name: ${{ matrix.os }}-release-build
+        path: target/release/terbium
+      
