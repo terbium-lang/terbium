@@ -39,16 +39,20 @@ jobs:
           
           - os: windows-latest
             target: x86_64-pc-windows-gnu
+            ext: ".exe"
 
           - os: windows-latest
             target: x86_64-pc-windows-msvc
+            ext: ".exe"
           
           - os: windows-latest
             target: i686-pc-windows-msvc
+            ext: ".exe"
 
-          - os: windows-latest
+          - os: ubuntu-latest
             target: i686-pc-windows-gnu
             cross: true
+            ext: ".exe"
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -93,19 +97,11 @@ jobs:
       if: ${{ matrix.cross == true && matrix.skip-test != true }}
       run: cross test --target ${{ matrix.target }} -p terbium_grammar --verbose
 
-    - name: Upload Windows artifact
+    - name: Upload artifact
       uses: actions/upload-artifact@v3
-      if: ${{ matrix.os == 'windows-latest'}}
       with:
         name: ${{ matrix.target }}-build
-        path: target/${{ matrix.target }}/debug/terbium.exe
-
-    - name: Upload Linux / MacOS / IOS  Artifact
-      uses: actions/upload-artifact@v3
-      if: ${{ matrix.os != 'windows-latest'}}
-      with:
-        name: ${{ matrix.target }}-build
-        path: target/${{ matrix.target }}/debug/terbium
+        path: target/${{ matrix.target }}/debug/terbium${{ matrix.ext }}
 
     - name: Build release build
       if: ${{ matrix.cross != true }}
@@ -115,16 +111,8 @@ jobs:
       if: ${{ matrix.cross == true }}
       run: cross build --target ${{ matrix.target }} --release --verbose
 
-    - name: Upload Windows release artifact
+    - name: Upload release Artifact
       uses: actions/upload-artifact@v3
-      if: ${{ matrix.os == 'windows-latest'}}
       with:
         name: ${{ matrix.target }}-release-build
-        path: target/${{ matrix.target }}/release/terbium.exe
-
-    - name: Upload Linux / MacOS / IOS release Artifact
-      uses: actions/upload-artifact@v3
-      if: ${{ matrix.os != 'windows-latest'}}
-      with:
-        name: ${{ matrix.target }}-release-build
-        path: target/${{ matrix.target }}/release/terbium      
+        path: target/${{ matrix.target }}/release/terbium${{ matrix.ext }}
