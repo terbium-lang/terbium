@@ -46,6 +46,10 @@ jobs:
           - os: windows-latest
             target: i686-pc-windows-msvc
 
+          - os: ubuntu-latest
+            target: i686-pc-windows-gnu
+            cross: true
+
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v3
