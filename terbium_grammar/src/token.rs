@@ -1,6 +1,8 @@
-use chumsky::prelude::*;
+use super::Error;
 
+use chumsky::prelude::*;
 use chumsky::text::Character;
+
 use std::fmt::Display;
 use std::hash::Hash;
 
@@ -116,7 +118,7 @@ impl Display for StringLiteral {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Literal {
     String(StringLiteral),
     Integer(u128), // This can be unsigned since unary minus is parsed separate from Literal
@@ -136,7 +138,7 @@ impl Display for Literal {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Keyword {
     Func,
     Class,
@@ -219,7 +221,7 @@ pub enum Bracket {
     Angle,   // <>
 }
 
-#[derive(Clone, Debug, PartialEq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Token {
     Invalid(char),
     Operator(Operator),
@@ -239,9 +241,14 @@ pub enum Token {
 impl Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let s: String;
-
+        
         f.write_str(
             match self {
+                Self::Invalid(c) => { s = c.to_string(); s.as_str() },
+                Self::Operator(o) => { s = o.to_string(); s.as_str() },
+                Self::Literal(l) => { s = l.to_string(); s.as_str() },
+                Self::Keyword(k) => { s = k.to_string(); s.as_str() },
+                Self::Identifier(s) => s.as_str(),
                 Self::StartBracket(b) => match b {
                     Bracket::Paren => "(",
                     Bracket::Bracket => "[",
@@ -260,10 +267,6 @@ impl Display for Token {
                 Self::Question => "?",
                 Self::Semicolon => ";",
                 Self::Assign => "=",
-                o => {
-                    s = o.to_string();
-                    s.as_str()
-                }
             }
             .clone(),
         )
@@ -279,9 +282,9 @@ macro_rules! escape_hex {
                 .collect::<String>()
                 .validate(|digits, span, emit| {
                     char::from_u32(u32::from_str_radix(&digits, 16).unwrap()).unwrap_or_else(|| {
-                        emit(Simple::custom(
+                        emit(Error::custom(
                             span,
-                            format!("invalid unicode character {}", digits,),
+                            format!("invalid unicode character \\u{}", digits),
                         ));
                         '\u{FFFD}' // unicode replacement character
                     })
@@ -290,15 +293,15 @@ macro_rules! escape_hex {
     }};
 }
 
-pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Simple<char>> {
-    let integer = text::int(10)
+pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Error> {
+    let integer = text::int::<_, Error>(10)
         .from_str::<u128>()
         .unwrapped()
         .map(Literal::Integer)
         .map(Token::Literal)
         .labelled("integer literal");
 
-    let float = text::int::<_, Simple<char>>(10)
+    let float = text::int::<_, Error>(10)
         .chain::<char, _, _>(just('.').chain(text::digits(10)).or_not().flatten())
         .or(just('.').chain::<char, _, _>(text::digits(10)))
         .collect::<String>()
@@ -306,7 +309,7 @@ pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Simple<char>> {
         .map(Token::Literal)
         .labelled("float literal");
 
-    let escape = just::<_, _, Simple<char>>('\\')
+    let escape = just::<_, _, Error>('\\')
         .ignore_then(
             just('\\')
                 .or(just('"'))
@@ -322,7 +325,7 @@ pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Simple<char>> {
         )
         .labelled("escape sequence");
 
-    let string = just::<_, _, Simple<char>>('"')
+    let string = just::<_, _, Error>('"')
         .ignore_then(
             filter(|c: &char| *c != '\\' && *c != '"')
                 .or(escape)
@@ -363,17 +366,17 @@ pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Simple<char>> {
         _ => Token::Identifier(s),
     });
 
-    let single_line = just::<_, _, Simple<char>>("//")
+    let single_line = just::<_, _, Error>("//")
         .then(take_until(text::newline()))
         .ignored();
 
-    let multi_line = just::<_, _, Simple<char>>("/*")
+    let multi_line = just::<_, _, Error>("/*")
         .then(take_until(just("*/")))
         .ignored();
 
     let comment = single_line.or(multi_line).or_not();
 
-    let symbol = choice::<_, Simple<char>>((
+    let symbol = choice::<_, Error>((
         just(',').to(Token::Comma),
         just(';').to(Token::Semicolon),
         just('?').to(Token::Question),
@@ -402,7 +405,7 @@ pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Simple<char>> {
         just('~').map(|_| Token::Operator(Operator::BitNot)),
     ));
 
-    let brackets = choice::<_, Simple<char>>((
+    let brackets = choice::<_, Error>((
         just('(').map(|_| Token::StartBracket(Bracket::Paren)),
         just('[').map(|_| Token::StartBracket(Bracket::Bracket)),
         just('{').map(|_| Token::StartBracket(Bracket::Brace)),
@@ -411,9 +414,9 @@ pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Simple<char>> {
         just('}').map(|_| Token::EndBracket(Bracket::Brace)),
     ));
 
-    choice::<_, Simple<char>>((symbol, brackets, ident_or_keyword, string, integer, float))
+    choice::<_, Error>((symbol, brackets, ident_or_keyword, string, integer, float))
         .or(any().map(Token::Invalid).validate(|token, span, emit| {
-            emit(Simple::custom(span, "invalid token"));
+            emit(Error::unexpected_token(span, token.clone()));
             token
         }))
         // .map_with_span(move |token, span| (token, span)) Could be useful for debugging

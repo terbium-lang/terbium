@@ -37,7 +37,7 @@ pub enum Expr {
     },
 }
 
-trait ParseInterface {
+pub trait ParseInterface {
     fn parse(tokens: Vec<Token>) -> (Option<Self>, Vec<Error>)
     where
         Self: Sized;
@@ -51,11 +51,13 @@ trait ParseInterface {
         (expr.unwrap(), errors)
     }
 
-    fn from_string(s: String) -> (Self, Vec<Error>)
+    fn from_string(s: String) -> Result<(Self, Vec<Error>), Vec<Error>>
     where
         Self: Sized,
     {
-        Self::from_tokens(get_lexer().parse(s.as_str()).unwrap())
+        let tokens = get_lexer().parse(s.as_str())?;
+
+        Ok(Self::from_tokens(tokens))
     }
 }
 
@@ -117,6 +119,15 @@ impl ParseInterface for Expr {
                 _ => unreachable!(),
             })
             .parse_recovery(tokens)
+    }
+}
+
+impl ParseInterface for Node {
+    fn parse(tokens: Vec<Token>) -> (Option<Self>, Vec<Error>)
+    where
+        Self: Sized,
+    {
+        get_body_parser().map(|Body(b, _)| Node::Module(b)).parse_recovery(tokens)
     }
 }
 
@@ -497,19 +508,21 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, Body> {
                 return_last,
             });
 
+        let r#return = just::<_, Token, _>(Token::Keyword(Keyword::Return))
+            .ignore_then(e.clone().or_not())
+            .then_ignore(just::<_, Token, _>(Token::Semicolon))
+            .map(Node::Return);
+
         let expr = e
             .clone()
             .then_ignore(just::<_, Token, _>(Token::Semicolon))
             .or(e.clone().try_map(|e, _| match e {
                 Expr::If { .. } => Ok(e),
                 _ => Err(Error::placeholder()),
-            }))
-            .or(e
-                .clone()
-                .then_ignore(none_of(Token::EndBracket(Bracket::Brace)).rewind()))
+            }).then_ignore(none_of(Token::EndBracket(Bracket::Brace)).rewind()))
             .map(Node::Expr);
 
-        choice((func, assign, require, expr))
+        choice((func, assign, r#return, require, expr))
             .repeated()
             .then(e.clone().or_not().map(|o| o.map(Node::Expr)))
             .map(|(mut nodes, last)| {

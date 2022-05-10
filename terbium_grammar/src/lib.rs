@@ -4,5 +4,6 @@ pub mod ast;
 pub mod error;
 pub mod token;
 
+pub use crate::ast::{Body, Expr, Node, ParseInterface};
 pub use crate::error::*;
-pub use crate::token::Token;
+pub use crate::token::{Operator, Token};

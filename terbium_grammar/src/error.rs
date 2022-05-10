@@ -1,11 +1,12 @@
 use super::*;
 
+use std::collections::HashSet;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::ops::Range;
 
 type Span = Range<usize>;
 
-#[derive(Debug, PartialEq, Hash)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub enum TargetKind {
     Char(char),
     Token(Token),
@@ -38,8 +39,9 @@ impl Display for TargetKind {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum ErrorKind {
+    Custom,
     UnexpectedEnd,
     Unexpected(TargetKind),
     Unclosed {
@@ -49,45 +51,97 @@ pub enum ErrorKind {
     },
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Error {
     pub kind: ErrorKind,
     pub span: Span,
-    pub expected: Vec<TargetKind>,
+    pub expected: HashSet<TargetKind>,
     pub label: Option<&'static str>,
+    pub message: String,
 }
 
 impl Error {
     pub fn placeholder() -> Self {
         Self {
-            kind: ErrorKind::UnexpectedEnd,
+            kind: ErrorKind::Custom,
             span: 0..0,
-            expected: vec![],
+            expected: HashSet::new(),
             label: None,
+            message: String::new(),
         }
+    }
+
+    pub fn custom(span: Span, message: impl Display) -> Self {
+        Self {
+            kind: ErrorKind::Custom,
+            span,
+            expected: HashSet::new(),
+            label: None,
+            message: message.to_string(),
+        }
+    }
+
+    pub fn unexpected_token(span: Span, token: Token) -> Self {
+        Self {
+            kind: ErrorKind::Unexpected(TargetKind::Token(token.clone())),
+            span,
+            expected: HashSet::new(),
+            label: None,
+            message: format!("unexpected token {}", token),
+        }
+    }
+
+    pub fn print(&self) {
+        // TODO: more comprehensive error messages
+        eprintln!("[{:?}] {}", self.span, self.message);
     }
 }
 
-impl<T: Into<TargetKind>> chumsky::Error<T> for Error {
+impl<T: Into<TargetKind> + Clone> chumsky::Error<T> for Error {
     type Span = Span;
     type Label = &'static str;
 
-    fn expected_input_found<Iter: IntoIterator<Item = Option<T>>>(
+    fn expected_input_found<I: IntoIterator<Item = Option<T>>>(
         span: Self::Span,
-        expected: Iter,
+        expected: I,
         found: Option<T>,
     ) -> Self {
+        let expected = expected
+            .into_iter()
+            .map(|x| x.map(Into::into).unwrap_or(TargetKind::End))
+            .collect::<HashSet<TargetKind>>();
+
+        let expected_message = expected
+            .iter()
+            .map(|x| x.to_string())
+            .collect::<Vec<String>>();
+
+        let joined;
+        let expected_message = if expected_message.len() == 1 {
+            expected_message.first().unwrap().as_str()
+        } else {
+            joined = expected_message.join(" or ");
+            joined.as_str()
+        };
+
         Self {
             kind: found
+                .clone()
                 .map(Into::into)
                 .map(ErrorKind::Unexpected)
                 .unwrap_or(ErrorKind::UnexpectedEnd),
             span,
-            expected: expected
-                .into_iter()
-                .map(|x| x.map(Into::into).unwrap_or(TargetKind::End))
-                .collect::<Vec<TargetKind>>(),
+            expected,
             label: None,
+            message: format!(
+                "expected {}{}",
+                expected_message,
+                if let Some(found) = found {
+                    found.into().to_string()
+                } else {
+                    String::new()
+                }
+            ),
         }
     }
 
@@ -105,8 +159,11 @@ impl<T: Into<TargetKind>> chumsky::Error<T> for Error {
                 before: before.map(Into::into),
             },
             span,
-            expected: std::iter::once(expected.into()).collect(),
+            expected: std::iter::once(expected.clone().into()).collect(),
             label: None,
+            message: format!("unclosed delimiter: expected {}", {
+                expected.clone().into().to_string()
+            }),
         }
     }
 
@@ -115,12 +172,17 @@ impl<T: Into<TargetKind>> chumsky::Error<T> for Error {
         self
     }
 
-    fn merge(self, other: Self) -> Self {
+    fn merge(mut self, other: Self) -> Self {
+        for expected in other.expected {
+            self.expected.insert(expected);
+        }
+
         Self {
             kind: self.kind,
             span: self.span.start..other.span.end,
             expected: self.expected,
             label: self.label,
+            message: self.message,
         }
     }
 }
