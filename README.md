@@ -4,6 +4,15 @@ The performant yet elegant and feature-packed programming language. Implemented 
 ## Installation
 Terbium is still a work in progress. You can contribute by simply cloning this repository, however.
 
+## Hello, world!
+```ts
+require std;
+
+func main() {
+    std.println("Hello, world!");
+}
+```
+
 ## Goals
 We want Terbium to meet the following:
 
@@ -25,14 +34,54 @@ We want to enforce a static type system in Terbium that isn't too restrictive:
 Terbium designs static types like this so that while beginners don't have to learn Terbium with
 the complexity of a type system, and gradually implement these types as they learn more about them.
 
-## Hello, world!
-```ts
-require std;
+### Concise Code
+We also want to make Terbium code as concise as possible, without sacrificing performance or readability.
 
-func main() {
-    std.println("Hello, world!");
+#### Examples:
+Directly assign the result of an `if` statement to a variable:
+```ts
+let x = if 1 + 1 == 2 {
+    std.println("1 + 1 is indeed 2!");
+    2
 }
+
+std.println(x); // 2
 ```
+
+Call a function with the result of a `match` statement:
+```ts
+std.println(match 1 + 1 {
+   1 -> "one",
+   2 -> "two",
+   else "other",       
+});
+```
+
+or... use non-expressions with `match`:
+```ts
+std.println(match 1 + 1 {
+    2 -> {
+       let message = "two";
+       message
+    },
+    else {
+        let message = "other";
+        message
+    },
+});
+```
+
+(above three inspired by Rust)
+
+Null propagations and assertions:
+```ts
+std.println(x.y?.z!);
+
+// equivalent to:
+// if x.y { if x.y.z { std.println(x.y.z) } else { throw error } } else { std.println("null") }
+```
+
+(above inspired by TypeScript)
 
 ## Repository Navigation
 - [terbium_grammar](https://github.com/TerbiumLang/Terbium/tree/main/terbium_grammar):
