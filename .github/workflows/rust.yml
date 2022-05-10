@@ -24,9 +24,14 @@ jobs:
 
           - os: macos-latest
             target: x86_64-apple-darwin
+          
+          - os: macos-latest
+            target: aarch64-apple-ios
+            skip-test: true # skip tests on aarch64 platforms
 
           - os: macos-latest
             target: aarch64-apple-darwin
+            skip-test: true
           
           - os: windows-latest
             target: x86_64-pc-windows-gnu
@@ -53,9 +58,11 @@ jobs:
       run: cargo build --target ${{ matrix.target }} --verbose
 
     - name: Test terbium
+      if: ${{ matrix.skip-test != true}}
       run: cargo test --lib --target ${{ matrix.target }} --verbose
 
     - name: Test terbium_grammar
+      if: ${{ matrix.skip-test != true}}
       run: cargo test --target ${{ matrix.target }} -p terbium_grammar --verbose
 
     - name: Upload Windows artifact
