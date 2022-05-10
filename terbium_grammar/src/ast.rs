@@ -44,7 +44,7 @@ trait ParseInterface {
 
     fn from_tokens(tokens: Vec<Token>) -> (Self, Vec<Error>)
     where
-        Self: Sized
+        Self: Sized,
     {
         let (expr, errors) = Self::parse(tokens);
 
@@ -108,15 +108,14 @@ impl ParseInterface for Expr {
             tokens.push(Token::Semicolon);
         }
 
-        get_body_parser().map(|Body(body, _)| {
-            match body.get(0) {
+        get_body_parser()
+            .map(|Body(body, _)| match body.get(0) {
                 Some(o) => match o.to_owned() {
                     Node::Expr(expr) => expr,
                     _ => unreachable!(),
                 },
                 _ => unreachable!(),
-            }
-        })
+            })
             .parse_recovery(tokens)
     }
 }
@@ -124,7 +123,7 @@ impl ParseInterface for Expr {
 impl ParseInterface for Body {
     fn parse(tokens: Vec<Token>) -> (Option<Self>, Vec<Error>)
     where
-        Self: Sized
+        Self: Sized,
     {
         get_body_parser().parse_recovery(tokens)
     }
@@ -167,41 +166,37 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, Body> {
 
             let if_stmt = just::<_, Token, _>(Token::Keyword(Keyword::If))
                 .ignore_then(e.clone())
-                .then(body.clone()
-                    .delimited_by(
-                        just(Token::StartBracket(Bracket::Brace)),
-                        just(Token::EndBracket(Bracket::Brace)),
-                    ),
-                )
+                .then(body.clone().delimited_by(
+                    just(Token::StartBracket(Bracket::Brace)),
+                    just(Token::EndBracket(Bracket::Brace)),
+                ))
                 .then(
                     just::<_, Token, _>(Token::Keyword(Keyword::Else))
                         .ignore_then(just(Token::Keyword(Keyword::If)))
                         .ignore_then(e.clone())
-                        .then(body.clone()
-                            .delimited_by(
-                                just(Token::StartBracket(Bracket::Brace)),
-                                just(Token::EndBracket(Bracket::Brace)),
-                            ),
-                        )
+                        .then(body.clone().delimited_by(
+                            just(Token::StartBracket(Bracket::Brace)),
+                            just(Token::EndBracket(Bracket::Brace)),
+                        ))
                         .repeated(),
                 )
                 .then(
                     just::<_, Token, _>(Token::Keyword(Keyword::Else))
-                        .ignore_then(body.clone()
-                            .delimited_by(
-                                just(Token::StartBracket(Bracket::Brace)),
-                                just(Token::EndBracket(Bracket::Brace)),
-                            ),
-                        )
+                        .ignore_then(body.clone().delimited_by(
+                            just(Token::StartBracket(Bracket::Brace)),
+                            just(Token::EndBracket(Bracket::Brace)),
+                        ))
                         .or_not(),
                 )
-                .map(|(((condition, Body(body, return_last)), else_if), else_body)| Expr::If {
-                    condition: Box::new(condition),
-                    body,
-                    else_if_bodies: else_if,
-                    else_body,
-                    return_last,
-                });
+                .map(
+                    |(((condition, Body(body, return_last)), else_if), else_body)| Expr::If {
+                        condition: Box::new(condition),
+                        body,
+                        else_if_bodies: else_if,
+                        else_body,
+                        return_last,
+                    },
+                );
 
             let atom = choice((
                 literal,
@@ -414,8 +409,7 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, Body> {
             .or_not()
             .then(just::<_, Token, _>(Token::Keyword(Keyword::Immut)).or_not())
             .or(just(Token::Keyword(Keyword::Const))
-                .map(|_| (None, Some(Token::Keyword(Keyword::Const))))
-            )
+                .map(|_| (None, Some(Token::Keyword(Keyword::Const)))))
             .or_not()
             .then(select! {
                 // TODO: target parser (only supports raw idents)
@@ -461,45 +455,41 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, Body> {
         let param = select! {
             Token::Identifier(i) => Target::Ident(i),
         } // TODO: type annotations
-            .or(select! {
-                Token::Identifier(i) => Target::Ident(i),
-            }
-                .separated_by(just::<_, Token, _>(Token::Comma))
-                .allow_trailing()
-                .at_least(1)
-                .delimited_by(
-                    just::<_, Token, _>(Token::StartBracket(Bracket::Bracket)),
-                    just(Token::EndBracket(Bracket::Bracket)),
-                )
-                .map(Target::Array)
-            )
-            .then(just::<_, Token, _>(Token::Assign)
+        .or(select! {
+            Token::Identifier(i) => Target::Ident(i),
+        }
+        .separated_by(just::<_, Token, _>(Token::Comma))
+        .allow_trailing()
+        .at_least(1)
+        .delimited_by(
+            just::<_, Token, _>(Token::StartBracket(Bracket::Bracket)),
+            just(Token::EndBracket(Bracket::Bracket)),
+        )
+        .map(Target::Array))
+        .then(
+            just::<_, Token, _>(Token::Assign)
                 .ignore_then(e.clone())
-                .or_not()
-            )
-            .map(|(target, default)| Param {
-                target,
-                default,
-            });
+                .or_not(),
+        )
+        .map(|(target, default)| Param { target, default });
 
         let func = just::<_, Token, _>(Token::Keyword(Keyword::Func))
             .ignore_then(select! {
                 Token::Identifier(i) => i,
             })
-            .then(param
-                .separated_by(just::<_, Token, _>(Token::Comma))
-                .allow_trailing()
-                .delimited_by(
-                    just(Token::StartBracket(Bracket::Paren)),
-                    just(Token::EndBracket(Bracket::Paren)),
-                )
+            .then(
+                param
+                    .separated_by(just::<_, Token, _>(Token::Comma))
+                    .allow_trailing()
+                    .delimited_by(
+                        just(Token::StartBracket(Bracket::Paren)),
+                        just(Token::EndBracket(Bracket::Paren)),
+                    ),
             ) // TODO: return type annotation
-            .then(body.clone()
-                .delimited_by(
-                    just(Token::StartBracket(Bracket::Brace)),
-                    just(Token::EndBracket(Bracket::Brace)),
-                ),
-            )
+            .then(body.clone().delimited_by(
+                just(Token::StartBracket(Bracket::Brace)),
+                just(Token::EndBracket(Bracket::Brace)),
+            ))
             .map(|((name, params), Body(body, return_last))| Node::Func {
                 name,
                 params,
@@ -507,13 +497,16 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, Body> {
                 return_last,
             });
 
-        let expr = e.clone()
+        let expr = e
+            .clone()
             .then_ignore(just::<_, Token, _>(Token::Semicolon))
             .or(e.clone().try_map(|e, _| match e {
                 Expr::If { .. } => Ok(e),
                 _ => Err(Error::placeholder()),
             }))
-            .or(e.clone().then_ignore(none_of(Token::EndBracket(Bracket::Brace)).rewind()))
+            .or(e
+                .clone()
+                .then_ignore(none_of(Token::EndBracket(Bracket::Brace)).rewind()))
             .map(Node::Expr);
 
         choice((func, assign, require, expr))
@@ -613,52 +606,52 @@ mod tests {
         "#;
         let (tree, errors) = Body::from_string(code.to_string());
 
-        assert_eq!(tree, Body(vec![
-            Require(vec!["std".to_string()]),
-            Func {
-                name: "foo".to_string(),
-                params: vec![],
-                body: vec![
-                    Expr(Call {
-                        value: Box::new(
-                            Attr(Box::new(Ident("std".to_string())),
-                             "println".to_string()),
-                        ),
-                        args: vec![
-                            String("Hello, world!".to_string()),
-                        ],
-                        kwargs: vec![],
-                    }),
-                    Expr(If {
-                        condition: Box::new(BinaryExpr {
-                            operator: Operator::Eq,
-                            lhs: Box::new(BinaryExpr {
-                                operator: Operator::Add,
-                                lhs: Box::new(Integer(1)),
-                                rhs: Box::new(Integer(1)),
-                            }),
-                            rhs: Box::new(Integer(2)),
-                        }),
+        assert_eq!(
+            tree,
+            Body(
+                vec![
+                    Require(vec!["std".to_string()]),
+                    Func {
+                        name: "foo".to_string(),
+                        params: vec![],
                         body: vec![
-                            Assign {
-                                targets: vec![
-                                    Target::Ident("x".to_string()),
-                                ],
-                                value: Integer(5),
-                                r#let: true,
-                                immut: false,
-                                r#const: false,
-                            },
+                            Expr(Call {
+                                value: Box::new(Attr(
+                                    Box::new(Ident("std".to_string())),
+                                    "println".to_string()
+                                ),),
+                                args: vec![String("Hello, world!".to_string()),],
+                                kwargs: vec![],
+                            }),
+                            Expr(If {
+                                condition: Box::new(BinaryExpr {
+                                    operator: Operator::Eq,
+                                    lhs: Box::new(BinaryExpr {
+                                        operator: Operator::Add,
+                                        lhs: Box::new(Integer(1)),
+                                        rhs: Box::new(Integer(1)),
+                                    }),
+                                    rhs: Box::new(Integer(2)),
+                                }),
+                                body: vec![Assign {
+                                    targets: vec![Target::Ident("x".to_string()),],
+                                    value: Integer(5),
+                                    r#let: true,
+                                    immut: false,
+                                    r#const: false,
+                                },],
+                                else_if_bodies: vec![],
+                                else_body: None,
+                                return_last: false,
+                            }),
+                            Expr(Integer(10)),
                         ],
-                        else_if_bodies: vec![],
-                        else_body: None,
-                        return_last: false,
-                    }),
-                    Expr(Integer(10)),
+                        return_last: true,
+                    }
                 ],
-                return_last: true,
-            }
-        ], false));
+                false
+            )
+        );
 
         assert_eq!(errors.len(), 0);
     }
