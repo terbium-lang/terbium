@@ -389,10 +389,11 @@ pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Error> {
         just('*').map(|_| Token::Operator(Operator::Mul)),
         just('/').map(|_| Token::Operator(Operator::Div)),
         just('%').map(|_| Token::Operator(Operator::Mod)),
+    )).or(choice((  // Weird split-off as chumsky only supports choices up to 26-length tuples. Maybe it would be better to separate them based off of category
         just("==").map(|_| Token::Operator(Operator::Eq)),
-        // just('!').map(|_| Token::Operator(Operator::Not)), TODO: this is causing errors for some reason
         just("!=").map(|_| Token::Operator(Operator::Ne)),
-        just('=').to(Token::Assign),
+        just('!').map(|_| Token::Operator(Operator::Not)), // Conflicts with !=
+        just('=').to(Token::Assign), // Conflicts with ==
         just("<=").map(|_| Token::Operator(Operator::Le)),
         just(">=").map(|_| Token::Operator(Operator::Ge)),
         just('<').map(|_| Token::Operator(Operator::Lt)),
@@ -403,7 +404,7 @@ pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Error> {
         just('^').map(|_| Token::Operator(Operator::BitXor)),
         just('&').map(|_| Token::Operator(Operator::BitAnd)),
         just('~').map(|_| Token::Operator(Operator::BitNot)),
-    ));
+    )));
 
     let brackets = choice::<_, Error>((
         just('(').map(|_| Token::StartBracket(Bracket::Paren)),
