@@ -65,14 +65,14 @@ jobs:
       uses: actions/upload-artifact@v3
       if: ${{ matrix.os == 'windows-latest'}}
       with:
-        name: ${{ matrix.os }}-build
+        name: ${{ matrix.target }}-build
         path: target/${{ matrix.target }}/debug/terbium.exe
 
     - name: Upload Linux / MacOS / IOS  Artifact
       uses: actions/upload-artifact@v3
       if: ${{ matrix.os != 'windows-latest'}}
       with:
-        name: ${{ matrix.os }}-build
+        name: ${{ matrix.target }}-build
         path: target/${{ matrix.target }}/debug/terbium
 
     - name: Build release build
@@ -82,12 +82,12 @@ jobs:
       uses: actions/upload-artifact@v3
       if: ${{ matrix.os == 'windows-latest'}}
       with:
-        name: ${{ matrix.os }}-release-build
+        name: ${{ matrix.target }}-release-build
         path: target/${{ matrix.target }}/release/terbium.exe
 
     - name: Upload Linux / MacOS / IOS release Artifact
       uses: actions/upload-artifact@v3
       if: ${{ matrix.os != 'windows-latest'}}
       with:
-        name: ${{ matrix.os }}-release-build
+        name: ${{ matrix.target }}-release-build
         path: target/${{ matrix.target }}/release/terbium      
