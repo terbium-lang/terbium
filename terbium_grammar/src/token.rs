@@ -241,13 +241,25 @@ pub enum Token {
 impl Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let s: String;
-        
+
         f.write_str(
             match self {
-                Self::Invalid(c) => { s = c.to_string(); s.as_str() },
-                Self::Operator(o) => { s = o.to_string(); s.as_str() },
-                Self::Literal(l) => { s = l.to_string(); s.as_str() },
-                Self::Keyword(k) => { s = k.to_string(); s.as_str() },
+                Self::Invalid(c) => {
+                    s = c.to_string();
+                    s.as_str()
+                }
+                Self::Operator(o) => {
+                    s = o.to_string();
+                    s.as_str()
+                }
+                Self::Literal(l) => {
+                    s = l.to_string();
+                    s.as_str()
+                }
+                Self::Keyword(k) => {
+                    s = k.to_string();
+                    s.as_str()
+                }
                 Self::Identifier(s) => s.as_str(),
                 Self::StartBracket(b) => match b {
                     Bracket::Paren => "(",
@@ -389,11 +401,13 @@ pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Error> {
         just('*').map(|_| Token::Operator(Operator::Mul)),
         just('/').map(|_| Token::Operator(Operator::Div)),
         just('%').map(|_| Token::Operator(Operator::Mod)),
-    )).or(choice((  // Weird split-off as chumsky only supports choices up to 26-length tuples. Maybe it would be better to separate them based off of category
+    ))
+    .or(choice((
+        // Weird split-off as chumsky only supports choices up to 26-length tuples. Maybe it would be better to separate them based off of category
         just("==").map(|_| Token::Operator(Operator::Eq)),
         just("!=").map(|_| Token::Operator(Operator::Ne)),
         just('!').map(|_| Token::Operator(Operator::Not)), // Conflicts with !=
-        just('=').to(Token::Assign), // Conflicts with ==
+        just('=').to(Token::Assign),                       // Conflicts with ==
         just("<=").map(|_| Token::Operator(Operator::Le)),
         just(">=").map(|_| Token::Operator(Operator::Ge)),
         just('<').map(|_| Token::Operator(Operator::Lt)),

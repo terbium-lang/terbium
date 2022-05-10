@@ -127,7 +127,9 @@ impl ParseInterface for Node {
     where
         Self: Sized,
     {
-        get_body_parser().map(|Body(b, _)| Node::Module(b)).parse_recovery(tokens)
+        get_body_parser()
+            .map(|Body(b, _)| Node::Module(b))
+            .parse_recovery(tokens)
     }
 }
 
@@ -516,10 +518,13 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, Body> {
         let expr = e
             .clone()
             .then_ignore(just::<_, Token, _>(Token::Semicolon))
-            .or(e.clone().try_map(|e, _| match e {
-                Expr::If { .. } => Ok(e),
-                _ => Err(Error::placeholder()),
-            }).then_ignore(none_of(Token::EndBracket(Bracket::Brace)).rewind()))
+            .or(e
+                .clone()
+                .try_map(|e, _| match e {
+                    Expr::If { .. } => Ok(e),
+                    _ => Err(Error::placeholder()),
+                })
+                .then_ignore(none_of(Token::EndBracket(Bracket::Brace)).rewind()))
             .map(Node::Expr);
 
         choice((func, assign, r#return, require, expr))

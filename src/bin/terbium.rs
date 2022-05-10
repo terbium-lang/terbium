@@ -46,13 +46,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Err(e) => {
                     e.iter().for_each(AstError::print);
                     return Err("syntax does not match grammar".into());
-                },
+                }
             };
             if pretty {
                 println!("{:#?}", node);
                 println!("Errors: {:#?}", errors);
-            }
-            else {
+            } else {
                 println!("{:?}", node);
                 println!("Errors: {:?}", errors);
             }
