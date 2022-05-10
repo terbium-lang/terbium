@@ -19,6 +19,7 @@ members = ["terbium_grammar"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+clap = { version = "3.1", features = ["derive"] }
 terbium_grammar = { version = "0", path = "terbium_grammar" }
 
 [profile.dev]
