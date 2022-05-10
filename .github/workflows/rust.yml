@@ -57,5 +57,4 @@ jobs:
       if: ${{ matrix.os != 'windows-latest'}}
       with:
         name: ${{ matrix.os }}-release-build
-        path: target/release/terbium
-      
+        path: target/release/terbium      
