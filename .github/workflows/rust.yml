@@ -46,6 +46,7 @@ jobs:
           - os: windows-latest
             target: i686-pc-windows-gnu
             cross: true
+            cmd: sudo apt update && sudo apt install mingw-w64
           
           - os: windows-latest
             target: i686-pc-windows-msvc
