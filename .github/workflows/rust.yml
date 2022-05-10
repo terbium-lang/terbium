@@ -31,11 +31,11 @@ jobs:
           
           - os: macos-latest
             target: aarch64-apple-ios
-            cross: true
+            skip-test: true
 
           - os: macos-latest
             target: aarch64-apple-darwin
-            cross: true
+            skip-test: true
           
           - os: windows-latest
             target: x86_64-pc-windows-gnu
@@ -45,6 +45,7 @@ jobs:
           
           - os: windows-latest
             target: i686-pc-windows-gnu
+            cross: true
           
           - os: windows-latest
             target: i686-pc-windows-msvc
@@ -73,11 +74,11 @@ jobs:
       run: cargo build --target ${{ matrix.target }} --verbose
 
     - name: Test terbium
-      if: ${{ matrix.cross != true}}
+      if: ${{ matrix.cross != true && matrix.skip-test != true }}
       run: cargo test --lib --target ${{ matrix.target }} --verbose
 
     - name: Test terbium_grammar
-      if: ${{ matrix.cross != true}}
+      if: ${{ matrix.cross != true && matrix.skip-test != true }}
       run: cargo test --target ${{ matrix.target }} -p terbium_grammar --verbose
 
     - name: Cross Build
@@ -85,11 +86,11 @@ jobs:
       run: cross build --target ${{ matrix.target }} --verbose
 
     - name: Cross Test terbium
-      if: ${{ matrix.cross == true}}
+      if: ${{ matrix.cross == true && matrix.skip-test != true }}
       run: cross test --lib --target ${{ matrix.target }} --verbose
 
     - name: Cross Test terbium_grammar
-      if: ${{ matrix.cross == true}}
+      if: ${{ matrix.cross == true && matrix.skip-test != true }}
       run: cross test --target ${{ matrix.target }} -p terbium_grammar --verbose
 
     - name: Upload Windows artifact
