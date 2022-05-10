@@ -543,7 +543,7 @@ mod tests {
     #[test]
     fn test_expr_parser() {
         let code = "-1 + 2 * (5 - [2, a.b() - (c + -d), e(5, f())])";
-        let (tree, errors) = Expr::from_string(code.to_string());
+        let (tree, errors) = Expr::from_string(code.to_string()).unwrap();
 
         assert_eq!(
             tree,
@@ -617,7 +617,7 @@ mod tests {
                 10
             }
         "#;
-        let (tree, errors) = Body::from_string(code.to_string());
+        let (tree, errors) = Body::from_string(code.to_string()).unwrap();
 
         assert_eq!(
             tree,
