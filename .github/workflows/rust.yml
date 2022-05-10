@@ -46,7 +46,7 @@ jobs:
           - os: windows-latest
             target: i686-pc-windows-msvc
 
-          - os: ubuntu-latest
+          - os: windows-latest
             target: i686-pc-windows-gnu
             cross: true
 
