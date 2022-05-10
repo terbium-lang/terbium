@@ -12,29 +12,54 @@ env:
 jobs:
   build:
     strategy:
+      fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+
+          - os: ubuntu-latest
+            cmd: sudo apt-get update ; sudo apt install gcc-multilib
+            target: i686-unknown-linux-gnu
+
+          - os: macos-latest
+            target: x86_64-apple-darwin
+          
+          - os: macos-latest
+            target: aarch64-apple-ios
+
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          
+          - os: windows-latest
+            target: x86_64-pc-windows-gnu
+
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
 
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v3
 
+    - run: ${{ matrix.cmd }}
+
     - name: Install latest nightly
       uses: actions-rs/toolchain@v1
       with:
         toolchain: nightly
+        target: ${{ matrix.target }}
         override: true
 
     - uses: Swatinem/rust-cache@v1
 
     - name: Build
-      run: cargo build --verbose
+      run: cargo build --target ${{ matrix.target }} --verbose
 
     - name: Test terbium
-      run: cargo test --verbose
+      run: cargo test --target ${{ matrix.target }} --verbose
 
     - name: Test terbium_grammar
-      run: cargo test -p terbium_grammar --verbose
+      run: cargo test --target ${{ matrix.target }} -p terbium_grammar --verbose
 
     - name: Upload Windows artifact
       uses: actions/upload-artifact@v3
@@ -43,7 +68,7 @@ jobs:
         name: ${{ matrix.os }}-build
         path: target/debug/terbium.exe
 
-    - name: Upload Linux / MacOS Artifact
+    - name: Upload Linux / MacOS / IOS  Artifact
       uses: actions/upload-artifact@v3
       if: ${{ matrix.os != 'windows-latest'}}
       with:
@@ -60,7 +85,7 @@ jobs:
         name: ${{ matrix.os }}-release-build
         path: target/release/terbium.exe
 
-    - name: Upload Linux / MacOS release Artifact
+    - name: Upload Linux / MacOS / IOS release Artifact
       uses: actions/upload-artifact@v3
       if: ${{ matrix.os != 'windows-latest'}}
       with:
