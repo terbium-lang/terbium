@@ -56,30 +56,16 @@ jobs:
             target: aarch64-apple-darwin
             skip-test: true
           
-          - os: ubuntu-latest
+          - os: windows-latest
             target: aarch64-pc-windows-msvc
-            cross: true
             ext: ".exe"
           
           - os: ubuntu-latest
             target: aarch64-unknown-linux-musl
             cross: true
-            ext: ".exe"
-          
-          - os: ubuntu-latest
-            target: x86_64-unknown-freebsd
-            cross: true
-          
-          - os: ubuntu-latest
-            target: x86_64-unknown-illumos
-            cross: true
           
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
-            cross: true
-          
-          - os: ubuntu-latest
-            target: x86_64-unknown-netbsd
             cross: true
 
     runs-on: ${{ matrix.os }}
