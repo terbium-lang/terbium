@@ -271,22 +271,20 @@ impl Display for Token {
 }
 
 macro_rules! escape_hex {
-    ($c:expr, $radix:expr) => {{
+    ($c:expr, $l:expr) => {{
         just($c).ignore_then(
             filter(|c: &char| c.is_digit(16))
                 .repeated()
-                .exactly($radix)
+                .exactly($l)
                 .collect::<String>()
                 .validate(|digits, span, emit| {
-                    char::from_u32(u32::from_str_radix(&digits, $radix).unwrap()).unwrap_or_else(
-                        || {
-                            emit(Simple::custom(
-                                span,
-                                format!("invalid unicode character {}", digits,),
-                            ));
-                            '\u{FFFD}' // unicode replacement character
-                        },
-                    )
+                    char::from_u32(u32::from_str_radix(&digits, 16).unwrap()).unwrap_or_else(|| {
+                        emit(Simple::custom(
+                            span,
+                            format!("invalid unicode character {}", digits,),
+                        ));
+                        '\u{FFFD}' // unicode replacement character
+                    })
                 }),
         )
     }};

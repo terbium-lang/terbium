@@ -57,6 +57,17 @@ pub struct Error {
     pub label: Option<&'static str>,
 }
 
+impl Error {
+    pub fn placeholder() -> Self {
+        Self {
+            kind: ErrorKind::UnexpectedEnd,
+            span: 0..0,
+            expected: vec![],
+            label: None,
+        }
+    }
+}
+
 impl<T: Into<TargetKind>> chumsky::Error<T> for Error {
     type Span = Span;
     type Label = &'static str;
