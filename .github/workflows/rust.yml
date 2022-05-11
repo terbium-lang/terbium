@@ -2,9 +2,9 @@ name: Rust
 
 on:
   push:
-    branches: [ main ]
+    branches: [main, staging, trying]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 env:
   CARGO_TERM_COLOR: always
@@ -147,6 +147,10 @@ jobs:
     - name: Cross Test terbium_grammar
       if: ${{ matrix.cross == true && matrix.skip-test != true }}
       run: cross test --target ${{ matrix.target }} -p terbium_grammar --verbose
+
+    - name: Return if is PR
+      if: "github.event_name == 'pull_request'"
+      run: exit 0
 
     - name: Upload artifact
       uses: actions/upload-artifact@v3
