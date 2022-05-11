@@ -68,6 +68,42 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
             cross: true
+          
+          - os: ubuntu-latest
+            target: arm-linux-androideabi
+            cross: true
+          
+          - os: ubuntu-latest
+            target: arm-unknown-linux-gnueabihf
+            cross: true
+          
+          - os: ubuntu-latest
+            target: arm-unknown-linux-musleabihf
+            cross: true
+          
+          - os: ubuntu-latest
+            target: i686-linux-android
+            cross: true
+          
+          - os: ubuntu-latest
+            target: i686-unknown-linux-musl
+            cross: true
+          
+          - os: ubuntu-latest
+            target: mips-unknown-linux-gnu
+            cross: true
+          
+          - os: ubuntu-latest
+            target: mips-unknown-linux-musl
+            cross: true
+          
+          - os: ubuntu-latest
+            target: mipsel-unknown-linux-musl
+            cross: true
+          
+          - os: ubuntu-latest
+            target: x86_64-linux-android
+            cross: true
 
     runs-on: ${{ matrix.os }}
     steps:
