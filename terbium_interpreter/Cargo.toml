@@ -1,0 +1,15 @@
+[package]
+name = "terbium_interpreter"
+authors = ["jay3332"]
+version = "0.0.1"
+edition = "2021"
+description = "The performant yet elegant and feature-packed programming language. Made with Rust."
+license = "MIT"
+homepage = "https://github.com/TerbiumLang/Terbium"
+repository = "https://github.com/TerbiumLang/Terbium"
+readme = "../README.md"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+terbium_grammar = { version = "0", path = "../terbium_grammar" }
