@@ -1,7 +1,7 @@
 mod stdlib;
 
-pub(crate) use terbium_grammar::{Body, Expr, Node};
 use terbium_grammar::ast::Param;
+pub(crate) use terbium_grammar::{Body, Expr, Node};
 
 use std::collections::HashMap;
 
@@ -72,12 +72,7 @@ pub struct TerbiumObject {
 }
 
 impl TerbiumObject {
-    const NULL: Self = Self::native(
-        "null".to_string(),
-        HashMap::new(),
-        false,
-        TerbiumType::Null,
-    );
+    const NULL: Self = Self::native("null".to_string(), HashMap::new(), false, TerbiumType::Null);
 
     pub fn default_ops() -> HashMap<String, TerbiumObject> {
         let mut ops = HashMap::new();
@@ -86,7 +81,12 @@ impl TerbiumObject {
         ops
     }
 
-    pub fn native(name: String, attrs: HashMap<String, TerbiumObject>, mutable: bool, ty: TerbiumType) -> Self {
+    pub fn native(
+        name: String,
+        attrs: HashMap<String, TerbiumObject>,
+        mutable: bool,
+        ty: TerbiumType,
+    ) -> Self {
         Self {
             name,
             attrs,
@@ -98,10 +98,20 @@ impl TerbiumObject {
     }
 
     pub fn native_function(name: impl ToString) -> Self {
-        Self::native(name, HashMap::new(), false, TerbiumType::NativeFunction(name.to_string()))
+        Self::native(
+            name,
+            HashMap::new(),
+            false,
+            TerbiumType::NativeFunction(name.to_string()),
+        )
     }
 
-    pub fn new(name: String, attrs: HashMap<String, TerbiumObject>, mutable: bool, ty: TerbiumType) -> Self {
+    pub fn new(
+        name: String,
+        attrs: HashMap<String, TerbiumObject>,
+        mutable: bool,
+        ty: TerbiumType,
+    ) -> Self {
         Self {
             name,
             attrs,
@@ -118,19 +128,26 @@ pub fn load_native_module(name: String) -> Result<TerbiumObject, TerbiumObject> 
 
     match name.as_str() {
         "std" => {
-            attrs.insert("println".to_string(), TerbiumObject::native_function("println"));
-        },
+            attrs.insert(
+                "println".to_string(),
+                TerbiumObject::native_function("println"),
+            );
+        }
         _ => Err(TerbiumExceptionType::ModuleNotFound(name).as_terbium_object())?,
     }
 
-    Ok(TerbiumObject::new(name.clone(), attrs, true, TerbiumType::Module))
+    Ok(TerbiumObject::new(
+        name.clone(),
+        attrs,
+        true,
+        TerbiumType::Module,
+    ))
 }
 
 pub fn get_native_function(name: String) -> (TerbiumObject, F)
-where F:
-    Fn(&mut TerbiumScope, Vec<TerbiumObject>) -> Result<TerbiumObject, TerbiumExceptionType> + 'static,
+where
+    F: Fn(&mut TerbiumScope, Vec<TerbiumObject>) -> Result<TerbiumObject, TerbiumExceptionType>
+        + 'static,
 {
-    match name.as_str() {
-
-    }
+    match name.as_str() {}
 }
