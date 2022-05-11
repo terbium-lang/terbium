@@ -3,11 +3,40 @@ name: Rust
 on:
   push:
     branches: [main, staging, try]
+  pull_request:
+    branches: ["**"]
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  pr:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+  
+    if: "github.event_name == 'pull_request'"
+    runs-on: ${{ matrix.os }}
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Install latest nightly
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+        override: true
+
+    - uses: Swatinem/rust-cache@v1
+
+    - name: Build
+      run: cargo build --verbose
+
+    - name: Test terbium
+      run: cargo test --lib --verbose
+
+    - name: Test terbium_grammar
+      run: cargo test -p terbium_grammar --verbose
+
   build:
     strategy:
       fail-fast: false
@@ -103,6 +132,7 @@ jobs:
             target: x86_64-linux-android
             cross: true
 
+    if: "github.event_name != 'pull_request'"
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v3
