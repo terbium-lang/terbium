@@ -1,197 +1,197 @@
-                    name: Rust
+name: Rust
 
-                    on:
-                      push:
-                        branches: [main, staging, try]
-                      pull_request:
-                        branches: ["**"]
+on:
+  push:
+    branches: [main, staging, try]
+  pull_request:
+    branches: ["**"]
 
-                    env:
-                      CARGO_TERM_COLOR: always
+env:
+  CARGO_TERM_COLOR: always
 
-                    jobs:
-                      pr:
-                        strategy:
-                          matrix:
-                            os: [windows-latest, ubuntu-latest, macos-latest]
+jobs:
+  pr:
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
 
-                        if: "github.event_name == 'pull_request'"
-                        runs-on: ${{ matrix.os }}
-                        steps:
-                        - uses: actions/checkout@v3
+    if: "github.event_name == 'pull_request'"
+    runs-on: ${{ matrix.os }}
+    steps:
+    - uses: actions/checkout@v3
 
-                        - name: Install latest nightly
-                          uses: actions-rs/toolchain@v1
-                          with:
-                            toolchain: nightly
-                            override: true
+    - name: Install latest nightly
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+        override: true
 
-                        - uses: Swatinem/rust-cache@v1
+    - uses: Swatinem/rust-cache@v1
 
-                        - name: Build
-                          run: cargo build --verbose
+    - name: Build
+      run: cargo build --verbose
 
-                        - name: Test terbium
-                          run: cargo test --lib --verbose
+    - name: Test terbium
+      run: cargo test --lib --verbose
 
-                        - name: Test terbium_grammar
-                          run: cargo test -p terbium_grammar --verbose
+    - name: Test terbium_grammar
+      run: cargo test -p terbium_grammar --verbose
 
-                      build:
-                        strategy:
-                          fail-fast: false
-                          matrix:
-                            include:
-                              # Tier 1 targets
-                              - os: ubuntu-latest
-                                target: x86_64-unknown-linux-gnu
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Tier 1 targets
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
 
-                              - os: ubuntu-latest
-                                cmd: sudo apt-get update ; sudo apt install gcc-multilib
-                                target: i686-unknown-linux-gnu
+          - os: ubuntu-latest
+            cmd: sudo apt-get update ; sudo apt install gcc-multilib
+            target: i686-unknown-linux-gnu
 
-                              - os: ubuntu-latest
-                                target: aarch64-unknown-linux-gnu
-                                cross: true
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            cross: true
 
-                              - os: windows-latest
-                                target: x86_64-pc-windows-gnu
-                                ext: ".exe"
+          - os: windows-latest
+            target: x86_64-pc-windows-gnu
+            ext: ".exe"
 
-                              - os: windows-latest
-                                target: x86_64-pc-windows-msvc
-                                ext: ".exe"
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            ext: ".exe"
 
-                              - os: windows-latest
-                                target: i686-pc-windows-msvc
-                                ext: ".exe"
+          - os: windows-latest
+            target: i686-pc-windows-msvc
+            ext: ".exe"
 
-                              - os: ubuntu-latest
-                                target: i686-pc-windows-gnu
-                                cross: true
-                                ext: ".exe"
+          - os: ubuntu-latest
+            target: i686-pc-windows-gnu
+            cross: true
+            ext: ".exe"
 
-                              - os: macos-latest
-                                target: x86_64-apple-darwin
+          - os: macos-latest
+            target: x86_64-apple-darwin
 
-                              # Tier 2 targets
-                              - os: macos-latest
-                                target: aarch64-apple-ios
-                                skip-test: true
+          # Tier 2 targets
+          - os: macos-latest
+            target: aarch64-apple-ios
+            skip-test: true
 
-                              - os: macos-latest
-                                target: aarch64-apple-darwin
-                                skip-test: true
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            skip-test: true
 
-                              - os: windows-latest
-                                target: aarch64-pc-windows-msvc
-                                ext: ".exe"
-                                skip-test: true
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            ext: ".exe"
+            skip-test: true
 
-                              - os: ubuntu-latest
-                                target: aarch64-unknown-linux-musl
-                                cross: true
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            cross: true
 
-                              - os: ubuntu-latest
-                                target: x86_64-unknown-linux-musl
-                                cross: true
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            cross: true
 
-                              - os: ubuntu-latest
-                                target: arm-linux-androideabi
-                                cross: true
+          - os: ubuntu-latest
+            target: arm-linux-androideabi
+            cross: true
 
-                              - os: ubuntu-latest
-                                target: arm-unknown-linux-gnueabihf
-                                cross: true
+          - os: ubuntu-latest
+            target: arm-unknown-linux-gnueabihf
+            cross: true
 
-                              - os: ubuntu-latest
-                                target: arm-unknown-linux-musleabihf
-                                cross: true
+          - os: ubuntu-latest
+            target: arm-unknown-linux-musleabihf
+            cross: true
 
-                              - os: ubuntu-latest
-                                target: i686-linux-android
-                                cross: true
+          - os: ubuntu-latest
+            target: i686-linux-android
+            cross: true
 
-                              - os: ubuntu-latest
-                                target: i686-unknown-linux-musl
-                                cross: true
+          - os: ubuntu-latest
+            target: i686-unknown-linux-musl
+            cross: true
 
-                              - os: ubuntu-latest
-                                target: mips-unknown-linux-gnu
-                                cross: true
+          - os: ubuntu-latest
+            target: mips-unknown-linux-gnu
+            cross: true
 
-                              - os: ubuntu-latest
-                                target: mips-unknown-linux-musl
-                                cross: true
+          - os: ubuntu-latest
+            target: mips-unknown-linux-musl
+            cross: true
 
-                              - os: ubuntu-latest
-                                target: mipsel-unknown-linux-musl
-                                cross: true
+          - os: ubuntu-latest
+            target: mipsel-unknown-linux-musl
+            cross: true
 
-                              - os: ubuntu-latest
-                                target: x86_64-linux-android
-                                cross: true
+          - os: ubuntu-latest
+            target: x86_64-linux-android
+            cross: true
 
-                        if: "github.event_name != 'pull_request'"
-                        runs-on: ${{ matrix.os }}
-                        steps:
-                        - uses: actions/checkout@v3
+    if: "github.event_name != 'pull_request'"
+    runs-on: ${{ matrix.os }}
+    steps:
+    - uses: actions/checkout@v3
 
-                        - run: ${{ matrix.cmd }}
+    - run: ${{ matrix.cmd }}
 
-                        - name: Install latest nightly
-                          uses: actions-rs/toolchain@v1
-                          with:
-                            toolchain: nightly
-                            target: ${{ matrix.target }}
-                            override: true
+    - name: Install latest nightly
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: nightly
+        target: ${{ matrix.target }}
+        override: true
 
-                        - uses: Swatinem/rust-cache@v1
+    - uses: Swatinem/rust-cache@v1
 
-                        - name: Maybe install cross
-                          if: ${{ matrix.cross == true }}
-                          run: cargo install cross
+    - name: Maybe install cross
+      if: ${{ matrix.cross == true }}
+      run: cargo install cross
 
-                        - name: Build
-                          if: ${{ matrix.cross != true }}
-                          run: cargo build --target ${{ matrix.target }} --verbose
+    - name: Build
+      if: ${{ matrix.cross != true }}
+      run: cargo build --target ${{ matrix.target }} --verbose
 
-                        - name: Test terbium
-                          if: ${{ matrix.cross != true && matrix.skip-test != true }}
-                          run: cargo test --lib --target ${{ matrix.target }} --verbose
+    - name: Test terbium
+      if: ${{ matrix.cross != true && matrix.skip-test != true }}
+      run: cargo test --lib --target ${{ matrix.target }} --verbose
 
-                        - name: Test terbium_grammar
-                          if: ${{ matrix.cross != true && matrix.skip-test != true }}
-                          run: cargo test --target ${{ matrix.target }} -p terbium_grammar --verbose
+    - name: Test terbium_grammar
+      if: ${{ matrix.cross != true && matrix.skip-test != true }}
+      run: cargo test --target ${{ matrix.target }} -p terbium_grammar --verbose
 
-                        - name: Cross Build
-                          if: ${{ matrix.cross == true }}
-                          run: cross build --target ${{ matrix.target }} --verbose
+    - name: Cross Build
+      if: ${{ matrix.cross == true }}
+      run: cross build --target ${{ matrix.target }} --verbose
 
-                        - name: Cross Test terbium
-                          if: ${{ matrix.cross == true && matrix.skip-test != true }}
-                          run: cross test --lib --target ${{ matrix.target }} --verbose
+    - name: Cross Test terbium
+      if: ${{ matrix.cross == true && matrix.skip-test != true }}
+      run: cross test --lib --target ${{ matrix.target }} --verbose
 
-                        - name: Cross Test terbium_grammar
-                          if: ${{ matrix.cross == true && matrix.skip-test != true }}
-                          run: cross test --target ${{ matrix.target }} -p terbium_grammar --verbose
+    - name: Cross Test terbium_grammar
+      if: ${{ matrix.cross == true && matrix.skip-test != true }}
+      run: cross test --target ${{ matrix.target }} -p terbium_grammar --verbose
 
-                        - name: Upload artifact
-                          uses: actions/upload-artifact@v3
-                          with:
-                            name: ${{ matrix.target }}-build
-                            path: target/${{ matrix.target }}/debug/terbium${{ matrix.ext }}
+    - name: Upload artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ matrix.target }}-build
+        path: target/${{ matrix.target }}/debug/terbium${{ matrix.ext }}
 
-                        - name: Build release build
-                          if: ${{ matrix.cross != true }}
-                          run: cargo build --target ${{ matrix.target }} --release --verbose
+    - name: Build release build
+      if: ${{ matrix.cross != true }}
+      run: cargo build --target ${{ matrix.target }} --release --verbose
 
-                        - name: Cross build release build
-                          if: ${{ matrix.cross == true }}
-                          run: cross build --target ${{ matrix.target }} --release --verbose
+    - name: Cross build release build
+      if: ${{ matrix.cross == true }}
+      run: cross build --target ${{ matrix.target }} --release --verbose
 
-                        - name: Upload release Artifact
-                          uses: actions/upload-artifact@v3
-                          with:
-                            name: ${{ matrix.target }}-release-build
-                            path: target/${{ matrix.target }}/release/terbium${{ matrix.ext }}
+    - name: Upload release Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: ${{ matrix.target }}-release-build
+        path: target/${{ matrix.target }}/release/terbium${{ matrix.ext }}
