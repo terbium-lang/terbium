@@ -1,0 +1,5 @@
+status = ["build"]
+delete_merged_branches = true
+required_approvals = 1
+use-squash-merge = true
+commit_title = "Auto merge of ${PR_REFS}"
