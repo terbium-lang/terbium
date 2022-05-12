@@ -288,11 +288,11 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, Body> {
                         .map(|o| match o {
                             Token::Operator(op) => op,
                             _ => unreachable!(),
-                        })
-                        .then(unary)
-                        .repeated(),
+                        }),
                 )
-                .foldl(|lhs, (operator, rhs)| Expr::BinaryExpr {
+                .repeated()
+                .then(unary)
+                .foldr(|(lhs, operator), rhs| Expr::BinaryExpr {
                     operator,
                     lhs: Box::new(lhs),
                     rhs: Box::new(rhs),
