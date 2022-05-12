@@ -283,13 +283,10 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, Body> {
 
             let binary_pow = unary
                 .clone()
-                .then(
-                    just(Token::Operator(Operator::Pow))
-                        .map(|o| match o {
-                            Token::Operator(op) => op,
-                            _ => unreachable!(),
-                        }),
-                )
+                .then(just(Token::Operator(Operator::Pow)).map(|o| match o {
+                    Token::Operator(op) => op,
+                    _ => unreachable!(),
+                }))
                 .repeated()
                 .then(unary)
                 .foldr(|(lhs, operator), rhs| Expr::BinaryExpr {

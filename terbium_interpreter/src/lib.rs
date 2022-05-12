@@ -8,15 +8,15 @@
 mod builtin;
 mod stdlib;
 
-pub(crate) use terbium_grammar::{Body, Expr, Node};
 use terbium_grammar::ast::Param;
+pub(crate) use terbium_grammar::{Body, Expr, Node};
 
 use std::{
-    hash::Hash,
     collections::HashMap,
+    hash::Hash,
     rc::Rc,
     sync::atomic::{AtomicU32, Ordering},
-    sync::RwLock
+    sync::RwLock,
 };
 
 pub(crate) type WrappedTerbiumObject = Rc<RwLock<TerbiumObject>>;
@@ -103,9 +103,7 @@ pub enum TerbiumType {
 }
 
 impl AsTerbiumObject for TerbiumType {
-    fn as_terbium_object(&self) -> TerbiumObject {
-
-    }
+    fn as_terbium_object(&self) -> TerbiumObject {}
 }
 
 #[derive(Clone, Debug)]
@@ -124,11 +122,19 @@ impl TerbiumObject {
     pub fn default_ops(store: &mut TerbiumObjectStore) -> HashMap<String, WrappedTerbiumObject> {
         let mut ops = HashMap::new();
 
-        ops.insert("repr".to_string(), TerbiumObject::alloc_native_function(store, "repr", "repr"));
+        ops.insert(
+            "repr".to_string(),
+            TerbiumObject::alloc_native_function(store, "repr", "repr"),
+        );
         ops
     }
 
-    pub fn native(name: String, attrs: HashMap<String, WrappedTerbiumObject>, mutable: bool, ty: TerbiumType) -> Self {
+    pub fn native(
+        name: String,
+        attrs: HashMap<String, WrappedTerbiumObject>,
+        mutable: bool,
+        ty: TerbiumType,
+    ) -> Self {
         Self {
             name,
             attrs,
@@ -142,14 +148,29 @@ impl TerbiumObject {
     }
 
     pub fn native_function(name: impl ToString, lookup_name: impl ToString) -> Self {
-        Self::native(name, HashMap::new(), false, TerbiumType::NativeFunction(lookup_name.to_string()))
+        Self::native(
+            name,
+            HashMap::new(),
+            false,
+            TerbiumType::NativeFunction(lookup_name.to_string()),
+        )
     }
 
-    pub fn alloc_native_function(store: &mut TerbiumObjectStore, name: impl ToString, lookup_name: impl ToString) -> WrappedTerbiumObject {
+    pub fn alloc_native_function(
+        store: &mut TerbiumObjectStore,
+        name: impl ToString,
+        lookup_name: impl ToString,
+    ) -> WrappedTerbiumObject {
         store.alloc(Self::native_function(name, lookup_name))
     }
 
-    pub fn new(store: &mut TerbiumObjectStore, name: String, attrs: HashMap<String, WrappedTerbiumObject>, mutable: bool, ty: TerbiumType) -> Self {
+    pub fn new(
+        store: &mut TerbiumObjectStore,
+        name: String,
+        attrs: HashMap<String, WrappedTerbiumObject>,
+        mutable: bool,
+        ty: TerbiumType,
+    ) -> Self {
         Self {
             name,
             attrs,
@@ -162,7 +183,13 @@ impl TerbiumObject {
         }
     }
 
-    pub fn alloc_new(store: &mut TerbiumObjectStore, name: String, attrs: HashMap<String, WrappedTerbiumObject>, mutable: bool, ty: TerbiumType) -> WrappedTerbiumObject {
+    pub fn alloc_new(
+        store: &mut TerbiumObjectStore,
+        name: String,
+        attrs: HashMap<String, WrappedTerbiumObject>,
+        mutable: bool,
+        ty: TerbiumType,
+    ) -> WrappedTerbiumObject {
         store.alloc(Self::new(store, name, attrs, mutable, ty))
     }
 }
@@ -201,18 +228,10 @@ impl TerbiumSingletonObjectLookup {
             TerbiumType::NativeType,
         );
 
-        let int_type = TerbiumObject::alloc_new(
-            store,
-            "int".to_string(),
-            HashMap::new(),
-            false,
-            type_object,
-        );
+        let int_type =
+            TerbiumObject::alloc_new(store, "int".to_string(), HashMap::new(), false, type_object);
 
-        Self {
-            null,
-            type_object,
-        }
+        Self { null, type_object }
     }
 }
 
@@ -232,7 +251,7 @@ impl TerbiumObjectStore {
 
     pub fn alloc(&mut self, mut o: TerbiumObject) -> WrappedTerbiumObject {
         o.store_id = self.increment.fetch_add(1, Ordering::SeqCst);
-        
+
         let rc = Rc::new(RwLock::new(o));
         self.objects.insert(rc.read().unwrap().store_id, rc);
 
@@ -264,26 +283,36 @@ impl<'s> Interpreter<'s> {
         }
     }
 
-    pub fn load_native_module(&mut self, name: String) -> Result<WrappedTerbiumObject, WrappedTerbiumObject> {
+    pub fn load_native_module(
+        &mut self,
+        name: String,
+    ) -> Result<WrappedTerbiumObject, WrappedTerbiumObject> {
         let mut attrs = HashMap::new();
 
         match name.as_str() {
             "std" => {
-                attrs.insert("println".to_string(), TerbiumObject::native_function("println"));
-            },
-            _ => Err(TerbiumExceptionType::ModuleNotFound(name).alloc_terbium_object(self.))?,
+                attrs.insert(
+                    "println".to_string(),
+                    TerbiumObject::native_function("println"),
+                );
+            }
+            _ => Err(TerbiumExceptionType::ModuleNotFound(name).alloc_terbium_object(self))?,
         }
 
-        Ok(TerbiumObject::new(&mut self.objects, name.clone(), attrs, true, TerbiumType::Module))
+        Ok(TerbiumObject::new(
+            &mut self.objects,
+            name.clone(),
+            attrs,
+            true,
+            TerbiumType::Module,
+        ))
     }
 
     pub fn get_native_function(&self, name: String) -> (TerbiumObject, F)
-    where F:
-        Fn(&mut Self, Vec<WrappedTerbiumObject>) -> NativeFunctionResult + 'static,
+    where
+        F: Fn(&mut Self, Vec<WrappedTerbiumObject>) -> NativeFunctionResult + 'static,
     {
-        match name.as_str() {
-
-        }
+        match name.as_str() {}
     }
 
     pub fn is_instance(&self, obj: WrappedTerbiumObject, ty: WrappedTerbiumObject) -> bool {
@@ -291,9 +320,9 @@ impl<'s> Interpreter<'s> {
         let ty_store_id = ty.read().unwrap().store_id;
 
         match obj.ty {
-            TerbiumType::Class(bases) => {
-                bases.iter().any(|base| base.read().unwrap().store_id == ty_store_id)
-            }
+            TerbiumType::Class(bases) => bases
+                .iter()
+                .any(|base| base.read().unwrap().store_id == ty_store_id),
             TerbiumType::Int(_) => ty_store_id == self.singletons.int_type.store_id,
             _ => todo!(),
         }
