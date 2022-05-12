@@ -2,14 +2,17 @@
 //!
 //! Design issues to address in the future:
 //! - Wrapping practically all TerbiumObjects inside a RwLock is probably more inefficient than it should be.
+//!   We could just store a Reference ID, but then it comes at the cost of a HashMap lookup every time we want to access that object.
 //! - Native function lookup is by strings, not a really good design principle.
-//! - The interpreter only uses an Rc and is therefore not Send + Sync. Using Arc comes with performance downgrades.
+//! - The interpreter only uses an Rc and is therefore not Send + Sync. Using Arc comes with performance downgrades, however.
+
+#![feature(map_try_insert)]
 
 mod builtin;
 mod stdlib;
 
 use terbium_grammar::ast::Param;
-pub(crate) use terbium_grammar::{Body, Expr, Node};
+pub(crate) use terbium_grammar::{Body, Expr, Node, Operator};
 
 use std::{
     collections::HashMap,
@@ -228,10 +231,33 @@ impl TerbiumSingletonObjectLookup {
             TerbiumType::NativeType,
         );
 
-        let int_type =
-            TerbiumObject::alloc_new(store, "int".to_string(), HashMap::new(), false, type_object);
+        let int_type = TerbiumObject::alloc_new(
+            store, 
+            "int".to_string(),
+            HashMap::new(), 
+            false, 
+            TerbiumType::Class(type_object),
+        );
 
-        Self { null, type_object }
+        Self {
+            null,
+            type_object,
+            int_type,
+        }
+    }
+
+    pub fn int(&mut self, store: &mut TerbiumObjectStore, i: i128) -> WrappedTerbiumObject {
+        if self.integer_lookup.contains_key(&i) {
+            return self.integer_lookup.get(&i);
+        }
+        
+        self.integer_lookup.insert(i, TerbiumObject::alloc_new(
+            store,
+            "int_o".to_string(),
+            HashMap::new(),
+            false,
+            TerbiumType::Int(i),
+        ))
     }
 }
 
@@ -308,14 +334,18 @@ impl<'s> Interpreter<'s> {
         ))
     }
 
-    pub fn get_native_function(&self, name: String) -> (TerbiumObject, F)
+    pub fn get_native_function(&mut self, name: String) -> (TerbiumObject, F)
     where
         F: Fn(&mut Self, Vec<WrappedTerbiumObject>) -> NativeFunctionResult + 'static,
     {
         match name.as_str() {}
     }
 
-    pub fn is_instance(&self, obj: WrappedTerbiumObject, ty: WrappedTerbiumObject) -> bool {
+    pub fn get_int(&mut self, i: i128) -> WrappedTerbiumObject {
+        self.singletons.int(self.objects, i)
+    }
+
+    pub fn is_instance(&self, obj: &WrappedTerbiumObject, ty: &WrappedTerbiumObject) -> bool {
         let obj = obj.read().unwrap().clone();
         let ty_store_id = ty.read().unwrap().store_id;
 
@@ -324,6 +354,26 @@ impl<'s> Interpreter<'s> {
                 .iter()
                 .any(|base| base.read().unwrap().store_id == ty_store_id),
             TerbiumType::Int(_) => ty_store_id == self.singletons.int_type.store_id,
+            TerbiumType::Float(_) => ty_store_id == self.singletons.float_type.store_id
+                || ty_store_id == self.singletons.int_type.store_id,
+            TerbiumType::String(_) => ty_store_id == self.singletons.string_type.store_id,
+            TerbiumType::Bool(_) => ty_store_id == self.singletons.bool_type.store_id,
+            _ => todo!(),
+        }
+    }
+
+    pub fn eval_expr(&mut self, expr: Expr) -> WrappedTerbiumObject {
+        match expr {
+            Expr::Int(i) => self.get_int(i),
+            Expr::BinaryOp { operator, lhs, rhs } => {
+                let lhs = self.eval_expr(lhs);
+                let rhs = self.eval_expr(rhs);
+
+                match operator {
+                    Operator::Add => todo!(),
+                    _ => todo!(),
+                }
+            }
             _ => todo!(),
         }
     }
