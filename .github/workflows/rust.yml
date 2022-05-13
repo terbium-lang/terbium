@@ -47,10 +47,6 @@ jobs:
             target: aarch64-unknown-linux-gnu
             cross: true
 
-          - os: ubuntu-latest
-            target: i686-unknown-linux-gnu
-            cross: true
-
           - os: windows-latest
             target: i686-pc-windows-msvc
             ext: ".exe"
@@ -78,10 +74,12 @@ jobs:
           - os: macos-latest
             target: aarch64-apple-ios
             cross: true
+            skip-test: true
           
           - os: macos-latest
             target: x86_64-apple-ios
             cross: true
+            skip-test: true
 
           - os: macos-latest
             target: aarch64-apple-darwin
@@ -153,10 +151,6 @@ jobs:
             cross: true
           
           - os: ubuntu-latest
-            target: i686-unknown-freebsd
-            cross: true
-          
-          - os: ubuntu-latest
             target: i686-linux-android
             cross: true
           
@@ -165,31 +159,11 @@ jobs:
             cross: true
           
           - os: ubuntu-latest
-            target: i686-unknown-linux-gnu
-            cross: true
-          
-          - os: ubuntu-latest
             target: i686-unknown-linux-musl
             cross: true
 
           - os: ubuntu-latest
-            target: mips-unknown-linux-gnu
-            cross: true
-
-          - os: ubuntu-latest
             target: mips-unknown-linux-musl
-            cross: true
-          
-          - os: ubuntu-latest
-            target: mips64-unknown-linux-gnuabi64
-            cross: true
-          
-          - os: ubuntu-latest
-            target: mips64el-unknown-linux-gnuabi64
-            cross: true
-          
-          - os: ubuntu-latest
-            target: mipsel-unknown-linux-gnu
             cross: true
           
           - os: ubuntu-latest
@@ -199,19 +173,6 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-musl
             cross: true
-
-          - os: ubuntu-latest
-            target: x86_64-linux-android
-            cross: true
-          
-          - os: ubuntu-latest
-            target: x86_64-unknown-freebsd
-            cross: true
-          
-          - os: ubuntu-latest
-            target: x86_64-unknown-netbsd
-            cross: true
-            skip-test: true
 
     if: "github.event_name != 'pull_request'"
     runs-on: ${{ matrix.os }}
