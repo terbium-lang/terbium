@@ -6,7 +6,7 @@ use std::ptr::{NonNull, write};
 
 pub struct Block {
     ptr: NonNull<u8>,
-    size: usize,
+    pub size: usize,
 }
 
 #[derive(Debug, PartialEq)]
@@ -45,6 +45,10 @@ impl Block {
 
     pub fn as_ptr(&self) -> *const u8 {
         self.ptr.as_ptr()
+    }
+
+    pub fn into_mut_ptr(self) -> NonNull<u8> {
+        self.ptr
     }
 
     pub fn dealloc(ptr: NonNull<u8>, size: usize) {
