@@ -207,6 +207,7 @@ jobs:
           - os: ubuntu-latest
             target: x86_64-unknown-netbsd
             cross: true
+            skip-test: true
 
     if: "github.event_name != 'pull_request'"
     runs-on: ${{ matrix.os }}
