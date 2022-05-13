@@ -236,7 +236,7 @@ impl TerbiumSingletonObjectLookup {
             "int".to_string(),
             HashMap::new(), 
             false, 
-            TerbiumType::Class(type_object),
+            TerbiumType::Class(vec![type_object]),
         );
 
         Self {
@@ -248,7 +248,7 @@ impl TerbiumSingletonObjectLookup {
 
     pub fn int(&mut self, store: &mut TerbiumObjectStore, i: i128) -> WrappedTerbiumObject {
         if self.integer_lookup.contains_key(&i) {
-            return self.integer_lookup.get(&i);
+            return self.integer_lookup.get(&i).unwrap().clone();
         }
         
         self.integer_lookup.insert(i, TerbiumObject::alloc_new(
@@ -257,7 +257,9 @@ impl TerbiumSingletonObjectLookup {
             HashMap::new(),
             false,
             TerbiumType::Int(i),
-        ))
+        ));
+
+        self.integer_lookup.get(&i).unwrap().clone()
     }
 }
 
@@ -319,13 +321,13 @@ impl<'s> Interpreter<'s> {
             "std" => {
                 attrs.insert(
                     "println".to_string(),
-                    TerbiumObject::native_function("println"),
+                    TerbiumObject::alloc_native_function(&mut self.objects, "println", "std_println"),
                 );
             }
-            _ => Err(TerbiumExceptionType::ModuleNotFound(name).alloc_terbium_object(self))?,
+            _ => Err(TerbiumExceptionType::ModuleNotFound(name).alloc_terbium_object(&mut self.objects))?,
         }
 
-        Ok(TerbiumObject::new(
+        Ok(TerbiumObject::alloc_new(
             &mut self.objects,
             name.clone(),
             attrs,
@@ -342,7 +344,7 @@ impl<'s> Interpreter<'s> {
     }
 
     pub fn get_int(&mut self, i: i128) -> WrappedTerbiumObject {
-        self.singletons.int(self.objects, i)
+        self.singletons.int(&mut self.objects, i)
     }
 
     pub fn is_instance(&self, obj: &WrappedTerbiumObject, ty: &WrappedTerbiumObject) -> bool {
