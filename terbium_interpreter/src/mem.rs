@@ -1,10 +1,10 @@
 use std::{
-    marker::PhantomData,
-    cell::{Cell, UnsafeCell},
     alloc::{alloc, dealloc, Layout},
+    cell::{Cell, UnsafeCell},
+    marker::PhantomData,
     mem::{replace, size_of},
     ops::Deref,
-    ptr::{NonNull, write}
+    ptr::{write, NonNull},
 };
 
 pub struct Block {
@@ -189,9 +189,7 @@ impl BlockBuffer {
             let offset = self.cursor;
             self.cursor = next_bump;
 
-            unsafe {
-                Some(self.block.as_ptr().add(offset) as *const u8)
-            }
+            unsafe { Some(self.block.as_ptr().add(offset) as *const u8) }
         }
     }
 
@@ -227,9 +225,11 @@ impl BlockList {
                     let previous = replace(overflow, BlockBuffer::new()?);
                     self.rest.push(previous);
 
-                    overflow.inner_alloc(alloc_size).expect("error allocating memory")
+                    overflow
+                        .inner_alloc(alloc_size)
+                        .expect("error allocating memory")
                 }
-            }
+            },
             None => {
                 let mut overflow = BlockBuffer::new()?;
 
@@ -276,10 +276,12 @@ impl<H> RawHeap<H> {
         }
     }
 
-    pub(crate) fn find_space(&self, alloc_size: usize, size: BlockSize) -> Result<*const u8, BlockAllocError> {
-        let blocks = unsafe {
-            &mut *self.blocks.get()
-        };
+    pub(crate) fn find_space(
+        &self,
+        alloc_size: usize,
+        size: BlockSize,
+    ) -> Result<*const u8, BlockAllocError> {
+        let blocks = unsafe { &mut *self.blocks.get() };
 
         // TODO handle large objects
         if size == BlockSize::Large {
@@ -320,15 +322,13 @@ impl<H> RawHeap<H> {
 }
 
 pub struct Ptr<T: Sized> {
-    ptr: NonNull<T>
+    ptr: NonNull<T>,
 }
 
 impl<T: Sized> Ptr<T> {
     pub fn new(ptr: *const T) -> Self {
         Self {
-            ptr: unsafe {
-                NonNull::new_unchecked(ptr as *mut T)
-            }
+            ptr: unsafe { NonNull::new_unchecked(ptr as *mut T) },
         }
     }
 
@@ -351,9 +351,7 @@ impl<T: Sized> Ptr<T> {
 
 impl<T: Sized> Clone for Ptr<T> {
     fn clone(&self) -> Self {
-        Self {
-            ptr: self.ptr
-        }
+        Self { ptr: self.ptr }
     }
 }
 
@@ -409,7 +407,7 @@ impl<H: AllocHeader> RawAllocator for RawHeap<H> {
 
     fn alloc<T>(&self, o: T) -> Result<Ptr<T>, BlockAllocError>
     where
-        T: AllocObject<<Self::Header as AllocHeader>::TypeId>
+        T: AllocObject<<Self::Header as AllocHeader>::TypeId>,
     {
         let header_size = size_of::<Self::Header>();
         let object_size = size_of::<T>();
@@ -421,17 +419,13 @@ impl<H: AllocHeader> RawAllocator for RawHeap<H> {
         // Allocate enough space for the header and object
         let space = self.find_space(alloc_size, size_t)?;
 
-        let header = Self::Header::new::<T>(
-            object_size, size_t, Mark::Allocated,
-        );
+        let header = Self::Header::new::<T>(object_size, size_t, Mark::Allocated);
 
         unsafe {
             write(space as *mut Self::Header, header);
         }
 
-        let object_space = unsafe {
-            space.offset(header_size as isize)
-        };
+        let object_space = unsafe { space.offset(header_size as isize) };
         unsafe {
             write(object_space as *mut T, o);
         }
@@ -440,15 +434,11 @@ impl<H: AllocHeader> RawAllocator for RawHeap<H> {
     }
 
     fn get_header(o: NonNull<()>) -> NonNull<Self::Header> {
-        unsafe {
-            NonNull::new_unchecked(o.cast::<Self::Header>().as_ptr().offset(-1))
-        }
+        unsafe { NonNull::new_unchecked(o.cast::<Self::Header>().as_ptr().offset(-1)) }
     }
 
     fn get_object(header: NonNull<Self::Header>) -> NonNull<()> {
-        unsafe {
-            NonNull::new_unchecked(header.as_ptr().offset(1).cast::<()>())
-        }
+        unsafe { NonNull::new_unchecked(header.as_ptr().offset(1).cast::<()>()) }
     }
 }
 
@@ -456,15 +446,13 @@ impl<H: AllocHeader> RawAllocator for RawHeap<H> {
 pub trait MutatorScope {}
 
 pub struct ScopedPtr<'s, T: Sized> {
-    o: &'s T
+    o: &'s T,
 }
 
 impl<'s, T: Sized> ScopedPtr<'s, T> {
     // The 's lifetime acts as a "guard" for the lifetime of o
     pub fn new(_: &'s dyn MutatorScope, o: &'s T) -> Self {
-        ScopedPtr {
-            o
-        }
+        ScopedPtr { o }
     }
 
     pub fn inner(&self) -> &'s T {
@@ -476,9 +464,7 @@ impl<'s, T: Sized> MutatorScope for ScopedPtr<'s, T> {}
 
 impl<'s, T: Sized> Clone for ScopedPtr<'s, T> {
     fn clone(&self) -> Self {
-        ScopedPtr {
-            o: self.o
-        }
+        ScopedPtr { o: self.o }
     }
 }
 
@@ -515,8 +501,6 @@ pub trait ScopedRef<T> {
 
 impl<T> ScopedRef<T> for Ptr<T> {
     fn scoped_ref<'s>(&self, _: &'s dyn MutatorScope) -> &'s T {
-        unsafe {
-            &*self.ptr()
-        }
+        unsafe { &*self.ptr() }
     }
 }
