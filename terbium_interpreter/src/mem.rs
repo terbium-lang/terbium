@@ -1,8 +1,11 @@
-use std::alloc::{alloc, dealloc, Layout};
-use std::cell::UnsafeCell;
-use std::marker::PhantomData;
-use std::mem::{replace, size_of};
-use std::ptr::{NonNull, write};
+use std::{
+    marker::PhantomData,
+    cell::{Cell, UnsafeCell},
+    alloc::{alloc, dealloc, Layout},
+    mem::{replace, size_of},
+    ops::Deref,
+    ptr::{NonNull, write}
+};
 
 pub struct Block {
     ptr: NonNull<u8>,
@@ -260,12 +263,12 @@ impl BlockSize {
 }
 
 /// Implements a "stricky-immix heap" allocator.
-pub struct Heap<H> {
+pub struct RawHeap<H> {
     blocks: UnsafeCell<BlockList>,
     header: PhantomData<*const H>,
 }
 
-impl<H> Heap<H> {
+impl<H> RawHeap<H> {
     pub fn new() -> Self {
         Self {
             blocks: UnsafeCell::new(BlockList::new()),
@@ -401,7 +404,7 @@ fn get_alloc_size(size: usize) -> usize {
     (size + (align - 1)) & !(align - 1)
 }
 
-impl<H: AllocHeader> RawAllocator for Heap<H> {
+impl<H: AllocHeader> RawAllocator for RawHeap<H> {
     type Header = H;
 
     fn alloc<T>(&self, o: T) -> Result<Ptr<T>, BlockAllocError>
@@ -445,6 +448,75 @@ impl<H: AllocHeader> RawAllocator for Heap<H> {
     fn get_object(header: NonNull<Self::Header>) -> NonNull<()> {
         unsafe {
             NonNull::new_unchecked(header.as_ptr().offset(1).cast::<()>())
+        }
+    }
+}
+
+/// Anchors lifetimes of mutators
+pub trait MutatorScope {}
+
+pub struct ScopedPtr<'s, T: Sized> {
+    o: &'s T
+}
+
+impl<'s, T: Sized> ScopedPtr<'s, T> {
+    // The 's lifetime acts as a "guard" for the lifetime of o
+    pub fn new(_: &'s dyn MutatorScope, o: &'s T) -> Self {
+        ScopedPtr {
+            o
+        }
+    }
+
+    pub fn inner(&self) -> &'s T {
+        self.o
+    }
+}
+
+impl<'s, T: Sized> MutatorScope for ScopedPtr<'s, T> {}
+
+impl<'s, T: Sized> Clone for ScopedPtr<'s, T> {
+    fn clone(&self) -> Self {
+        ScopedPtr {
+            o: self.o
+        }
+    }
+}
+
+impl<'s, T: Sized> Copy for ScopedPtr<'s, T> {}
+
+impl<'s, T: Sized> Deref for ScopedPtr<'s, T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        self.o
+    }
+}
+
+impl<'s, T: Sized + PartialEq> PartialEq for ScopedPtr<'s, T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.o == other.o
+    }
+}
+
+#[derive(Clone)]
+pub struct CellPtr<T: Sized> {
+    o: Cell<Ptr<T>>,
+}
+
+impl<T: Sized> CellPtr<T> {
+    pub fn get<'s>(&self, guard: &'s dyn MutatorScope) -> ScopedPtr<'s, T> {
+        ScopedPtr::new(guard, self.o.get().scoped_ref(guard))
+    }
+}
+
+pub trait ScopedRef<T> {
+    fn scoped_ref<'s>(&self, scope: &'s dyn MutatorScope) -> &'s T;
+}
+
+impl<T> ScopedRef<T> for Ptr<T> {
+    fn scoped_ref<'s>(&self, _: &'s dyn MutatorScope) -> &'s T {
+        unsafe {
+            &*self.ptr()
         }
     }
 }
