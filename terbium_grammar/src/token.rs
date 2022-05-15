@@ -35,16 +35,16 @@ pub enum Operator {
 }
 
 impl Operator {
-    pub fn supports_unary(&self) -> bool {
-        match self {
-            // TODO: &ident could retrieve memory address of the object
-            Self::Add | Self::Sub | Self::Not | Self::BitNot => true,
-            _ => false,
-        }
+    #[must_use]
+    pub const fn supports_unary(&self) -> bool {
+        // TODO: &ident could retrieve memory address of the object
+        matches!(self, Self::Add | Self::Sub | Self::Not | Self::BitNot)
     }
 
-    pub fn supports_binary(&self) -> bool {
-        match self {
+    #[must_use]
+    pub const fn supports_binary(&self) -> bool {
+        matches!(
+            self, 
             Self::Add
             | Self::Sub
             | Self::Mul
@@ -63,9 +63,8 @@ impl Operator {
             | Self::BitOr
             | Self::BitXor
             | Self::BitAnd
-            | Self::Range => true,
-            _ => false,
-        }
+            | Self::Range
+        )
     }
 }
 
@@ -192,8 +191,10 @@ impl Display for Keyword {
 }
 
 impl Keyword {
-    pub fn is_soft(&self) -> bool {
-        match self {
+    #[must_use]
+    pub const fn is_soft(&self) -> bool {
+        !matches!(
+            self,
             Self::Func
             | Self::Class
             | Self::Let
@@ -207,9 +208,8 @@ impl Keyword {
             | Self::Break
             | Self::Continue
             | Self::Return
-            | Self::With => false,
-            _ => true,
-        }
+            | Self::With
+        )
     }
 }
 
@@ -280,7 +280,6 @@ impl Display for Token {
                 Self::Semicolon => ";",
                 Self::Assign => "=",
             }
-            .clone(),
         )
     }
 }
@@ -305,6 +304,7 @@ macro_rules! escape_hex {
     }};
 }
 
+#[must_use]
 pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Error> {
     let integer = text::int::<_, Error>(10)
         .from_str::<u128>()
