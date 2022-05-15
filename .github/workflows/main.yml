@@ -40,7 +40,7 @@ jobs:
           components: clippy
 
       - name: Clippy lint
-        run: cargo clippy --workspace --all-features -- -D clippy::all clippy::pedantic clippy::nursery clippy::cargo
+        run: cargo clippy --workspace --all-features -- -D clippy::all -D clippy::pedantic -D clippy::nursery -D clippy::cargo
 
   compile_debug:
     name: Compile in debug mode
