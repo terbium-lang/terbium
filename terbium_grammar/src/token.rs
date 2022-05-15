@@ -44,26 +44,26 @@ impl Operator {
     #[must_use]
     pub const fn supports_binary(&self) -> bool {
         matches!(
-            self, 
+            self,
             Self::Add
-            | Self::Sub
-            | Self::Mul
-            | Self::Div
-            | Self::Mod
-            | Self::Pow
-            | Self::Eq
-            | Self::Ne
-            | Self::Lt
-            | Self::Le
-            | Self::Gt
-            | Self::Ge
-            | Self::Or
-            | Self::And
-            | Self::Not
-            | Self::BitOr
-            | Self::BitXor
-            | Self::BitAnd
-            | Self::Range
+                | Self::Sub
+                | Self::Mul
+                | Self::Div
+                | Self::Mod
+                | Self::Pow
+                | Self::Eq
+                | Self::Ne
+                | Self::Lt
+                | Self::Le
+                | Self::Gt
+                | Self::Ge
+                | Self::Or
+                | Self::And
+                | Self::Not
+                | Self::BitOr
+                | Self::BitXor
+                | Self::BitAnd
+                | Self::Range
         )
     }
 }
@@ -196,19 +196,19 @@ impl Keyword {
         !matches!(
             self,
             Self::Func
-            | Self::Class
-            | Self::Let
-            | Self::Const
-            | Self::Immut
-            | Self::If
-            | Self::Else
-            | Self::For
-            | Self::In
-            | Self::While
-            | Self::Break
-            | Self::Continue
-            | Self::Return
-            | Self::With
+                | Self::Class
+                | Self::Let
+                | Self::Const
+                | Self::Immut
+                | Self::If
+                | Self::Else
+                | Self::For
+                | Self::In
+                | Self::While
+                | Self::Break
+                | Self::Continue
+                | Self::Return
+                | Self::With
         )
     }
 }
@@ -242,45 +242,43 @@ impl Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let s: String;
 
-        f.write_str(
-            match self {
-                Self::Invalid(c) => {
-                    s = c.to_string();
-                    s.as_str()
-                }
-                Self::Operator(o) => {
-                    s = o.to_string();
-                    s.as_str()
-                }
-                Self::Literal(l) => {
-                    s = l.to_string();
-                    s.as_str()
-                }
-                Self::Keyword(k) => {
-                    s = k.to_string();
-                    s.as_str()
-                }
-                Self::Identifier(s) => s.as_str(),
-                Self::StartBracket(b) => match b {
-                    Bracket::Paren => "(",
-                    Bracket::Bracket => "[",
-                    Bracket::Brace => "{",
-                    Bracket::Angle => "<",
-                },
-                Self::EndBracket(b) => match b {
-                    Bracket::Paren => ")",
-                    Bracket::Bracket => "]",
-                    Bracket::Brace => "}",
-                    Bracket::Angle => ">",
-                },
-                Self::Comma => ",",
-                Self::Dot => ".",
-                Self::Cast => "::",
-                Self::Question => "?",
-                Self::Semicolon => ";",
-                Self::Assign => "=",
+        f.write_str(match self {
+            Self::Invalid(c) => {
+                s = c.to_string();
+                s.as_str()
             }
-        )
+            Self::Operator(o) => {
+                s = o.to_string();
+                s.as_str()
+            }
+            Self::Literal(l) => {
+                s = l.to_string();
+                s.as_str()
+            }
+            Self::Keyword(k) => {
+                s = k.to_string();
+                s.as_str()
+            }
+            Self::Identifier(s) => s.as_str(),
+            Self::StartBracket(b) => match b {
+                Bracket::Paren => "(",
+                Bracket::Bracket => "[",
+                Bracket::Brace => "{",
+                Bracket::Angle => "<",
+            },
+            Self::EndBracket(b) => match b {
+                Bracket::Paren => ")",
+                Bracket::Bracket => "]",
+                Bracket::Brace => "}",
+                Bracket::Angle => ">",
+            },
+            Self::Comma => ",",
+            Self::Dot => ".",
+            Self::Cast => "::",
+            Self::Question => "?",
+            Self::Semicolon => ";",
+            Self::Assign => "=",
+        })
     }
 }
 
