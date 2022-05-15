@@ -1,7 +1,0 @@
-[target.i686-pc-windows-gnu]
-image = "rustembedded/cross:i686-pc-windows-gnu"
-
-[build.env]
-passthrough = [
-    "CARGO_TERM_COLOR",
-]
