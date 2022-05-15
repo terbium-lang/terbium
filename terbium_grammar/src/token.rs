@@ -431,7 +431,7 @@ pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Error> {
 
     choice::<_, Error>((symbol, brackets, ident_or_keyword, string, integer, float))
         .or(any().map(Token::Invalid).validate(|token, span, emit| {
-            emit(Error::unexpected_token(span, token.clone()));
+            emit(Error::unexpected_token(span, &token));
             token
         }))
         // .map_with_span(move |token, span| (token, span)) Could be useful for debugging

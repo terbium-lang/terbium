@@ -42,6 +42,7 @@ pub trait ParseInterface {
     where
         Self: Sized;
 
+    #[must_use]
     fn from_tokens(tokens: Vec<Token>) -> (Self, Vec<Error>)
     where
         Self: Sized,
@@ -112,7 +113,7 @@ impl ParseInterface for Expr {
 
         get_body_parser()
             .map(|Body(body, _)| match body.get(0) {
-                Some(o) => match o.to_owned() {
+                Some(o) => match o.clone() {
                     Node::Expr(expr) => expr,
                     _ => unreachable!(),
                 },
@@ -128,7 +129,7 @@ impl ParseInterface for Node {
         Self: Sized,
     {
         get_body_parser()
-            .map(|Body(b, _)| Node::Module(b))
+            .map(|Body(b, _)| Self::Module(b))
             .parse_recovery(tokens)
     }
 }
@@ -145,6 +146,7 @@ impl ParseInterface for Body {
 pub trait CommonParser<T> = Parser<Token, T, Error = Error> + Clone;
 pub type RecursiveParser<'a, T> = Recursive<'a, Token, T, Error>;
 
+#[must_use]
 pub fn get_body_parser<'a>() -> RecursiveParser<'a, Body> {
     recursive(|body: Recursive<Token, Body, Error>| {
         let e = recursive(|e: Recursive<Token, Expr, Error>| {
