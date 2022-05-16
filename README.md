@@ -87,6 +87,8 @@ std.println(x.y?.z!);
 - [terbium_grammar](https://github.com/TerbiumLang/Terbium/tree/main/terbium_grammar):
   Tokenizes Terbium code and transforms it into an
   [Abstract Syntax Tree](https://en.wikipedia.org/wiki/Abstract_syntax_tree) (AST).
+- [terbium_interpreter](https://github.com/TerbiumLang/Terbium/tree/main/terbium_interpreter):
+  The interpreter which interprets and evaluates code generated from ``terbium_grammar``.
 
 ## Contributing
 See [CONTRIBUTING.md](https://github.com/TerbiumLang/Terbium/blob/main/CONTRIBUTING.md) for details.

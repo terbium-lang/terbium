@@ -6,6 +6,7 @@ use std::{
     ops::Deref,
     ptr::{write, NonNull},
 };
+use crate::TerbiumObjectHeader;
 
 pub struct Block {
     ptr: NonNull<u8>,
@@ -283,9 +284,8 @@ impl<H> RawHeap<H> {
     ) -> Result<*const u8, BlockAllocError> {
         let blocks = unsafe { &mut *self.blocks.get() };
 
-        // TODO handle large objects
+        // TODO: handle large objects
         if size == BlockSize::Large {
-            // simply fail for objects larger than the block size
             return Err(BlockAllocError::InvalidSize);
         }
 
@@ -503,4 +503,8 @@ impl<T> ScopedRef<T> for Ptr<T> {
     fn scoped_ref<'s>(&self, _: &'s dyn MutatorScope) -> &'s T {
         unsafe { &*self.ptr() }
     }
+}
+
+pub struct Heap {
+    heap: RawHeap<TerbiumObjectHeader>,
 }
