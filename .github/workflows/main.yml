@@ -1,135 +1,135 @@
-name: Main
+                                                                                                                                                                                                                                            name: Main
 
-on:
-  push:
-    branches: [main, staging, try]
-  pull_request:
-    branches: ['**']
+                                                                                                                                                                                                                                            on:
+                                                                                                                                                                                                                                              push:
+                                                                                                                                                                                                                                                branches: [main, staging, try]
+                                                                                                                                                                                                                                              pull_request:
+                                                                                                                                                                                                                                                branches: ['**']
 
-env:
-  CARGO_TERM_COLOR: always
+                                                                                                                                                                                                                                            env:
+                                                                                                                                                                                                                                              CARGO_TERM_COLOR: always
 
-jobs:
-  rustfmt:
-    name: Rustfmt
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
+                                                                                                                                                                                                                                            jobs:
+                                                                                                                                                                                                                                              rustfmt:
+                                                                                                                                                                                                                                                name: Rustfmt
+                                                                                                                                                                                                                                                runs-on: ubuntu-latest
+                                                                                                                                                                                                                                                steps:
+                                                                                                                                                                                                                                                  - uses: actions/checkout@v2
 
-      - name: Install latest nightly with rustfmt
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: nightly
-          override: true
-          components: rustfmt
-      
-      - name: Check format
-        run: cargo fmt --all -- --check
+                                                                                                                                                                                                                                                  - name: Install latest nightly with rustfmt
+                                                                                                                                                                                                                                                    uses: actions-rs/toolchain@v1
+                                                                                                                                                                                                                                                    with:
+                                                                                                                                                                                                                                                      toolchain: nightly
+                                                                                                                                                                                                                                                      override: true
+                                                                                                                                                                                                                                                      components: rustfmt
+                                                                                                                                                                                                                                                  
+                                                                                                                                                                                                                                                  - name: Check format
+                                                                                                                                                                                                                                                    run: cargo fmt --all -- --check
 
-  clippy:
-    name: Clippy
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
+                                                                                                                                                                                                                                              clippy:
+                                                                                                                                                                                                                                                name: Clippy
+                                                                                                                                                                                                                                                runs-on: ubuntu-latest
+                                                                                                                                                                                                                                                steps:
+                                                                                                                                                                                                                                                  - uses: actions/checkout@v2
 
-      - name: Install latest nightly with clippy
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: nightly
-          override: true
-          components: clippy
+                                                                                                                                                                                                                                                  - name: Install latest nightly with clippy
+                                                                                                                                                                                                                                                    uses: actions-rs/toolchain@v1
+                                                                                                                                                                                                                                                    with:
+                                                                                                                                                                                                                                                      toolchain: nightly
+                                                                                                                                                                                                                                                      override: true
+                                                                                                                                                                                                                                                      components: clippy
 
-      - name: Clippy lint
-        run: cargo clippy --workspace --all-features -- -D clippy::all -D clippy::pedantic -D clippy::nursery -D clippy::cargo
+                                                                                                                                                                                                                                                  - name: Clippy lint
+                                                                                                                                                                                                                                                    run: cargo clippy --workspace --all-features -- -D clippy::all -D clippy::pedantic -D clippy::nursery -D clippy::cargo
 
-  compile_debug:
-    name: Compile in debug mode
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-latest
-          - os: ubuntu-latest
-          - os: windows-latest
-            ext: ".exe"
+                                                                                                                                                                                                                                              compile_debug:
+                                                                                                                                                                                                                                                name: Compile in debug mode
+                                                                                                                                                                                                                                                strategy:
+                                                                                                                                                                                                                                                  fail-fast: false
+                                                                                                                                                                                                                                                  matrix:
+                                                                                                                                                                                                                                                    include:
+                                                                                                                                                                                                                                                      - os: macos-latest
+                                                                                                                                                                                                                                                      - os: ubuntu-latest
+                                                                                                                                                                                                                                                      - os: windows-latest
+                                                                                                                                                                                                                                                        ext: ".exe"
 
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v3
+                                                                                                                                                                                                                                                runs-on: ${{ matrix.os }}
+                                                                                                                                                                                                                                                steps:
+                                                                                                                                                                                                                                                  - uses: actions/checkout@v3
 
-      - name: Install latest nightly
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: nightly
-          override: true
-      
-      - name: Setup cache
-        uses: Swatinem/rust-cache@v1
+                                                                                                                                                                                                                                                  - name: Install latest nightly
+                                                                                                                                                                                                                                                    uses: actions-rs/toolchain@v1
+                                                                                                                                                                                                                                                    with:
+                                                                                                                                                                                                                                                      toolchain: nightly
+                                                                                                                                                                                                                                                      override: true
+                                                                                                                                                                                                                                                  
+                                                                                                                                                                                                                                                  - name: Setup cache
+                                                                                                                                                                                                                                                    uses: Swatinem/rust-cache@v1
 
-      - name: Build
-        run: cargo build --verbose
+                                                                                                                                                                                                                                                  - name: Build
+                                                                                                                                                                                                                                                    run: cargo build --verbose
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: ${{ matrix.os }}-debug
-          path: target/debug/terbium${{ matrix.ext }}
-  
-  compile_release:
-    name: Compile in release mode
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-latest
-          - os: ubuntu-latest
-          - os: windows-latest
-            ext: ".exe"
-    
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v3
+                                                                                                                                                                                                                                                  - name: Upload artifact
+                                                                                                                                                                                                                                                    uses: actions/upload-artifact@v3
+                                                                                                                                                                                                                                                    with:
+                                                                                                                                                                                                                                                      name: ${{ matrix.os }}-debug
+                                                                                                                                                                                                                                                      path: target/debug/terbium${{ matrix.ext }}
+                                                                                                                                                                                                                                              
+                                                                                                                                                                                                                                              compile_release:
+                                                                                                                                                                                                                                                name: Compile in release mode
+                                                                                                                                                                                                                                                strategy:
+                                                                                                                                                                                                                                                  fail-fast: false
+                                                                                                                                                                                                                                                  matrix:
+                                                                                                                                                                                                                                                    include:
+                                                                                                                                                                                                                                                      - os: macos-latest
+                                                                                                                                                                                                                                                      - os: ubuntu-latest
+                                                                                                                                                                                                                                                      - os: windows-latest
+                                                                                                                                                                                                                                                        ext: ".exe"
+                                                                                                                                                                                                                                                
+                                                                                                                                                                                                                                                runs-on: ${{ matrix.os }}
+                                                                                                                                                                                                                                                steps:
+                                                                                                                                                                                                                                                  - uses: actions/checkout@v3
 
-      - name: Install latest nightly
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: nightly
-          override: true
+                                                                                                                                                                                                                                                  - name: Install latest nightly
+                                                                                                                                                                                                                                                    uses: actions-rs/toolchain@v1
+                                                                                                                                                                                                                                                    with:
+                                                                                                                                                                                                                                                      toolchain: nightly
+                                                                                                                                                                                                                                                      override: true
 
-      - name: Setup cache
-        uses: Swatinem/rust-cache@v1
+                                                                                                                                                                                                                                                  - name: Setup cache
+                                                                                                                                                                                                                                                    uses: Swatinem/rust-cache@v1
 
-      - name: Build
-        run: cargo build --verbose --release
-      
-      - name: Upload artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: ${{ matrix.os }}-release
-          path: target/release/terbium${{ matrix.ext }}
+                                                                                                                                                                                                                                                  - name: Build
+                                                                                                                                                                                                                                                    run: cargo build --verbose --release
+                                                                                                                                                                                                                                                  
+                                                                                                                                                                                                                                                  - name: Upload artifact
+                                                                                                                                                                                                                                                    uses: actions/upload-artifact@v3
+                                                                                                                                                                                                                                                    with:
+                                                                                                                                                                                                                                                      name: ${{ matrix.os }}-release
+                                                                                                                                                                                                                                                      path: target/release/terbium${{ matrix.ext }}
 
-  test:
-    name: Test
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
-    
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v3
-      
-      - name: Install latest nightly
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: nightly
-          override: true
+                                                                                                                                                                                                                                              test:
+                                                                                                                                                                                                                                                name: Test
+                                                                                                                                                                                                                                                strategy:
+                                                                                                                                                                                                                                                  fail-fast: false
+                                                                                                                                                                                                                                                  matrix:
+                                                                                                                                                                                                                                                    os: [macos-latest, ubuntu-latest, windows-latest]
+                                                                                                                                                                                                                                                
+                                                                                                                                                                                                                                                runs-on: ${{ matrix.os }}
+                                                                                                                                                                                                                                                steps:
+                                                                                                                                                                                                                                                  - uses: actions/checkout@v3
+                                                                                                                                                                                                                                                  
+                                                                                                                                                                                                                                                  - name: Install latest nightly
+                                                                                                                                                                                                                                                    uses: actions-rs/toolchain@v1
+                                                                                                                                                                                                                                                    with:
+                                                                                                                                                                                                                                                      toolchain: nightly
+                                                                                                                                                                                                                                                      override: true
 
-      - name: Setup cache
-        uses: Swatinem/rust-cache@v1
+                                                                                                                                                                                                                                                  - name: Setup cache
+                                                                                                                                                                                                                                                    uses: Swatinem/rust-cache@v1
 
-      - name: Run tests
-        run: cargo test --verbose
-      
-      - name: Run tests on terbium_grammar
-        run: cargo test --verbose --package terbium_grammar
+                                                                                                                                                                                                                                                  - name: Run tests
+                                                                                                                                                                                                                                                    run: cargo test --verbose
+                                                                                                                                                                                                                                                  
+                                                                                                                                                                                                                                                  - name: Run tests on terbium_grammar
+                                                                                                                                                                                                                                                    run: cargo test --verbose --package terbium_grammar
