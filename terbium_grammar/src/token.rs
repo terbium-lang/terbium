@@ -35,37 +35,36 @@ pub enum Operator {
 }
 
 impl Operator {
-    pub fn supports_unary(&self) -> bool {
-        match self {
-            // TODO: &ident could retrieve memory address of the object
-            Self::Add | Self::Sub | Self::Not | Self::BitNot => true,
-            _ => false,
-        }
+    #[must_use]
+    pub const fn supports_unary(&self) -> bool {
+        // TODO: &ident could retrieve memory address of the object
+        matches!(self, Self::Add | Self::Sub | Self::Not | Self::BitNot)
     }
 
-    pub fn supports_binary(&self) -> bool {
-        match self {
+    #[must_use]
+    pub const fn supports_binary(&self) -> bool {
+        matches!(
+            self,
             Self::Add
-            | Self::Sub
-            | Self::Mul
-            | Self::Div
-            | Self::Mod
-            | Self::Pow
-            | Self::Eq
-            | Self::Ne
-            | Self::Lt
-            | Self::Le
-            | Self::Gt
-            | Self::Ge
-            | Self::Or
-            | Self::And
-            | Self::Not
-            | Self::BitOr
-            | Self::BitXor
-            | Self::BitAnd
-            | Self::Range => true,
-            _ => false,
-        }
+                | Self::Sub
+                | Self::Mul
+                | Self::Div
+                | Self::Mod
+                | Self::Pow
+                | Self::Eq
+                | Self::Ne
+                | Self::Lt
+                | Self::Le
+                | Self::Gt
+                | Self::Ge
+                | Self::Or
+                | Self::And
+                | Self::Not
+                | Self::BitOr
+                | Self::BitXor
+                | Self::BitAnd
+                | Self::Range
+        )
     }
 }
 
@@ -192,24 +191,25 @@ impl Display for Keyword {
 }
 
 impl Keyword {
-    pub fn is_soft(&self) -> bool {
-        match self {
+    #[must_use]
+    pub const fn is_soft(&self) -> bool {
+        !matches!(
+            self,
             Self::Func
-            | Self::Class
-            | Self::Let
-            | Self::Const
-            | Self::Immut
-            | Self::If
-            | Self::Else
-            | Self::For
-            | Self::In
-            | Self::While
-            | Self::Break
-            | Self::Continue
-            | Self::Return
-            | Self::With => false,
-            _ => true,
-        }
+                | Self::Class
+                | Self::Let
+                | Self::Const
+                | Self::Immut
+                | Self::If
+                | Self::Else
+                | Self::For
+                | Self::In
+                | Self::While
+                | Self::Break
+                | Self::Continue
+                | Self::Return
+                | Self::With
+        )
     }
 }
 
@@ -242,46 +242,43 @@ impl Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let s: String;
 
-        f.write_str(
-            match self {
-                Self::Invalid(c) => {
-                    s = c.to_string();
-                    s.as_str()
-                }
-                Self::Operator(o) => {
-                    s = o.to_string();
-                    s.as_str()
-                }
-                Self::Literal(l) => {
-                    s = l.to_string();
-                    s.as_str()
-                }
-                Self::Keyword(k) => {
-                    s = k.to_string();
-                    s.as_str()
-                }
-                Self::Identifier(s) => s.as_str(),
-                Self::StartBracket(b) => match b {
-                    Bracket::Paren => "(",
-                    Bracket::Bracket => "[",
-                    Bracket::Brace => "{",
-                    Bracket::Angle => "<",
-                },
-                Self::EndBracket(b) => match b {
-                    Bracket::Paren => ")",
-                    Bracket::Bracket => "]",
-                    Bracket::Brace => "}",
-                    Bracket::Angle => ">",
-                },
-                Self::Comma => ",",
-                Self::Dot => ".",
-                Self::Cast => "::",
-                Self::Question => "?",
-                Self::Semicolon => ";",
-                Self::Assign => "=",
+        f.write_str(match self {
+            Self::Invalid(c) => {
+                s = c.to_string();
+                s.as_str()
             }
-            .clone(),
-        )
+            Self::Operator(o) => {
+                s = o.to_string();
+                s.as_str()
+            }
+            Self::Literal(l) => {
+                s = l.to_string();
+                s.as_str()
+            }
+            Self::Keyword(k) => {
+                s = k.to_string();
+                s.as_str()
+            }
+            Self::Identifier(s) => s.as_str(),
+            Self::StartBracket(b) => match b {
+                Bracket::Paren => "(",
+                Bracket::Bracket => "[",
+                Bracket::Brace => "{",
+                Bracket::Angle => "<",
+            },
+            Self::EndBracket(b) => match b {
+                Bracket::Paren => ")",
+                Bracket::Bracket => "]",
+                Bracket::Brace => "}",
+                Bracket::Angle => ">",
+            },
+            Self::Comma => ",",
+            Self::Dot => ".",
+            Self::Cast => "::",
+            Self::Question => "?",
+            Self::Semicolon => ";",
+            Self::Assign => "=",
+        })
     }
 }
 
@@ -305,6 +302,7 @@ macro_rules! escape_hex {
     }};
 }
 
+#[must_use]
 pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Error> {
     let integer = text::int::<_, Error>(10)
         .from_str::<u128>()
@@ -431,7 +429,7 @@ pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Error> {
 
     choice::<_, Error>((symbol, brackets, ident_or_keyword, string, integer, float))
         .or(any().map(Token::Invalid).validate(|token, span, emit| {
-            emit(Error::unexpected_token(span, token.clone()));
+            emit(Error::unexpected_token(span, &token));
             token
         }))
         // .map_with_span(move |token, span| (token, span)) Could be useful for debugging

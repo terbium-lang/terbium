@@ -1,8 +1,9 @@
-use super::*;
+use super::Token;
 
 use std::collections::HashSet;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::ops::Range;
+use std::string::ToString;
 
 type Span = Range<usize>;
 
@@ -30,11 +31,11 @@ impl From<Token> for TargetKind {
 impl Display for TargetKind {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         match self {
-            TargetKind::Token(token) => write!(f, "{}", token),
-            TargetKind::Char(c) => write!(f, "{:?}", c),
-            TargetKind::Literal => write!(f, "literal"),
-            TargetKind::Identifier => write!(f, "identifier"),
-            TargetKind::End => write!(f, "end"),
+            Self::Token(token) => write!(f, "{}", token),
+            Self::Char(c) => write!(f, "{:?}", c),
+            Self::Literal => write!(f, "literal"),
+            Self::Identifier => write!(f, "identifier"),
+            Self::End => write!(f, "end"),
         }
     }
 }
@@ -61,6 +62,7 @@ pub struct Error {
 }
 
 impl Error {
+    #[must_use]
     pub fn placeholder() -> Self {
         Self {
             kind: ErrorKind::Custom,
@@ -71,6 +73,7 @@ impl Error {
         }
     }
 
+    #[must_use]
     pub fn custom(span: Span, message: impl Display) -> Self {
         Self {
             kind: ErrorKind::Custom,
@@ -81,7 +84,8 @@ impl Error {
         }
     }
 
-    pub fn unexpected_token(span: Span, token: Token) -> Self {
+    #[must_use]
+    pub fn unexpected_token(span: Span, token: &Token) -> Self {
         Self {
             kind: ErrorKind::Unexpected(TargetKind::Token(token.clone())),
             span,
@@ -108,12 +112,12 @@ impl<T: Into<TargetKind> + Clone> chumsky::Error<T> for Error {
     ) -> Self {
         let expected = expected
             .into_iter()
-            .map(|x| x.map(Into::into).unwrap_or(TargetKind::End))
+            .map(|x| x.map_or(TargetKind::End, Into::into))
             .collect::<HashSet<TargetKind>>();
 
         let expected_message = expected
             .iter()
-            .map(|x| x.to_string())
+            .map(ToString::to_string)
             .collect::<Vec<String>>();
 
         let joined;
@@ -128,19 +132,14 @@ impl<T: Into<TargetKind> + Clone> chumsky::Error<T> for Error {
             kind: found
                 .clone()
                 .map(Into::into)
-                .map(ErrorKind::Unexpected)
-                .unwrap_or(ErrorKind::UnexpectedEnd),
+                .map_or(ErrorKind::UnexpectedEnd, ErrorKind::Unexpected),
             span,
             expected,
             label: None,
             message: format!(
                 "expected {}{}",
                 expected_message,
-                if let Some(found) = found {
-                    found.into().to_string()
-                } else {
-                    String::new()
-                }
+                found.map_or_else(String::new, |found| found.into().to_string())
             ),
         }
     }
@@ -162,7 +161,7 @@ impl<T: Into<TargetKind> + Clone> chumsky::Error<T> for Error {
             expected: std::iter::once(expected.clone().into()).collect(),
             label: None,
             message: format!("unclosed delimiter: expected {}", {
-                expected.clone().into().to_string()
+                expected.into().to_string()
             }),
         }
     }
