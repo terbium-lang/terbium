@@ -14,12 +14,13 @@ name = "terbium"
 path = "src/bin/terbium.rs"
 
 [workspace]
-members = ["terbium_grammar", "terbium_interpreter"]
+members = ["terbium_analyzer", "terbium_grammar", "terbium_interpreter"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 clap = { version = "3.1", features = ["derive"] }
+terbium_analyzer = { version = "0", path = "terbium_analyzer" }
 terbium_grammar = { version = "0", path = "terbium_grammar" }
 terbium_interpreter = { version = "0", path = "terbium_interpreter" }
 

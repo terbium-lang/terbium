@@ -28,16 +28,33 @@ We want to enforce a static type system in Terbium that isn't too restrictive:
 
 - Optionally allow a variable to keep a constant type throughout its lifetime (`let`)
 - Default all types to the `auto` type (Type inference)
-  - When a type cannot be inferred, use the `any` type unless explicitly disabled (`@pt:strict`)
+  - When a type cannot be inferred, use the `any` type unless explicitly disabled (`@trb:strict`)
 - Allow a robust type system (e.g. Generics)
 
 Terbium designs static types like this so that while beginners don't have to learn Terbium with
 the complexity of a type system, and gradually implement these types as they learn more about them.
 
+#### Ran at compile-time
+The static-type checker, along with other types of analysis (such as optimization),
+is run at compile-time\*. This ensures that your code will run as expected with minimal errors
+before even running.
+
+\* If you run Terbium using its interpreter, analysis will be run immediately before runtime.
+
+#### Yes, we have `null`.
+A very common pattern in more modernized languages are those which lack a
+"null" type.
+
+We chose to keep `null` but make it required to explicitly handle and propagate `null`,
+specifically with the static type-checker which is run at compile-time.
+Luckily, doing such is [easy](#efficient-null-handling).
+
 ### Concise Code
 We also want to make Terbium code as concise as possible, without sacrificing performance or readability.
 
 #### Examples:
+
+##### Statements are Expressions
 Directly assign the result of an `if` statement to a variable:
 ```ts
 let x = if 1 + 1 == 2 {
@@ -73,6 +90,8 @@ std.println(match 1 + 1 {
 
 (above three inspired by Rust)
 
+##### Efficient `null` handling:
+
 Null propagations and assertions:
 ```ts
 std.println(x.y?.z!);
@@ -84,6 +103,10 @@ std.println(x.y?.z!);
 (above inspired by TypeScript)
 
 ## Repository Navigation
+- [terbium_analyzer](https://github.com/TerbiumLang/Terbium/tree/main/terbium_analyzer):
+  Analyzes Terbium code and houses the static type-checker. This is run at compile-time
+  and apart from ensuring type-safety, will try picking as many places that could be
+  optimized, and as many places that could lead to errors at runtime.
 - [terbium_grammar](https://github.com/TerbiumLang/Terbium/tree/main/terbium_grammar):
   Tokenizes Terbium code and transforms it into an
   [Abstract Syntax Tree](https://en.wikipedia.org/wiki/Abstract_syntax_tree) (AST).
@@ -94,7 +117,7 @@ std.println(x.y?.z!);
 See [CONTRIBUTING.md](https://github.com/TerbiumLang/Terbium/blob/main/CONTRIBUTING.md) for details.
 
 ## Credits
-Terbium is a project by **[jay3332](https://github.com/jay3332)**.
+#### Terbium is a project by **[jay3332](https://github.com/jay3332)**.
 
 Thanks to the following core contributors:
 - [Cryptex-github](https://github.com/Cryptex-github): Creating workflows + General contributions
