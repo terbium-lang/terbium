@@ -1,3 +1,5 @@
+use crate::{TerbiumObjectHeader, TerbiumType};
+
 use std::{
     alloc::{alloc, dealloc, Layout},
     cell::{Cell, UnsafeCell},
@@ -6,7 +8,7 @@ use std::{
     ops::Deref,
     ptr::{write, NonNull},
 };
-use crate::TerbiumObjectHeader;
+use std::collections::HashMap;
 
 pub struct Block {
     ptr: NonNull<u8>,
@@ -505,6 +507,98 @@ impl<T> ScopedRef<T> for Ptr<T> {
     }
 }
 
+#[derive(Copy, Clone)]
+pub struct Symbol {
+    ptr: *const u8,
+    len: usize,
+}
+
+impl Symbol {
+    pub fn new(name: &str) -> Self {
+        Self {
+            ptr: name.as_ptr(),
+            len: name.len(),
+        }
+    }
+
+    pub unsafe fn unguarded_as_str<'l>(&self) -> &'l str {
+        let slice = std::slice::from_raw_parts(self.ptr, self.len);
+
+        std::str::from_utf8(slice).unwrap()
+    }
+
+    pub fn as_str<'g>(&self, _: &'g dyn MutatorScope) -> &'g str {
+        unsafe { self.unguarded_as_str() }
+    }
+}
+
+pub struct SymbolMap {
+    // map: RefCell<HashMap<>> TODO
+}
+
 pub struct Heap {
     heap: RawHeap<TerbiumObjectHeader>,
+    symbols: SymbolMap,
+}
+
+impl Heap {
+    fn new() -> Self {
+        Self {
+            heap: RawHeap::<TerbiumObjectHeader>::new(),
+            symbols: SymbolMap::new(),
+        }
+    }
+
+    fn alloc<T>(&self, o: T) -> Result<Ptr<T>, BlockAllocError>
+    where
+        T: AllocObject<TerbiumType>,
+    {
+        Ok(self.heap.alloc(o)?)
+    }
+}
+
+pub struct MutatorView<'mem> {
+    heap: &'mem Heap,
+}
+
+impl<'mem> MutatorView<'mem> {
+    pub fn new(m: &Memory) -> Self {
+        Self {
+            heap: &m.heap,
+        }
+    }
+
+    pub fn alloc<T>(&self, o: T) -> Result<ScopedPtr<'_, T>, BlockAllocError>
+    where
+        T: AllocObject<TerbiumType>,
+    {
+        Ok(ScopedPtr::new(
+            self,
+            // object should live as long as the mutator view
+            self.heap.alloc(o)?.scoped_ref(self),
+        ))
+    }
+}
+
+pub trait Mutator<I, O>: Sized {
+    fn run(&self, mem: &MutatorView, input: I) -> Result<O, BlockAllocError>;
+}
+
+pub struct Memory {
+    heap: Heap,
+}
+
+impl Memory {
+    pub fn new() -> Self {
+        Self { heap: Heap::new() }
+    }
+
+    pub fn mutate<I, O, M>(&self, mutator: &M, input: I) -> Result<O, BlockAllocError>
+    where
+        M: Mutator<I, O>,
+    {
+        let mut view = MutatorView::new(self);
+
+        mutator.run(&mut view, input)
+    }
 }
