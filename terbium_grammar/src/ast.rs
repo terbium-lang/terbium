@@ -13,6 +13,7 @@ pub enum Expr {
     Bool(bool),
     Ident(String),
     Array(Vec<Expr>),
+    Cast(Box<Expr>, Box<Expr>),
     UnaryExpr {
         operator: Operator,
         value: Box<Expr>,
@@ -283,14 +284,23 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, Body> {
                 })
                 .boxed();
 
-            let binary_pow = unary
+            let binary_cast = unary
+                .clone()
+                .then(just(Token::Cast).ignore_then(unary).repeated())
+                .foldl(|subject, ty| Expr::Cast(
+                    Box::new(subject),
+                    Box::new(ty)
+                ))
+                .boxed();
+
+            let binary_pow = binary_cast
                 .clone()
                 .then(just(Token::Operator(Operator::Pow)).map(|o| match o {
                     Token::Operator(op) => op,
                     _ => unreachable!(),
                 }))
                 .repeated()
-                .then(unary)
+                .then(binary_cast)
                 .foldr(|(lhs, operator), rhs| Expr::BinaryExpr {
                     operator,
                     lhs: Box::new(lhs),
@@ -618,7 +628,7 @@ mod tests {
                     let x = 5;
                 }
 
-                10
+                "10"::int
             }
         "#;
         let (tree, errors) = Body::from_string(code.to_string()).unwrap();
@@ -661,7 +671,10 @@ mod tests {
                                 else_body: None,
                                 return_last: false,
                             }),
-                            Expr(Integer(10)),
+                            Expr(Cast(
+                                Box::new(String("10".to_string())),
+                                Box::new(Ident("int".to_string())),
+                            )),
                         ],
                         return_last: true,
                     }
