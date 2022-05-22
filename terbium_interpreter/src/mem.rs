@@ -2,13 +2,13 @@ use crate::{TerbiumObjectHeader, TerbiumType};
 
 use std::{
     alloc::{alloc, dealloc, Layout},
-    cell::{Cell, UnsafeCell},
+    cell::{Cell, RefCell, UnsafeCell},
+    collections::HashMap,
     marker::PhantomData,
     mem::{replace, size_of},
     ops::Deref,
     ptr::{write, NonNull},
 };
-use std::collections::HashMap;
 
 pub struct Block {
     ptr: NonNull<u8>,
@@ -533,7 +533,71 @@ impl Symbol {
 }
 
 pub struct SymbolMap {
-    // map: RefCell<HashMap<>> TODO
+    map: RefCell<HashMap<String, Ptr<Symbol>>>,
+    arena: Arena,
+}
+
+impl SymbolMap {
+    pub fn lookup(&self, name: impl ToString) -> Ptr<Symbol> {
+        {
+            if let Some(p) = self.map.borrow().get(name) {
+                return *p;
+            }
+        }
+
+        let name = name.to_string();
+        let ptr = self.arena.alloc(Symbol::new(&name)).unwrap();
+        self.map.borrow_mut().insert(name, ptr);
+
+        ptr
+    }
+}
+
+struct ArenaHeader {}
+
+impl AllocHeader for ArenaHeader {
+    type TypeId = TerbiumType;
+
+     fn new<O: AllocObject<Self::TypeId>>(
+        _size: u32,
+        _block_size: SizeClass,
+        _mark: Mark,
+    ) -> Self { Self {} }
+
+    fn mark(&mut self) {}
+    fn is_marked(&self) -> bool { true }
+    fn size(&self) -> usize { 1 }
+    fn block_size(&self) -> BlockSize { BlockSize::Small }
+    fn type_id(&self) -> Self::TypeId { TerbiumType::Symbol }
+}
+
+pub struct Arena {
+    heap: RawHeap<ArenaHeader>,
+}
+
+impl Arena {
+    pub fn new() -> Self {
+        Self { heap: RawHeap::new() }
+    }
+}
+
+impl RawAllocator for Arena {
+    type Header = ArenaHeader;
+
+    fn alloc<T>(&self, o: T) -> Result<Ptr<T>, BlockAllocError>
+    where
+        T: AllocObject<TerbiumType>,
+    {
+        self.heap.alloc(o)
+    }
+
+    fn get_header(_: NonNull<()>) -> NonNull<Self::Header> {
+        unimplemented!()
+    }
+
+    fn get_object(header: NonNull<Self::Header>) -> NonNull<()> {
+        unimplemented!()
+    }
 }
 
 pub struct Heap {
@@ -542,18 +606,22 @@ pub struct Heap {
 }
 
 impl Heap {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             heap: RawHeap::<TerbiumObjectHeader>::new(),
             symbols: SymbolMap::new(),
         }
     }
 
-    fn alloc<T>(&self, o: T) -> Result<Ptr<T>, BlockAllocError>
+    pub fn alloc<T>(&self, o: T) -> Result<Ptr<T>, BlockAllocError>
     where
         T: AllocObject<TerbiumType>,
     {
         Ok(self.heap.alloc(o)?)
+    }
+
+    pub fn lookup_symbol(&self, name: impl ToString) -> TaggedPtr {
+        todo!()
     }
 }
 
@@ -562,7 +630,7 @@ pub struct MutatorView<'mem> {
 }
 
 impl<'mem> MutatorView<'mem> {
-    pub fn new(m: &Memory) -> Self {
+    pub fn new(m: &'mem Memory) -> MutatorView<'mem> {
         Self {
             heap: &m.heap,
         }
@@ -580,12 +648,14 @@ impl<'mem> MutatorView<'mem> {
     }
 }
 
+impl<'mem> MutatorScope for MutatorView<'mem> {}
+
 pub trait Mutator<I, O>: Sized {
     fn run(&self, mem: &MutatorView, input: I) -> Result<O, BlockAllocError>;
 }
 
 pub struct Memory {
-    heap: Heap,
+    pub heap: Heap,
 }
 
 impl Memory {
@@ -601,4 +671,69 @@ impl Memory {
 
         mutator.run(&mut view, input)
     }
+}
+
+#[derive(Copy, Clone)]
+pub union TaggedPtr {
+    tag: usize,
+    integer: i128,
+    symbol: NonNull<Symbol>,
+    o: NonNull<()>,
+}
+
+impl TaggedPtr {
+    pub const MASK: usize = 3;
+    pub const INTEGER: usize = 0;
+    pub const SYMBOL: usize = 1;
+    pub const PAIR: usize = 2;
+    pub const OBJECT: usize = 3;
+    pub const PTR_MASK: usize = !3;
+
+    pub fn null() -> TaggedPtr {
+        TaggedPtr { tag: 0 }
+    }
+
+    pub fn is_null(&self) -> bool {
+        unsafe { self.tag == 0 }
+    }
+
+    pub fn object<T>(ptr: Ptr<T>) -> Self {
+        Self { o: ptr.tag(Self::OBJECT).cast::<()>() }
+    }
+
+    pub fn symbol(ptr: Ptr<Symbol>) -> Self {
+        Self { symbol: ptr.tag(Self::SYMBOL) }
+    }
+
+    pub fn integer(value: i128) -> Self {
+        Self {
+            integer: (((value as u128) << 2) | Self::INTEGER) as i128,
+        }
+    }
+}
+
+impl PartialEq for TaggedPtr {
+    fn eq(&self, other: &Self) -> bool {
+        unsafe { self.tag == other.tag }
+    }
+}
+
+pub trait Tagged<T> {
+    fn tag(self, tag: usize) -> NonNull<T>;
+    fn untag(from: NonNull<T>) -> Ptr<T>;
+}
+
+impl<T> Tagged<T> for Ptr<T> {
+    fn tag(self, tag: usize) -> NonNull<T> {
+        unsafe { NonNull::new_unchecked((self.untyped() | tag) as *mut T) }
+    }
+
+    fn untag(from: NonNull<T>) -> Ptr<T> {
+        Self::<T>::new((from.as_ptr() as usize & TaggedPtr::MASK) as *const T)
+    }
+}
+
+#[derive(Copy, Clone)]
+pub enum FatPtr {
+
 }

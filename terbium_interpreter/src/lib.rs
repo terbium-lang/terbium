@@ -1,6 +1,7 @@
 //! The interpreter for Terbium.
 
-use crate::mem::{BlockSize, Mark, ScopedPtr};
+use terbium_grammar::Expr;
+use crate::mem::{BlockAllocError, BlockSize, Heap, Mark, Memory, Mutator, MutatorView, ScopedPtr};
 
 mod mem;
 
@@ -15,6 +16,7 @@ pub enum TerbiumType {
     Null,
     CallFrameList,
     Thread,
+    Symbol,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -34,4 +36,30 @@ pub enum TerbiumValue<'s> {
     Function(ScopedPtr<'s, TerbiumFunction>), // TODO
     Array(ScopedPtr<'s, Vec<TerbiumValue<'s>>>),
     Null,
+}
+
+#[derive(Debug)]
+pub struct Interpreter {
+    pub memory: Memory,
+    mutator: Mutat
+}
+
+impl Interpreter {
+    pub fn new() -> Self {
+        Self { memory: Memory::new() }
+    }
+
+    pub fn eval(&self, expr: Expr) -> TerbiumValue {
+        match expr {
+            Expr::Integer(i) => TerbiumValue::Int(ScopedPtr::new(
+
+            ))
+        }
+    }
+}
+
+impl Mutator<(), > for Interpreter {
+    fn run(&self, mem: &MutatorView, input: I) -> Result<O, BlockAllocError> {
+
+    }
 }
