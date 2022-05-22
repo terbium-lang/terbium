@@ -1,18 +1,29 @@
-class Iterator<T> {
-    map<U>(f: (T) -> U) -> Iterator<U> {
+class StopIteration(Error) {}
 
+trait Iterator<T> {
+    op next() -> T throws StopIteration;
+
+    map<U>(f: (T) -> U) -> MapIterator<T, U> {
+        MapIterator($, f)
     }
 
     for_each(f: (T) -> any) -> $ {
-
+        for item in $ { f(item); }
+        $
     }
 
-    filter(predicate: (T) -> bool) -> Iterator<T> {
-
+    filter(predicate: (T) -> bool) -> FilterIterator<T> {
+        FilterIterator($, predicate)
     }
 
     filter_map<U>(f: (T) -> ?U) -> Iterator<U> {
 
+    }
+
+    find(predicate: (T) -> bool) -> T {
+        for item in $ {
+            if predicate(item) { break item; }
+        }
     }
 
     as_chunks(size: int) -> Iterator<T[]> {
@@ -35,7 +46,14 @@ class Iterator<T> {
     where
         T @ add: (T) -> T,
     {
+        $reduce((a, b) => a + b)
+    }
 
+    product() -> T
+    where
+        T @ mul: (T) -> T,
+    {
+        $reduce((a, b) => a * b)
     }
 
     enumerate() -> Iterator<[int, T]> {
@@ -43,26 +61,231 @@ class Iterator<T> {
     }
 
     next() -> T {
+        __trb_internal_call_op($, "next")
+    }
+
+    silent() -> Iterator<?T> {
 
     }
 
-    skip(count: int = 1) -> $ {
-
+    skip(count: int = 1) -> $ throws StopIteration {
+        for _ in 0..count { $next(); }
+        $
     }
 
     skip_while(predicate: (T) -> bool) -> $ {
+        for item in $ {
+            if !predicate(item) { break; }
+        }
+
+        $
+    }
+
+    limit(count: int) -> Iterator<T> {
 
     }
 
-    zip<U>(other: Iterator<U>) -> Iterator<[T, U]> {
+    until(predicate: (T) -> bool) -> Iterator<T> {
 
     }
 
-    unzip<U>(other: Iterator<[T, U]>) -> [Iterator<T>, Iterator<U>] {
+    nth(n: int) -> T {
 
     }
 
-    chain<U>(other: Iterator<U>) -> Iterator<T | U> {
+    cycle() -> Iterator<T> {
 
+    }
+
+    count() -> int {
+        $map(_ => 1).sum()
+    }
+
+    min() -> T
+    throws
+        StopIteration,
+    where
+        T @ lt: (T) -> bool,
+    {
+        let smallest = $next();
+
+        for item in $ {
+            if item < smallest { smallest = item; }
+        }
+
+        smallest
+    }
+
+    max() -> T
+    throws
+        StopIteration,
+    where
+        T @ gt: (T) -> bool,
+    {
+        let largest = $next();
+
+        for item in $ {
+            if item > largest { largest = item; }
+        }
+
+        largest
+    }
+
+    zip<U>(other: Iterator<U>) -> ZipIterator<T, U> {
+        ZipIterator($, other)
+    }
+
+    unzip<Z, A, B>() -> [Iterator<A>, Iterator<B>]
+    where
+        T: [A, B],
+    {
+        let collected = $::Array;
+        [ collected.lazy_map(c => c[0]), collected.lazy_map(c => c[1]) ]
+    }
+
+    chain<U>(other: Iterator<U>) -> ChainIterator<T, U> {
+        ChainIterator($, other)
+    }
+
+    any(predicate: (T) -> bool) -> bool {
+        for item in $ {
+            if predicate(item) { return true; }
+        }
+
+        false
+    }
+
+    all(predicate: (T) -> bool) -> bool {
+        for item in $ {
+            if !predicate(item) { return false; }
+        }
+
+        true
+    }
+
+    any_true() -> bool { $any(o => o) }
+    all_true() -> bool { $all(o => o) }
+
+    flatten<U>() -> Iterator<U>
+    where
+        T: Iterator<U> | U,
+    {
+        FlattenIterator($)
+    }
+
+    cast Array<T> {
+        let arr = [];
+        $for_each(arr.push);
+
+        arr
+    }
+}
+
+class MapIterator<T, U>(Iterator<U>) {
+    private it: Iterator<T>;
+    private f: (T) -> U;
+
+    op construct(it: Iterator<T>, f: (T) -> U) -> null {
+        $it = it;
+        $f = f;
+    }
+
+    op next() -> U throws StopIteration {
+        f($it.next())
+    }
+}
+
+class FilterIterator<T>(Iterator<T>) {
+    private it: Iterator<T>;
+    private predicate: (T) -> bool;
+
+    op construct(it: Iterator<T>, predicate: (T) -> bool) -> null {
+        $it = it;
+        $predicate = predicate;
+    }
+
+    op next() -> T throws StopIteration {
+        for item in $it {
+            if $predicate(item) { break item; }
+        }
+    }
+}
+
+class ZipIterator<T, U>(Iterator<[T, U]>) {
+    private left: Iterator<T>;
+    private right: Iterator<U>;
+
+    op construct(left: Iterator<T>, right: Iterator<U>) -> null {
+        $left = left;
+        $right = right;
+    }
+
+    op next() -> [T, U] throws StopIteration {
+        [ $left.next(), $right.next() ]
+    }
+}
+
+class ChainIterator<T, U>(Iterator<T | U>) {
+    private left: Iterator<T>;
+    private right: Iterator<U>;
+    private left_exhausted: bool;
+
+    op construct(left: Iterator<T>, right: Iterator<U>) -> null {
+        $left = left;
+        $right = right;
+        $left_exhausted = false;
+    }
+
+    op next() -> T | U throws StopIteration {
+        if $left_exhausted {
+            $right.next()
+        } else {
+            try {
+                $left.next()
+            } catch StopIteration {
+                $left_exhausted = true;
+                $right.next()
+            }
+        }
+    }
+}
+
+class FlattenIterator<T, Nest>(Iterator<Nest>)
+where
+    T: Iterator<Nest> | Nest,
+{
+    private it: Iterator<T>;
+    private current: ?Iterator<Nest>;
+
+    op construct(it: Iterator<T>) -> null {
+        $it = it;
+        $current = null;
+    }
+
+    op next() -> Nest throws StopIteration {
+        if $current != null {
+            try {
+                return $current.next();
+            } catch StopIteration {
+                $current = null;
+            }
+        }
+
+        let result = $it.next();
+
+        if result is Iterator<any> {
+            $current = result;
+            return $next();
+        }
+
+        result
+    }
+}
+
+trait IntoIterator<T, I: Iterator<T>> {
+    op iter() -> I;
+
+    iter() -> I {
+        __trb_internal_call_op($, "iter")
     }
 }

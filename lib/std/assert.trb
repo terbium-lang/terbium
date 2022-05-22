@@ -1,6 +1,6 @@
 require repr from .util;
 
-/// Raised when an assertion fails.
+/// Thrown when an assertion fails.
 class AssertionError(Error) {}
 
 func _assert(passes: any, message: ?Castable<string>, explanation: string) -> null
@@ -91,7 +91,7 @@ where
     E @ eq: (E) -> bool,
 {
     if items.len() < 2 {
-        throw SignatureError($"expected at least 2 arguments into assert_eq");
+        throw SignatureError("expected at least 2 arguments into assert_eq");
     }
 
     let subject = items[0]!;
@@ -104,7 +104,9 @@ where
 }
 
 /// Asserts if the given objects are not equal to each other.
+///
 /// This assertion will only pass if **all** objects passed are not equal to each other.
+/// If any pair of items equal each other this assertion will fail.
 ///
 /// To appease the type-checker, all objects must be of the same type regardless if the inequality operator
 /// is compatible with other types.
@@ -135,7 +137,7 @@ where
     N @ ne: (N) -> bool,
 {
     if items.len() < 2 {
-        throw SignatureError($"expected at least 2 arguments into assert_ne");
+        throw SignatureError("expected at least 2 arguments into assert_ne");
     }
 
     let subject = items[0]!;

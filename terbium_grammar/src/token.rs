@@ -162,6 +162,7 @@ pub enum Keyword {
     Return,
     With,
     Throws,
+    Where,
 }
 
 impl Display for Keyword {
@@ -186,6 +187,7 @@ impl Display for Keyword {
             Self::Return => "return",
             Self::With => "with",
             Self::Throws => "throws",
+            Self::Where => "where",
         })
     }
 }
@@ -373,6 +375,7 @@ pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Error> {
         "return" => Token::Keyword(Keyword::Return),
         "with" => Token::Keyword(Keyword::With),
         "throws" => Token::Keyword(Keyword::Throws),
+        "where" => Token::Keyword(Keyword::Where),
         _ => Token::Identifier(s),
     });
 
