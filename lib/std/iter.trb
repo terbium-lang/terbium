@@ -281,3 +281,11 @@ where
         result
     }
 }
+
+trait IntoIterator<T> {
+    op iter() -> Iterator<T>;
+
+    iter() -> Iterator<T> {
+        __trb_internal_call_op($, "iter")
+    }
+}
