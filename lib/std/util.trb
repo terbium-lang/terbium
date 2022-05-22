@@ -13,5 +13,5 @@
 /// std.assert_eq(std.repr("foo"), "'foo'");
 /// ```
 func repr(obj: any) -> string {
-    return __trb_internal_call_op(obj, "repr");
+    __trb_internal_call_op(obj, "repr")
 }

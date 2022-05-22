@@ -1,3 +1,4 @@
 require assert, assert_false, assert_eq, assert_ne from .assert;
 require print, println from .io;
+require call_op, get_op, has_op from .ops;
 require repr from .util;
