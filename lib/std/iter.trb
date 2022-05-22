@@ -282,10 +282,10 @@ where
     }
 }
 
-trait IntoIterator<T> {
-    op iter() -> Iterator<T>;
+trait IntoIterator<T, I: Iterator<T>> {
+    op iter() -> I;
 
-    iter() -> Iterator<T> {
+    iter() -> I {
         __trb_internal_call_op($, "iter")
     }
 }
