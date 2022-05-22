@@ -91,7 +91,7 @@ where
     E @ eq: (E) -> bool,
 {
     if items.len() < 2 {
-        throw SignatureError($"expected at least 2 arguments into assert_eq");
+        throw SignatureError("expected at least 2 arguments into assert_eq");
     }
 
     let subject = items[0]!;
@@ -137,7 +137,7 @@ where
     N @ ne: (N) -> bool,
 {
     if items.len() < 2 {
-        throw SignatureError($"expected at least 2 arguments into assert_ne");
+        throw SignatureError("expected at least 2 arguments into assert_ne");
     }
 
     let subject = items[0]!;
