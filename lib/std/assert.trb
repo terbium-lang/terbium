@@ -1,0 +1,148 @@
+require repr from .util;
+
+/// Raised when an assertion fails.
+class AssertionError(Error) {}
+
+func _assert(passes: any, message: ?Castable<string>, explanation: string) -> null
+throws
+    AssertionError,
+{
+    if !passes {
+        throw AssertionError(if message != null {
+            message
+        } else {
+            "assertion failed"
+        })
+        .explain(explanation);
+    }
+}
+
+/// Asserts if the given object is truthy. Throws {err: AssertionError} otherwise.
+///
+/// # Parameters
+/// - obj: The object to assert for truthiness.
+/// - message (optional Castable<{type: string}>): The assertion message that will be shown given this assertion fails.
+///
+/// # Example
+/// ```trb
+/// require std;
+///
+/// std.assert(true);  // Passes.
+/// std.assert(false); // Fails.
+/// std.assert(1);     // Passes. 1 when casted to bool is true.
+/// std.assert(0);     // Fails. 0 when casted to bool is false.
+/// ```
+func assert(obj: any, ?message: Castable<string>) -> null
+throws
+    AssertionError,
+{
+    _assert(obj, message, $"assertion subject {obj:?} when casted to bool returned `false`");
+}
+
+/// Asserts if the given object is falsy. Throws {err: AssertionError} otherwise.
+///
+/// # Parameters
+/// - obj: The object to assert for falsiness.
+/// - message (optional Castable<{type: string}>): The assertion message that will be shown given this assertion fails.
+///
+/// # Example
+/// ```trb
+/// require std;
+///
+/// std.assert_false(true);  // Fails.
+/// std.assert_false(false); // Passes.
+/// std.assert_false(1);     // Fails. 1 when casted to bool is true.
+/// std.assert_false(0);     // Passes. 0 when casted to bool is false.
+/// ```
+func assert_false(obj: any, ?message: Castable<string>) -> null
+throws
+    AssertionError,
+{
+    _assert(!obj, message, $"assertion subject {obj:?} when casted to bool returned `false`");
+}
+
+/// Asserts if the given objects are equal to each other.
+///
+/// To appease the type-checker, all objects must be of the same type regardless if the equality operator
+/// is compatible with other types.
+///
+/// The objects passed must implement the {op: eq} operation which takes a value compatible with itself,
+/// e.g. if I ran assert_eq on two objects of type T, it must be able to compare equality with another
+/// object of type T.
+///
+/// # Parameters
+/// - *items: The objects to assert equal to each other.
+/// - message (optional kwarg Castable<{type: string}>): The assertion message that will be shown given this assertion fails.
+///
+/// # Example
+/// ```trb
+/// require std;
+///
+/// std.assert_eq(1 + 1, 2);            // Passes.
+/// std.assert_eq(1 + 1, 3);            // Fails.
+/// std.assert_eq(1 + 1, 5 - 3, 0 + 2); // Passes.
+/// std.assert_eq(1 + 1, "2");          // Does not compile. All arguments must be the same type.
+/// ```
+func assert_eq<E>(*items: E, ?message: Castable<string>) -> null
+throws
+    AssertionError,
+    SignatureError,
+where
+    E @ eq: (E) -> bool,
+{
+    if items.len() < 2 {
+        throw SignatureError($"expected at least 2 arguments into assert_eq");
+    }
+
+    let subject = items[0]!;
+    _assert(
+        items.all(item => item == subject),
+        message,
+        "assertion for equality failed on the following subjects:\n\n"
+        + items.map(repr).join("\n").indent(4),
+    )
+}
+
+/// Asserts if the given objects are not equal to each other.
+/// This assertion will only pass if **all** objects passed are not equal to each other.
+///
+/// To appease the type-checker, all objects must be of the same type regardless if the inequality operator
+/// is compatible with other types.
+///
+/// The objects passed must implement the {op: ne} operation which takes a value compatible with itself,
+/// e.g. if I ran assert_ne on two objects of type T, it must be able to compare inequality with another
+/// object of type T.
+///
+/// # Parameters
+/// - *items: The objects to assert not-equal to each other.
+/// - message (optional kwarg Castable<{type: string}>): The assertion message that will be shown given this assertion fails.
+///
+/// # Example
+/// ```trb
+/// require std;
+///
+/// std.assert_ne(1 + 1, 2);            // Fails.
+/// std.assert_ne(1 + 1, 3);            // Passes.
+/// std.assert_ne(1 + 1, 5 - 3, 0 + 2); // Fails.
+/// std.assert_ne(0, 1, 1);             // Fails. Although 0 != 1, 1 == 1 making the assertion fail.
+/// std.assert_ne(1 + 1, "3");          // Does not compile. All arguments must be the same type.
+/// ```
+func assert_ne<N>(*items: N, ?message: Castable<string>) -> null
+throws
+    AssertionError,
+    SignatureError,
+where
+    N @ ne: (N) -> bool,
+{
+    if items.len() < 2 {
+        throw SignatureError($"expected at least 2 arguments into assert_ne");
+    }
+
+    let subject = items[0]!;
+    _assert(
+        items.all(item => item != subject),
+        message,
+        "assertion for inequality failed on the following subjects:\n\n"
+        + items.map(repr).join("\n").indent(4),
+    )
+}

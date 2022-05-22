@@ -1,0 +1,40 @@
+/// Writes a string into standard-output.
+/// To print with a trailing newline, see {func: println}.
+///
+/// The given message will be casted into a {type: string} beforehand.
+///
+/// # Parameters
+/// - message (Castable<{type: string}>): The message to print, should be castable to {type: string}.
+///
+/// # Example
+/// ```trb
+/// require std;
+///
+/// func main() {
+///     std.print("Hello, ");
+///     std.print("world!");
+/// }
+/// ```
+func print(message: Castable<string>) -> null {
+    __trb_internal_print(message::string);
+}
+
+/// Writes a string into standard-output with a newline at the end.
+/// To print without a trailing newline, see {func: print}.
+///
+/// The given message will be casted into a {type: string} beforehand.
+///
+/// # Parameters
+/// - message (Castable<{type: string}>): The message to print, should be castable to {type: string}.
+///
+/// # Example
+/// ```trb
+/// require std;
+///
+/// func main() {
+///     std.println("Hello, world!");
+/// }
+/// ```
+func println(message: Castable<string>) -> null {
+    __trb_internal_print(message::string + '\n');
+}

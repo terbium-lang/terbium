@@ -1,0 +1,68 @@
+class Iterator<T> {
+    map<U>(f: (T) -> U) -> Iterator<U> {
+
+    }
+
+    for_each(f: (T) -> any) -> $ {
+
+    }
+
+    filter(predicate: (T) -> bool) -> Iterator<T> {
+
+    }
+
+    filter_map<U>(f: (T) -> ?U) -> Iterator<U> {
+
+    }
+
+    as_chunks(size: int) -> Iterator<T[]> {
+
+    }
+
+    step_by(step: int) -> Iterator<T> {
+
+    }
+
+    fold<L>(start: L, f: (L, T) -> L) -> L {
+
+    }
+
+    reduce(f: (T, T) -> T) -> T {
+
+    }
+
+    sum() -> T
+    where
+        T @ add: (T) -> T,
+    {
+
+    }
+
+    enumerate() -> Iterator<[int, T]> {
+
+    }
+
+    next() -> T {
+
+    }
+
+    skip(count: int = 1) -> $ {
+
+    }
+
+    skip_while(predicate: (T) -> bool) -> $ {
+
+    }
+
+    zip<U>(other: Iterator<U>) -> Iterator<[T, U]> {
+
+    }
+
+    unzip<U>(other: Iterator<[T, U]>) -> [Iterator<T>, Iterator<U>] {
+
+    }
+
+    chain<U>(other: Iterator<U>) -> Iterator<T | U> {
+
+    }
+}
