@@ -1,0 +1,119 @@
+require InnerFile from fs_impl;
+
+/// Thrown when any IO operation failed.
+class IOError(Error) {}
+
+
+/// The file object that represents a file on the filesystem.
+///
+/// This is a low-level interface that allows you to read and write files.
+///
+/// # Parameters
+/// - path ({type: string}): The path to the file.
+/// - open_options ({type: OpenOptions}): The open options to open the file with.
+class File {
+    private inner: InnerFile;
+
+    op constructor(
+        path: string,
+        *,
+        read: bool = false,
+        write: bool = false,
+        append: bool = false,
+        truncate: bool = false,
+        create: bool = false,
+        create_new: bool = false,
+    ) -> null {
+        $inner = InnerFile(
+            path, 
+            read, 
+            write, 
+            append, 
+            truncate, 
+            create, 
+            create_new
+        );
+    }
+
+    /// Reads the content of the file until the specified length is reached.
+    ///
+    /// # Parameters
+    /// - length ({type: int}): The length to read, to read until EOF, pass -1 as length.
+    op read(length: int) -> bytes 
+    throws
+        IoError,
+    {
+        $inner.read(length)
+    }
+
+    /// Writes the content to the file.
+    ///
+    /// # Parameters
+    /// - content ({type: bytes}): The content to write.
+    op write(bytes: bytes) -> int 
+    throws
+        IoError,
+    {
+        $inner.write(bytes)
+    }
+
+    /// Appends the content to the file.
+    ///
+    /// # Parameters
+    /// - content ({type: bytes}): The content to append.
+    op append(bytes: bytes) -> int 
+    throws 
+        IoError,
+    {
+        $inner.append(bytes)
+    }
+
+    /// Truncates the file to the specified length.
+    ///
+    /// # Parameters
+    /// - length ({type: int}): The length to truncate to.
+    op truncate(length: int) -> null 
+    throws
+        IoError,
+    {
+        $inner.truncate(length);
+    }
+
+    /// Flushes the file.
+    op flush() -> null 
+    throws
+        IoError,
+    {
+        $inner.flush();
+    }
+
+    /// Closes the file.
+    op close() -> null 
+    throws 
+        IoError,
+    {
+        $inner.close();
+    }
+
+    // Context Managers
+    op enter() -> $ {
+        $
+    }
+
+    op exit() -> null {
+        $close();
+    }
+}
+
+/// Reads the entire contents of a file into a bytes object.
+///
+/// # Parameters
+/// - path ({type: string}): The path to the file.
+func read(path: string) -> bytes 
+throws
+    IoError,
+{
+    with File(path, read=true) as file {
+        file.read(-1)
+    }
+}

@@ -1,3 +1,4 @@
 require assert, assert_false, assert_eq, assert_ne from .assert;
+require IoError, File, read from .fs;
 require print, println from .io;
 require repr from .util;
