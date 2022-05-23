@@ -31,6 +31,7 @@ throws
 /// std.assert(false); // Fails.
 /// std.assert(1);     // Passes. 1 when casted to bool is true.
 /// std.assert(0);     // Fails. 0 when casted to bool is false.
+/// std.assert(false, "message"); // Fails with an assertion message.
 /// ```
 func assert(obj: any, ?message: Castable<string>) -> null
 throws
@@ -147,4 +148,38 @@ where
         "assertion for inequality failed on the following subjects:\n\n"
         + items.map(repr).join("\n").indent(4),
     )
+}
+
+/// Asserts if the given object is null.
+///
+/// # Parameters
+/// - obj: The object to assert to be null.
+/// - message (optional Castable<{type: string}>): The assertion message that will be shown given this assertion fails.
+///
+/// # Example
+/// ```trb
+/// require std;
+///
+/// std.assert_null(null);  // Passes
+/// std.assert_null(false); // Fails
+/// ```
+func assert_null(obj: any, ?message: Castable<string>) -> null {
+    _assert(obj == null, message, $"assertion failed because {obj:?} is not null");
+}
+
+/// Asserts that the given object is not null.
+///
+/// # Parameters
+/// - obj: The object to assert to be not null.
+/// - message (optional Castable<{type: string}>): The assertion message that will be shown given this assertion fails.
+///
+/// # Example
+/// ```trb
+/// require std;
+///
+/// std.assert_not_null(false); // Passes
+/// std.assert_not_null(null);  // Fails
+/// ```
+func assert_not_null(obj: any, ?message: Castable<string>) -> null {
+    _assert(obj != null, message, "assertion failed because object is null");
 }
