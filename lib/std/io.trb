@@ -1,3 +1,5 @@
+require repr as _repr from .util;
+
 /// Writes a string into standard-output.
 /// To print with a trailing newline, see {func: println}.
 ///
@@ -5,6 +7,12 @@
 ///
 /// # Parameters
 /// - message (Castable<{type: string}>): The message to print, should be castable to {type: string}.
+/// - *extra (optional Castable<{type: string}>): Other messages to print alongside with the main message.
+/// Will be delimited alongside with the main message with `sep`.
+/// - repr ({type: bool}): Whether or not to print the debug representation instead of casting it to string.
+/// Defaults to `false`.
+/// - sep ({type: string}, default `" "`): The separator given you pass extra items to `*extra`.
+/// Defaults to a standard space (`" "`).
 ///
 /// # Example
 /// ```trb
@@ -15,8 +23,14 @@
 ///     std.print("world!");
 /// }
 /// ```
-func print(message: Castable<string>) -> null {
-    __trb_internal_print(message::string);
+func print(message: Castable<string>, *extra: Castable<string>, repr: bool = false, sep: string = " ") -> null {
+    __trb_internal_print(
+        [print]
+            .iter()
+            .chain(extra.iter())
+            .map(if repr { _repr } else { item => item::string })
+            .join(sep)
+    );
 }
 
 /// Writes a string into standard-output with a newline at the end.
@@ -26,6 +40,12 @@ func print(message: Castable<string>) -> null {
 ///
 /// # Parameters
 /// - message (Castable<{type: string}>): The message to print, should be castable to {type: string}.
+/// - *extra (optional Castable<{type: string}>): Other messages to print alongside with the main message.
+/// Will be delimited alongside with the main message with `sep`.
+/// - repr ({type: bool}): Whether or not to print the debug representation instead of casting it to string.
+/// Defaults to `false`.
+/// - sep ({type: string}, default `" "`): The separator given you pass extra items to `*extra`.
+/// Defaults to a standard space (`" "`).
 ///
 /// # Example
 /// ```trb
@@ -35,6 +55,7 @@ func print(message: Castable<string>) -> null {
 ///     std.println("Hello, world!");
 /// }
 /// ```
-func println(message: Castable<string>) -> null {
-    __trb_internal_print(message::string + '\n');
+func println(message: Castable<string>, *extra: Castable<string>, repr: bool = false, sep: string = " ") -> null {
+    print(message, *extra, repr=repr, sep=sep);
+    print("\n");
 }

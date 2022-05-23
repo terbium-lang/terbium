@@ -289,3 +289,18 @@ trait IntoIterator<T, I: Iterator<T>> {
         __trb_internal_call_op($, "iter")
     }
 }
+
+trait Joinable<S, O> {
+    join(sep: S) -> O;
+}
+
+extend Joinable<string, string> for Iterator<string> {
+    join(sep: string) -> string {
+        let result = $next();
+
+        for item in $ {
+            result += sep + $next();
+        }
+        result
+    }
+}
