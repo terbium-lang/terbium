@@ -1,0 +1,168 @@
+require assert from .assert;
+require name_of from .util;
+
+trait _SizedInt {
+    static const bits: int;
+    static const signed: bool;
+    private const inner: int;
+
+    static min_int() -> int {
+        if $signed { -(2 ** ($bits - 1)) }
+        else { 0 }
+    }
+
+    static max_int() -> int {
+        2 ** ($bits - if $signed { 1 } else { 0 }) - 1
+    }
+
+    static min() -> $ {
+        $($min_int())
+    }
+
+    static max() -> $ {
+        $($max_int())
+    }
+
+    op construct(i: int) -> null
+    throws
+        AssertionError,
+        OverflowError,
+    {
+        assert($bits.is_power_of_two(), "bit count must be a power of two");
+
+        if i > $max_int() {
+            throw OverflowError($"{i} is above max integer for this type");
+        } else if i < $min_int() {
+            throw OverflowError($"{i} is below min integer for this type");
+        }
+
+        $inner = i;
+    }
+
+    static from_wrapped(i: int) -> $ {
+        $min_int() * 2 + i % 2 ** $bits
+    }
+
+    op repr() -> string {
+        $"{$inner}::{name_of($$)}"
+    }
+
+    op pos() -> $ { $ }
+    op neg() -> $ { $(-$inner) }
+
+    op add(other: $ | int) -> $ {
+        $($inner + if other is int { other } else { other::int })
+    }
+
+    op sub(other: $ | int) -> $ { $ + -$inner }
+
+    op mul(other: $ | int) -> $ {
+        $($inner * if other is int { other } else { other::int })
+    }
+
+    op div(other: $ | int) -> $ {
+        $($inner / if other is int { other } else { other::int })
+    }
+    
+    op pow(other: $ | int) -> $ {
+        $($inner ** if other is int { other } else { other::int })
+    }
+
+    default op iadd;
+    default op isub;
+    default op imul;
+    default op idiv;
+    default op ipow;
+
+    cast int { $inner }
+    cast from int(value) { $(value) }
+    cast _SizedInt(ty) { ty.from_wrapped($inner) }
+}
+
+trait _WrappedSizedInt {
+    op construct(i: int) -> null throws AssertionError {
+        assert($bits.is_power_of_two(), "bit count must be a power of two");
+    
+        $inner = $min_int() * 2 + i % 2 ** $bits;
+    }
+}
+
+class UInt8(_SizedInt) {
+    static const bits: int = 8;
+    static const signed: bool = false;
+}
+
+class Int8(_SizedInt) {
+    static const bits: int = 8;
+    static const signed: bool = true;
+}
+
+class UInt16(_SizedInt) {
+    static const bits: int = 16;
+    static const signed: bool = false;
+}
+
+class Int16(_SizedInt) {
+    static const bits: int = 16;
+    static const signed: bool = true;
+}
+
+class UInt32(_SizedInt) {
+    static const bits: int = 32;
+    static const signed: bool = false;
+}
+
+class Int32(_SizedInt) {
+    static const bits: int = 32;
+    static const signed: bool = true;
+}
+
+class UInt64(_SizedInt) {
+    static const bits: int = 64;
+    static const signed: bool = false;
+}
+
+class Int64(_SizedInt) {
+    static const bits: int = 64;
+    static const signed: bool = true;
+}
+
+class WrappedUInt8(_WrappedSizedInt) {
+    static const bits: int = 8;
+    static const signed: bool = false;
+}
+
+class WrappedInt8(_WrappedSizedInt) {
+    static const bits: int = 8;
+    static const signed: bool = true;
+}
+
+class WrappedUInt16(_WrappedSizedInt) {
+    static const bits: int = 16;
+    static const signed: bool = false;
+}
+
+class WrappedInt16(_WrappedSizedInt) {
+    static const bits: int = 16;
+    static const signed: bool = true;
+}
+
+class WrappedUInt32(_WrappedSizedInt) {
+    static const bits: int = 32;
+    static const signed: bool = false;
+}
+
+class WrappedInt32(_WrappedSizedInt) {
+    static const bits: int = 32;
+    static const signed: bool = true;
+}
+
+class WrappedUInt64(_WrappedSizedInt) {
+    static const bits: int = 64;
+    static const signed: bool = false;
+}
+
+class WrappedInt64(_WrappedSizedInt) {
+    static const bits: int = 64;
+    static const signed: bool = true;
+}
