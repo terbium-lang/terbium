@@ -1,0 +1,118 @@
+/// Returns a {type: bool} on whether or not the given object implements the given operation.
+///
+/// # Parameters
+/// - obj: The object to check.
+/// - name ({type: string}): The name of the operation to check for.
+///
+/// # Returns
+/// {type: bool}
+///
+/// # Example
+/// ```trb
+/// require std;
+///
+/// std.has_op(1, "add")  // true
+/// std.has_op(1, "next") // false
+/// ```
+func has_op(obj: any, name: string) -> bool {
+    __trb_internal_has_op(obj, name)
+}
+
+/// Gets the desired operation function of the given object.
+///
+/// # Parameters
+/// - obj: The object.
+/// - name ({type: string}): The name of the operation to get.
+///
+/// # Returns
+/// {type: function}: The function that when called (with desired arguments), runs the operation on the object.
+///
+/// # Example
+/// ```trb
+/// require std;
+///
+/// let add_op = std.get_op(1, "add");
+/// std.assert_eq(1 + 1, add_op(1));  // Passes assertion
+/// ```
+func get_op(obj: any, name: string) -> (...) -> any {
+    func _wrapped(*args, **kwargs) {
+        __trb_internal_call_op(obj, name, *args, **kwargs)
+    }
+}
+
+/// Directly calls the desired operation function of the given object.
+///
+/// # Parameters
+/// - obj: The object.
+/// - name ({type: string}): The name of the operation to call.
+///
+/// # Returns
+/// The return value of the called operation.
+///
+/// # Example
+/// ```trb
+/// require std;
+///
+/// std.assert_eq(std.call_op(1, "add", 1), 1 + 1);  // Passes
+/// ```
+func call_op(obj: any, name: string, *args, **kwargs) -> any {
+    __trb_internal_call_op(obj, name, *args, **kwargs)
+}
+
+/// Get the stored name of the given object.
+/// If no name is associated with the object, this will return `null`.
+/// Common usages of this are to get the names of functions and classes.
+///
+/// # Parameters
+/// - obj: The object.
+///
+/// # Returns
+/// ?{type: string}: The name of the object, `null` if it doesn't have one.
+///
+/// # Example
+/// ```trb
+/// require std;
+///
+/// func foo() {}
+///
+/// std.assert_eq(std.name_of(foo), "foo");  // Passes
+/// std.assert_null(std.name_of(1));         // Passes. "1" does not have a name.
+/// std.assert_null(std.name_of(() => {}));  // Passes. Anonymous functions do not have names.
+///
+/// class Foo {}
+///
+/// std.assert_eq(std.name_of(Foo), "Foo");  // Passes.
+/// ```
+func name_of(obj: any) -> ?string {
+    __trb_internal_name_of(obj)
+}
+
+/// Get the type as a first-class object of the given object.
+///
+/// ## Generics
+/// The returned type will be a simple class and may not have all of it's generics filled.
+/// Any unknown generic parameters on the type will be shown as `any`.
+/// Furthermore, you cannot directly access generic parameters as they may be relative or unresolved.
+///
+/// # Parameters
+/// - obj: The object.
+///
+/// # Returns
+/// {type: Type}: The first-class type object of the given object.
+///
+/// # Example
+/// ```trb
+/// require std;
+///
+/// std.assert_eq(std.type_of(1), int);      // Passes
+/// std.assert_eq(std.type_of("a"), string); // Passes
+///
+/// // Can be used as types
+/// std.assert_eq("5"::(std.type_of(1)), 5); // Passes
+///
+/// // Calling static methods
+/// std.assert_eq(std.type_of([]).zeros(3), [0, 0, 0]); // Passes
+/// ```
+func type_of<T>(obj: T) -> Type<T> {
+    __trb_internal_type_of(obj)
+}
