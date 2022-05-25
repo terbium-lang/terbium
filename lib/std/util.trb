@@ -15,3 +15,34 @@
 func repr(obj: any) -> string {
     __trb_internal_call_op(obj, "repr")
 }
+
+/// Marks to-do. Useful for unfinished behavior while still wanting to appease the
+/// static type-checker.
+///
+/// # Parameters
+/// - message (optional {type: string}): A custom message to raise when this is encountered.
+///
+/// # Example
+/// ```trb
+/// func foo() -> int {
+///     // Passes type-checking. Even though this should
+///     // return int, this passes as todo is annotated to
+///     // never return, indicating that the annotation of int
+///     // does not matter.
+///     todo();
+/// }
+///
+/// // Can be used when extending traits on-to classes,
+/// // but you have a required method unfinished
+/// class Baz {
+///     bar() -> int {
+///         todo();
+///     }
+/// }
+/// ```
+func todo(message: string = "not implemented") -> never
+throws
+    UnimplementedError,
+{
+    throw UnimplementedError($"TODO: {message}");
+}
