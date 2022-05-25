@@ -35,10 +35,27 @@ trait Iterator<T> {
     }
 
     fold<L>(start: L, f: (L, T) -> L) -> L {
+        for item in $ {
+            start = f(start, item);
+        }
+        start
+    }
+
+    reduce(f: (T, T) -> T) -> T
+    throws
+        StopIteration,
+    {
+        $fold($next(), f)
+    }
+
+    accumulate_from<L>(start: L, f: (L, T) -> L) -> Iterator<L> {
 
     }
 
-    reduce(f: (T, T) -> T) -> T {
+    accumulate(f: (T, T) -> T) -> Iterator<T>
+    throws
+        StopIteration,
+    {
 
     }
 
@@ -49,15 +66,35 @@ trait Iterator<T> {
         $reduce((a, b) => a + b)
     }
 
-    product() -> T
+    product() -> T  // TODO: this may be confused with cartesian product.
     where
         T @ mul: (T) -> T,
     {
         $reduce((a, b) => a * b)
     }
 
-    enumerate() -> Iterator<[int, T]> {
+    enumerate(*, start: int = 0, step: int = 1) -> ZipIterator<int, T> {
+        if step == 1 {
+            (start..).iter()
+        }
+        else {
+            (0..).iter().map(i => i * step + start)
+        }
+        .zip($)
+    }
 
+    unenumerate<Inner>() -> MapIterator<T, Inner>
+    where
+        T: [int, Inner],
+    {
+        $each(1)
+    }
+
+    each<I, O>(i: I) -> Iterator<O>
+    where
+        T @ get_item: (I) -> O,
+    {
+        $map(item => item[i])
     }
 
     next() -> T {
@@ -65,10 +102,11 @@ trait Iterator<T> {
     }
 
     silent() -> Iterator<?T> {
-
+        $chain($repeated(null))
     }
 
     skip(count: int = 1) -> $ throws StopIteration {
+
         for _ in 0..count { $next(); }
         $
     }
@@ -77,12 +115,11 @@ trait Iterator<T> {
         for item in $ {
             if !predicate(item) { break; }
         }
-
         $
     }
 
-    limit(count: int) -> Iterator<T> {
-
+    limit(limit: int) -> LimitedIterator<T> {
+        LimitedIterator($, limit)
     }
 
     until(predicate: (T) -> bool) -> Iterator<T> {
@@ -171,6 +208,10 @@ trait Iterator<T> {
         T: Iterator<U> | U,
     {
         FlattenIterator($)
+    }
+
+    static repeated<T>(item: T) -> RepeatingIterator<T> {
+        RepeatingIterator(item)
     }
 
     cast Array<T> {
@@ -280,6 +321,35 @@ where
 
         result
     }
+}
+
+class LimitedIterator<T>(Iterator<T>) {
+    private it: Iterator<T>;
+    private limit: int;
+    private i: int;
+
+    op construct(it: Iterator<T>, limit: int) -> null {
+        $item = item;
+        $limit = limit;
+        $i = -1;
+    }
+
+    op next() -> T throws StopIteration {
+        i += 1;
+
+        if i < $limit { $next() }
+        else { throw StopIteration; }
+    }
+}
+
+class RepeatingIterator<T>(Iterator<T>) {
+    private item: T;
+
+    op construct(item: T) -> null {
+        $item = item;
+    }
+
+    op next() -> T { $item }
 }
 
 trait IntoIterator<T, I: Iterator<T>> {
