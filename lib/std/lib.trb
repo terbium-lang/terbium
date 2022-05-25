@@ -1,5 +1,14 @@
-require assert, assert_false, assert_eq, assert_ne, assert_null, assert_not_null from .assert;
-require IoError, File, read from .fs;
+require fs, io, iter, rand, util from .;
+
+require
+    assert,
+    assert_false,
+    assert_eq,
+    assert_ne,
+    assert_null,
+    assert_not_null,
+from
+    .assert;
 require print, println from .io;
-require call_op, get_op, has_op from .ops;
+require call_op, get_op, has_op, name_of, type_of from .internal;
 require repr from .util;

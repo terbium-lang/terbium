@@ -1,0 +1,168 @@
+/// A trait implementing all high-level random functions.
+trait Rng {
+    /// Seeds the random number generator so that all RNGs
+    /// seeded with identical seeds yield the same random number.
+    ///
+    /// Although very rare, this is prone to "seed collisions", where two
+    /// different seeds yield the same random number.
+    ///
+    /// # Parameters
+    /// - seed ({type: int}): The seed, which should be an integer.
+    ///
+    /// # Returns
+    /// This method is chainable. In other words, it returns the instance itself.
+    ///
+    /// # Example
+    /// ```trb
+    /// require std;
+    /// require Random from std.rand;
+    ///
+    /// let rng1 = Random().seed(24);
+    /// let rng2 = Random().seed(24);
+    ///
+    /// assert_eq(rng1.random(), rng2.random());  // Passes
+    /// assert_eq(rng1.seed(1357924680).random(), rng2.seed(1357924680).random());  // Passes
+    /// ```
+    seed(seed: int) -> $;
+
+    /// Return a psuedo-random floating-point number between 0.0 (inclusive) and 1.0 (exclusive).
+    ///
+    /// # Returns
+    /// {type: float}: A random floating-point number within (>=0, <1).
+    ///
+    /// # Example
+    /// ```trb
+    /// require std;
+    /// require Random from std.rand;
+    ///
+    /// let rng = Random();
+    /// std.println(rng.random());  // 0.48185949201
+    /// ```
+    random() -> float;
+
+    /// Return a random integer between `min` and `max`, inclusive.
+    ///
+    /// # Parameters
+    /// - min ({type: int}): The minimum bound, inclusive.
+    /// - max ({type: int}): The maximum bound, inclusive.
+    ///
+    /// # Returns
+    /// {type: int}: The generated random integer.
+    ///
+    /// # Example
+    /// ```trb
+    /// require std;
+    /// require Random from std.rand;
+    ///
+    /// let rng = Random();
+    /// std.println(rng.randint(1, 10));  // 8
+    /// ```
+    randint(min: int, max: int) -> int;
+}
+
+class _MT19937 {
+    private static const n: int = 624;
+    private static const m: int = 397;
+    private static const w: int = 32;
+    private static const r: int = 31;
+
+    private static const matrix_a: int = 0x9908b0df;
+    private static const upper_mask: int = 0x80000000;
+    private static const lower_mask: int = 0x7fffffff;
+
+    private static const u: int = 11;
+    private static const d: int = 0xffffffff;
+
+    private static const s: int = 7;
+    private static const b: int = 0x9d2c5680;
+
+    private static const t: int = 15;
+    private static const c: int = 0xefc60000;
+
+    private static const l: int = 18;
+    private static const f: int = 1812433253;
+
+    private state: int[n];
+    private i: int;
+
+    op construct(?seed: int) -> null {
+        $state = Array.zeros($n);
+        $i = $n + 1;
+
+        if seed != null {
+            $seed(seed);
+        }
+    }
+
+    seed(seed: int) -> $ {
+        $state[0] = seed;
+
+        for i in 1..$n {
+            let previous = $state[i - 1];
+            $state[i] = (
+                $f * (previous ^ (previous >> ($w - 2))) + i
+            ) & 0xffffffff;
+        }
+
+        $
+    }
+
+    twist() -> null {
+        for [i, item] in $state.enumerate() {
+            let x = (item & $upper_mask)
+                + ($state[(i + 1) % $n] & $lower_mask);
+
+            let x_a = x >> 1;
+            if x % 2 { x_a ^= $a; }
+
+            $state[i] = $state[(i + $m) % $n] ^ x_a;
+        }
+        $i = 0;
+    }
+
+    extract() -> int {
+        if $i >= $n { $twist(); }
+
+        let r = $state[$i];
+        r ^= (r >> $u) & $d;
+        r ^= (r << $s) & $b;
+        r ^= (r << $t) & $c;
+        r ^= r >> $l;
+
+        $i += 1;
+        r & 0xffffffff
+    }
+
+    generate() -> float {
+        $extract()::float / 2 ** $w
+    }
+}
+
+/// A general-purpose psuedo-random number generator class.
+/// This is not meant to be used for secure or cryptographic purposes.
+///
+/// This class internally implements the MT19937-32 standard of the *Mersenne Twister*
+/// psuedo-random algorithm. It is used in popular random implementations
+/// such as the one found in Python.
+///
+/// This is a class that extends from the trait {type: Rng}.
+class Random(Rng) {
+    private const inner: _MT19937;
+
+    op construct(*, ?seed: int) -> null {
+        $inner = _MT19937(seed);
+    }
+
+    seed(seed: int) -> $ {
+        $inner.seed(seed);
+        $
+    }
+
+    random() -> float {
+        $inner.generate()
+    }
+
+    randint(min: int, max: int) -> int {
+        todo();
+    }
+}
