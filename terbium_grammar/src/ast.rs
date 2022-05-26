@@ -1,6 +1,5 @@
-use super::token::{Literal, Operator, StringLiteral, Token};
-use crate::token::{get_lexer, Bracket, Keyword};
-use crate::Error;
+use super::Error;
+use super::token::{get_lexer, Bracket, Keyword, Literal, Operator, StringLiteral, Token};
 
 use chumsky::prelude::*;
 use chumsky::primitive::FilterMap;
@@ -36,6 +35,16 @@ pub enum Expr {
         else_body: Option<Body>,
         return_last: bool,
     },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum TypeExpr {
+    Ident(String),
+    Attr(Box<TypeExpr>, String),
+    Generic(Box<TypeExpr>, Vec<TypeExpr>),
+    Union(Vec<TypeExpr>),
+    Nullable(Box<TypeExpr>),
+
 }
 
 pub trait ParseInterface {
@@ -113,12 +122,12 @@ impl ParseInterface for Expr {
         }
 
         get_body_parser()
-            .map(|Body(body, _)| match body.get(0) {
-                Some(o) => match o.clone() {
-                    Node::Expr(expr) => expr,
-                    _ => unreachable!(),
-                },
-                _ => unreachable!(),
+            .map(|Body(body, _)| {
+                if let Node::Expr(e) = body.get(0).unwrap() {
+                    e.to_owned()
+                } else {
+                    unreachable!();
+                }
             })
             .parse_recovery(tokens)
     }
