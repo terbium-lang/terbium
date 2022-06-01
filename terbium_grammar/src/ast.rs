@@ -39,12 +39,59 @@ pub enum Expr {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TypeExpr {
+    /// Given T, this becomes Ident("T")
     Ident(String),
+    /// Given mod.Type, this becomes Attr(Ident(mod), "type")
     Attr(Box<TypeExpr>, String),
+    /// Given Type<A, B>, this becomes Generic(Ident(Type), [Ident(A), Ident(B)])
     Generic(Box<TypeExpr>, Vec<TypeExpr>),
+    /// Given A | B, this becomes Union(Ident(A), Ident(B))
+    ///
+    /// Terbium handles Unions wide-to-narrow. This means given type A | B,
+    /// something compatible with either type A or B will be compatible with it,
+    /// but only fields/operations that exist on **both** A and B will exist on the type.
     Union(Vec<TypeExpr>),
+    /// Given A & B, this becomes And(Ident(A), Ident(B))
+    ///
+    /// Terbium handles And narrow-to-wide. This means given type A & B,
+    /// something is only compatible with it if it is also compatible with type A
+    /// **and** type B. This means the fields/operations of this type will be a
+    /// combination of those from A and B.
+    ///
+    /// This is useful for requiring types that implement a multitude of traits,
+    /// i.e. the type ``Iterator & Joinable``.
+    And(Vec<TypeExpr>),
+    /// Given ?T, this becomes Nullable(Ident(T))
+    /// Equivalent to T | null.
     Nullable(Box<TypeExpr>),
-
+    /// Given !T, this becomes Not(Ident(T))
+    ///
+    /// Only types that are not compatible with T will be compatible with !T.
+    Not(Box<TypeExpr>),
+    /// Given T[], this becomes Array(Ident(T), None).
+    /// Given T[n], where n is u32, this becomes Array(Ident(T), Some(n)).
+    ///
+    /// This represents an Array of T, and if n is specified, an array with
+    /// such capacity.
+    Array(Box<TypeExpr>, Option<u32>),
+    /// Given [A, B], this becomes Tuple([Ident(A), Ident(B)]).
+    ///
+    /// A tuple is an array with an exact number of elements but with
+    /// varying types throughout each element.
+    Tuple(Vec<TypeExpr>),
+    /// The constant null type. Only `null` will be compatible with this,
+    /// nothing else.
+    Null,
+    /// The `auto` type, which is the default type and means that
+    /// the type of the object is inferred.
+    ///
+    /// Given the type cannot be inferred and Terbium was configured to not
+    /// raise an error given such scenario happens, this will default to
+    /// the `any` type.
+    Auto,
+    /// The `any` type. It is compatible with any other type and any other type is
+    /// compatible with it, including `null`.
+    Any,
 }
 
 pub trait ParseInterface {
