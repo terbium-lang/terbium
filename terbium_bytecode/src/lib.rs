@@ -4,6 +4,10 @@
 //! there must be a representation of Terbium code that can provide an easy
 //! entrypoint to both.
 
+mod util;
+
+pub use util::EqComparableFloat;
+
 pub type ObjectPtr = u32;
 
 #[derive(Clone, Debug)]
@@ -12,6 +16,12 @@ pub enum Instruction {
     Pass,
     Break,
 
+    AllocInt(i128),
+    AllocByte(u8),
+    AllocFloat(EqComparableFloat),
+    AllocString(ObjectPtr),
+    AllocVar(ObjectPtr),
+    Alloc(ObjectPtr),
     AllocObject {
         pos: ObjectPtr,
         ty: ObjectPtr,
