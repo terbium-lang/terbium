@@ -141,7 +141,7 @@ jobs:
           with:
             toolchain: nightly
             override: true
-            component: miri
+            components: miri
 
         - name: Setup cache
           uses: Swatinem/rust-cache@v1
