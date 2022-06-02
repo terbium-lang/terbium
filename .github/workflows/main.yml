@@ -136,7 +136,9 @@ jobs:
       runs-on: ubuntu-latest
 
       steps:
-        - name: Install latest nightly
+        - uses: actions/checkout@v2
+
+        - name: Install latest nightly with miri
           uses: actions-rs/toolchain@v1
           with:
             toolchain: nightly
