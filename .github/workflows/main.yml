@@ -129,7 +129,25 @@ jobs:
         uses: Swatinem/rust-cache@v1
 
       - name: Run tests
-        run: cargo test --verbose
+        run: cargo test --verbose --workspace
 
-      - name: Run tests on terbium_grammar
-        run: cargo test --verbose --package terbium_grammar
+  miri_test:
+      name: Miri Test
+      runs-on: ubuntu-latest
+
+      steps:
+        - name: Install latest nightly
+          uses: actions-rs/toolchain@v1
+          with:
+            toolchain: nightly
+            override: true
+            component: miri
+
+        - name: Setup cache
+          uses: Swatinem/rust-cache@v1
+      
+        - name: Setup miri
+          run: cargo miri setup
+        
+        - name: Run miri test
+          run: cargo miri test
