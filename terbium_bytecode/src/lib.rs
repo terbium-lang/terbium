@@ -8,6 +8,8 @@ mod util;
 
 pub use util::EqComparableFloat;
 
+pub type StackIndex = u32;
+pub type RelativeStackIndex = i32;
 pub type ObjectPtr = u32;
 
 #[derive(Clone, Debug)]
@@ -16,11 +18,12 @@ pub enum Instruction {
     Pass,
     Break,
 
-    AllocInt(i128),
-    AllocByte(u8),
-    AllocFloat(EqComparableFloat),
-    AllocString(ObjectPtr),
-    AllocVar(ObjectPtr),
+    LoadInt(i128),
+    LoadFloat(EqComparableFloat),
+    LoadString(ObjectPtr),
+    LoadVar(ObjectPtr),
+    Load(ObjectPtr),
+
     Alloc(ObjectPtr),
     AllocObject {
         pos: ObjectPtr,
@@ -31,6 +34,21 @@ pub enum Instruction {
         attr: String,
         value: ObjectPtr,
     },
+
+    // Operations
+
+}
+
+impl Instruction {
+    /// Return a u8 representing the change in the count of elements in the stack.
+    pub fn stack_diff(&self) -> u8 {
+        match self {
+            Self::Invalid(_) | Self::Pass | Self::Break => 0,
+            Self::LoadInt(_) => 1,
+
+            _ => todo!(),
+        }
+    }
 }
 
 #[derive(Debug)]

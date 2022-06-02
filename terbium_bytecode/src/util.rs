@@ -1,5 +1,4 @@
 use std::hash::{Hash, Hasher};
-use std::mem::transmute;
 
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug)]
@@ -7,7 +6,7 @@ pub struct EqComparableFloat(pub f64);
 
 impl EqComparableFloat {
     fn key(&self) -> u64 {
-        unsafe { transmute(self.0) }
+        u64::from_ne_bytes(self.0.to_ne_bytes())
     }
 }
 
@@ -34,5 +33,21 @@ impl Eq for EqComparableFloat {}
 impl Hash for EqComparableFloat {
     fn hash<H: Hasher>(&self, h: &mut H) {
         self.key().hash(h)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::EqComparableFloat;
+    use std::collections::HashMap;
+
+    #[test]
+    pub fn test_float_eq() {
+        assert_eq!(EqComparableFloat(0.1), EqComparableFloat(0.1));
+
+        let mut sample = HashMap::<EqComparableFloat, u8>::new();
+        sample.insert(EqComparableFloat(0.1), 0);
+
+        assert_eq!(sample.get(&EqComparableFloat(0.1)), Some(&0_u8));
     }
 }
