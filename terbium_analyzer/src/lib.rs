@@ -63,10 +63,10 @@ pub trait Analyzer<P, E = &'static str> {
     where
         P: ParseInterface,
     {
-        P::from_tokens(tokens.collect()).0
+        P::from_tokens(tokens.into_iter().collect()).0
     }
 
-    fn analyze(input: P, messages: &mut Vec<AnalyzerMessage>) -> Result<(), E>;
+    fn analyze(input: &P, messages: &mut Vec<AnalyzerMessage>) -> Result<(), E>;
 }
 
 // TODO: currently analyzers are completely independent from other analyzers, which degrades performance.
@@ -78,9 +78,9 @@ pub struct NonSnakeCaseAnalyzer;
 impl Analyzer<Vec<Token>> for NonSnakeCaseAnalyzer {
     const ID: &'static str = "non-snake-case";
 
-    fn analyze(input: Vec<Token>, messages: &mut Vec<AnalyzerMessage>) -> Result<(), &'static str> {
+    fn analyze(input: &Vec<Token>, messages: &mut Vec<AnalyzerMessage>) -> Result<(), &'static str> {
         for tk in input {
-            if let Token::Identifier(i) = tk {
+            if let Token::Identifier(ref i) = tk {
                 let snake = to_snake_case(i.as_str());
                 // TODO: account for constants, which should be SCREAMING_SNAKE_CASE
                 if i.to_ascii_lowercase() == snake { continue; }
@@ -100,9 +100,9 @@ pub struct NonAsciiAnalyzer;
 impl Analyzer<Vec<Token>> for NonAsciiAnalyzer {
     const ID: &'static str = "non-ascii";
 
-    fn analyze(input: Vec<Token>, messages: &mut Vec<AnalyzerMessage>) -> Result<(), &'static str> {
+    fn analyze(input: &Vec<Token>, messages: &mut Vec<AnalyzerMessage>) -> Result<(), &'static str> {
         for tk in input {
-            if let Token::Identifier(i) = tk {
+            if let Token::Identifier(ref i) = tk {
                 if i.is_ascii() { continue; }
 
                 messages.push(AnalyzerMessage {
@@ -117,12 +117,13 @@ impl Analyzer<Vec<Token>> for NonAsciiAnalyzer {
     }
 }
 
-pub(crate) fn run_analyzer(id: String, tokens: Vec<Token>, messages: &mut Vec<AnalyzerMessage>) -> Result<(), &'static str> {
+pub(crate) fn run_analyzer(id: String, tokens: &Vec<Token>, messages: &mut Vec<AnalyzerMessage>) -> Result<(), String> {
     match id.as_str() {
         "non-snake-case" => NonSnakeCaseAnalyzer::analyze(tokens, messages),
         "non-ascii" => NonAsciiAnalyzer::analyze(tokens, messages),
-        _ => Err(format!("unknown analyzer with id {:?}", id).as_str())
+        _ => Err(format!("unknown analyzer with id {:?}", id))?,
     }
+        .map_err(|e| e.to_string())
 }
 
 #[derive(Debug)]
@@ -139,8 +140,22 @@ impl BulkAnalyzer {
         }
     }
 
+    pub fn new_with_analyzers(analyzers: Vec<String>) -> Self {
+        Self {
+            analyzers,
+            messages: Vec::new(),
+        }
+    }
+
     pub fn analyze_tokens(&mut self, tokens: Vec<Token>) {
-        self.analyzers.for_each(|a| run_analyzer(a, tokens, &mut self.messages));
+        for a in &self.analyzers {
+            run_analyzer(
+                a.clone(),
+                &tokens,
+                &mut self.messages,
+            )
+            .expect("error trying to analyze")
+        }
     }
 
     pub fn analyze_string(&mut self, s: String) {
@@ -149,8 +164,10 @@ impl BulkAnalyzer {
         self.analyze_tokens(tokens)
     }
 
-    pub fn write(&self, writer: impl Write) {
-        self.messages.for_each(|m| writeln!(writer, "{:?}", m));
+    pub fn write(&self, mut writer: impl Write) {
+        for m in &self.messages {
+            writeln!(writer, "{:?}", m).expect("failed to write");
+        }
     }
 }
 
@@ -160,12 +177,16 @@ mod tests {
 
     #[test]
     fn test_analysis() {
-        let mut a = BulkAnalyzer::new();
+        let mut a = BulkAnalyzer::new_with_analyzers(vec![
+            "non-snake-case",
+        ]
+            .iter()
+            .map(ToString::to_string)
+            .collect());
 
         a.analyze_string(String::from("
             func camelCase() {
                 let notSnakeCase = 5;
-                let non_ascii_identifier_\u{2022} = 5;
             }
         "));
 
