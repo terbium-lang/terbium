@@ -34,9 +34,7 @@ pub enum Instruction {
         attr: String,
         value: ObjectPtr,
     },
-
     // Operations
-
 }
 
 impl Instruction {
@@ -71,7 +69,7 @@ macro_rules! parse {
     }};
     ($e:expr, $msg:literal) => {{
         $e.parse().map_err(|_| $msg)?
-    }}
+    }};
 }
 
 impl Program {
@@ -104,13 +102,14 @@ impl Program {
                 })
             })
             .filter_map(Result::ok)
-            .collect()
-        )
+            .collect())
     }
 }
 
 impl FromIterator<Instruction> for Program {
     fn from_iter<I: IntoIterator<Item = Instruction>>(iter: I) -> Self {
-        Self { inner: iter.into_iter().collect() }
+        Self {
+            inner: iter.into_iter().collect(),
+        }
     }
 }

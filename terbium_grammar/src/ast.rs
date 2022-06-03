@@ -1,5 +1,5 @@
-use super::Error;
 use super::token::{get_lexer, Bracket, Keyword, Literal, Operator, StringLiteral, Token};
+use super::Error;
 
 use chumsky::prelude::*;
 use chumsky::primitive::FilterMap;
@@ -343,10 +343,7 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, Body> {
             let binary_cast = unary
                 .clone()
                 .then(just(Token::Cast).ignore_then(unary).repeated())
-                .foldl(|subject, ty| Expr::Cast(
-                    Box::new(subject),
-                    Box::new(ty)
-                ))
+                .foldl(|subject, ty| Expr::Cast(Box::new(subject), Box::new(ty)))
                 .boxed();
 
             let binary_pow = binary_cast

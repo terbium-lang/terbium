@@ -11,15 +11,21 @@ impl EqComparableFloat {
 }
 
 impl From<f64> for EqComparableFloat {
-    fn from(f: f64) -> Self { Self(f) }
+    fn from(f: f64) -> Self {
+        Self(f)
+    }
 }
 
 impl From<EqComparableFloat> for f64 {
-    fn from(f: EqComparableFloat) -> Self { f.0 }
+    fn from(f: EqComparableFloat) -> Self {
+        f.0
+    }
 }
 
 impl PartialEq for EqComparableFloat {
-    fn eq(&self, other: &Self) -> bool { self.key() == other.key() }
+    fn eq(&self, other: &Self) -> bool {
+        self.key() == other.key()
+    }
 }
 
 impl PartialEq<f64> for EqComparableFloat {

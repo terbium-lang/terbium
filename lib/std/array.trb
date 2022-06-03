@@ -1,0 +1,7 @@
+require IntoIterator, Iterator from .iter;
+
+class Array<T> {z
+    op new(?it: Iterator<T>) -> $ {
+
+    }
+}

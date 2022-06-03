@@ -6,4 +6,4 @@ pub mod token;
 
 pub use crate::ast::{Body, Expr, Node, ParseInterface, TypeExpr};
 pub use crate::error::*;
-pub use crate::token::{Operator, Token, get_lexer as tokenizer};
+pub use crate::token::{get_lexer as tokenizer, Operator, Token};

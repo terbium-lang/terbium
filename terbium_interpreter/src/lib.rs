@@ -1,7 +1,7 @@
 //! The interpreter for Terbium.
 
-use terbium_grammar::Expr;
 use crate::mem::{BlockAllocError, BlockSize, Heap, Mark, Memory, Mutator, MutatorView, ScopedPtr};
+use terbium_grammar::Expr;
 
 mod mem;
 
@@ -41,25 +41,23 @@ pub enum TerbiumValue<'s> {
 #[derive(Debug)]
 pub struct Interpreter {
     pub memory: Memory,
-    mutator: Mutat
+    mutator: Mutat,
 }
 
 impl Interpreter {
     pub fn new() -> Self {
-        Self { memory: Memory::new() }
+        Self {
+            memory: Memory::new(),
+        }
     }
 
     pub fn eval(&self, expr: Expr) -> TerbiumValue {
         match expr {
-            Expr::Integer(i) => TerbiumValue::Int(ScopedPtr::new(
-
-            ))
+            Expr::Integer(i) => TerbiumValue::Int(ScopedPtr::new()),
         }
     }
 }
 
-impl Mutator<(), > for Interpreter {
-    fn run(&self, mem: &MutatorView, input: I) -> Result<O, BlockAllocError> {
-
-    }
+impl Mutator<()> for Interpreter {
+    fn run(&self, mem: &MutatorView, input: I) -> Result<O, BlockAllocError> {}
 }

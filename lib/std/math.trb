@@ -1,0 +1,15 @@
+func floor(num: int | float) -> int {
+    if num is int {
+        num
+    } else {
+        __trb_internal_floor_num(num)
+    }
+}
+
+func round(num: int | float) -> int {
+    if num is int {
+        num
+    } else {
+        floor(num + 0.5)
+    }
+}

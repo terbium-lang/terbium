@@ -1,7 +1,9 @@
 use std::iter::Peekable;
 
 pub fn to_snake_case(s: &str) -> String {
-    CamelCaseRemover::new(s.chars()).flat_map(char::to_lowercase).collect()
+    CamelCaseRemover::new(s.chars())
+        .flat_map(char::to_lowercase)
+        .collect()
 }
 
 struct CamelCaseRemover<I: Iterator<Item = char>> {
@@ -32,7 +34,7 @@ impl<I: Iterator<Item = char>> Iterator for CamelCaseRemover<I> {
             (Some(curr), Some(next)) if curr.is_lowercase() && next.is_uppercase() => {
                 self.br = true;
                 Some(curr)
-            },
+            }
             (next, _) => next,
         }
     }

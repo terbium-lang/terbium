@@ -558,17 +558,23 @@ struct ArenaHeader {}
 impl AllocHeader for ArenaHeader {
     type TypeId = TerbiumType;
 
-     fn new<O: AllocObject<Self::TypeId>>(
-        _size: u32,
-        _block_size: SizeClass,
-        _mark: Mark,
-    ) -> Self { Self {} }
+    fn new<O: AllocObject<Self::TypeId>>(_size: u32, _block_size: SizeClass, _mark: Mark) -> Self {
+        Self {}
+    }
 
     fn mark(&mut self) {}
-    fn is_marked(&self) -> bool { true }
-    fn size(&self) -> usize { 1 }
-    fn block_size(&self) -> BlockSize { BlockSize::Small }
-    fn type_id(&self) -> Self::TypeId { TerbiumType::Symbol }
+    fn is_marked(&self) -> bool {
+        true
+    }
+    fn size(&self) -> usize {
+        1
+    }
+    fn block_size(&self) -> BlockSize {
+        BlockSize::Small
+    }
+    fn type_id(&self) -> Self::TypeId {
+        TerbiumType::Symbol
+    }
 }
 
 pub struct Arena {
@@ -577,7 +583,9 @@ pub struct Arena {
 
 impl Arena {
     pub fn new() -> Self {
-        Self { heap: RawHeap::new() }
+        Self {
+            heap: RawHeap::new(),
+        }
     }
 }
 
@@ -631,9 +639,7 @@ pub struct MutatorView<'mem> {
 
 impl<'mem> MutatorView<'mem> {
     pub fn new(m: &'mem Memory) -> MutatorView<'mem> {
-        Self {
-            heap: &m.heap,
-        }
+        Self { heap: &m.heap }
     }
 
     pub fn alloc<T>(&self, o: T) -> Result<ScopedPtr<'_, T>, BlockAllocError>
@@ -698,11 +704,15 @@ impl TaggedPtr {
     }
 
     pub fn object<T>(ptr: Ptr<T>) -> Self {
-        Self { o: ptr.tag(Self::OBJECT).cast::<()>() }
+        Self {
+            o: ptr.tag(Self::OBJECT).cast::<()>(),
+        }
     }
 
     pub fn symbol(ptr: Ptr<Symbol>) -> Self {
-        Self { symbol: ptr.tag(Self::SYMBOL) }
+        Self {
+            symbol: ptr.tag(Self::SYMBOL),
+        }
     }
 
     pub fn integer(value: i128) -> Self {
@@ -734,6 +744,4 @@ impl<T> Tagged<T> for Ptr<T> {
 }
 
 #[derive(Copy, Clone)]
-pub enum FatPtr {
-
-}
+pub enum FatPtr {}
