@@ -14,35 +14,30 @@ pub type ObjectPtr = u32;
 
 #[derive(Clone, Debug)]
 pub enum Instruction {
-    Invalid(&'static str),
-    Pass,
-    Break,
-
+    // Constants mapped to a lookup table
     LoadInt(i128),
     LoadFloat(EqComparableFloat),
-    LoadString(ObjectPtr),
+    LoadString(String),
     LoadVar(ObjectPtr),
     Load(ObjectPtr),
 
-    Alloc(ObjectPtr),
-    AllocObject {
-        pos: ObjectPtr,
-        ty: ObjectPtr,
-    },
-    AllocObjectAttr {
-        obj: ObjectPtr,
-        attr: String,
-        value: ObjectPtr,
-    },
     // Operations
+    AddInt,
+    SubInt,
+    MulInt,
+    DivInt,
+    TrueDivInt, // Div keeps type, while TrueDiv doesn't. e.g. Div(5, 2) -> 2 but TrueDiv(5, 2) -> 2.5
+    PowInt,
+
+    Pop,
 }
 
 impl Instruction {
-    /// Return a u8 representing the change in the count of elements in the stack.
-    pub fn stack_diff(&self) -> u8 {
+    /// Return a i8 representing the change in the count of elements in the stack.
+    pub fn stack_diff(&self) -> i8 {
         match self {
-            Self::Invalid(_) | Self::Pass | Self::Break => 0,
             Self::LoadInt(_) => 1,
+            Self::Pop => -1,
 
             _ => todo!(),
         }
@@ -77,32 +72,8 @@ impl Program {
         Self { inner: Vec::new() }
     }
 
-    pub fn parse(code: String) -> Result<Self, String> {
-        Ok(code
-            .lines()
-            .map(|line| -> Result<Instruction, String> {
-                let mut split = line.split(' ');
-                let command = split.next().ok_or("no command".to_string())?;
-
-                Ok(match command {
-                    "pass" => consume!(split => => Instruction::Pass),
-                    "break" => consume!(split => => Instruction::Break),
-                    "alloc" => consume!(split => pos, ty => Instruction::AllocObject {
-                        pos: parse!(pos),
-                        ty: parse!(ty),
-                    }),
-                    "alloc_attr" => consume!(split => obj, attr, value =>
-                        Instruction::AllocObjectAttr {
-                            obj: parse!(obj),
-                            attr: attr.to_string(),
-                            value: parse!(value),
-                        }
-                    ),
-                    _ => Err(format!("unknown command {}", command))?,
-                })
-            })
-            .filter_map(Result::ok)
-            .collect())
+    pub fn inner(&self) -> impl Iterator<Item = &Instruction> {
+        self.inner.iter()
     }
 }
 

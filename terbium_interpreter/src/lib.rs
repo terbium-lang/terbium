@@ -1,63 +1,80 @@
 //! The interpreter for Terbium.
 
-use crate::mem::{BlockAllocError, BlockSize, Heap, Mark, Memory, Mutator, MutatorView, ScopedPtr};
-use terbium_grammar::Expr;
+mod interner;
 
-mod mem;
+use terbium_bytecode::{EqComparableFloat, Instruction, Program};
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum TerbiumType {
-    Int,
-    Float,
-    Bool,
-    String,
-    Function,
-    Array,
-    Null,
-    CallFrameList,
-    Thread,
-    Symbol,
-}
+pub use interner::Interner;
+use interner::StringId;
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct TerbiumObjectHeader {
-    mark: Mark,
-    ty: TerbiumType,
-    size_class: BlockSize,
-    size: u32,
-}
-
-#[derive(Clone, Copy)]
-pub enum TerbiumValue<'s> {
-    Int(ScopedPtr<'s, u128>),
-    Float(ScopedPtr<'s, f64>),
-    String(ScopedPtr<'s, String>),
-    Bool(ScopedPtr<'s, bool>),
-    Function(ScopedPtr<'s, TerbiumFunction>), // TODO
-    Array(ScopedPtr<'s, Vec<TerbiumValue<'s>>>),
-    Null,
+pub enum TerbiumObject {
+    Integer(i128),
+    Float(EqComparableFloat),
+    String(StringId),
+    Bool(bool),
 }
 
 #[derive(Debug)]
-pub struct Interpreter {
-    pub memory: Memory,
-    mutator: Mutat,
+pub struct Stack<const STACK_SIZE: usize = 512> {
+    pub(crate) inner: [TerbiumObject; STACK_SIZE],
+    pub(crate) ptr: usize,
+}
+
+impl Stack {
+    pub fn new() -> Self {
+        Self {
+            inner: unsafe { std::mem::zeroed() },
+            ptr: 0,
+        }
+    }
+
+    pub fn push(&mut self, o: TerbiumObject) {
+        self.inner[self.ptr] = o;
+        self.ptr += 1;
+    }
+
+    pub fn pop(&mut self) -> TerbiumObject {
+        self.ptr = self.ptr.checked_sub(1).expect("stack ptr already at 0");
+
+        std::mem::replace(&mut self.inner[self.ptr], unsafe { std::mem::zeroed() })
+    }
+}
+
+#[derive(Debug)]
+pub struct Interpreter<const STACK_SIZE: usize = 512> {
+    stack: Stack<STACK_SIZE>,
+    string_interner: Interner,
 }
 
 impl Interpreter {
     pub fn new() -> Self {
         Self {
-            memory: Memory::new(),
+            stack: Stack::new(),
+            // TODO: string length capacity to be interned could be configurable
+            string_interner: Interner::with_capacity(128),
         }
     }
 
-    pub fn eval(&self, expr: Expr) -> TerbiumValue {
-        match expr {
-            Expr::Integer(i) => TerbiumValue::Int(ScopedPtr::new()),
+    pub fn run_bytecode(&mut self, code: Program) {
+        for instr in code.inner() {
+            match instr.to_owned() {
+                Instruction::LoadInt(i) => self.stack.push(TerbiumObject::Integer(i)),
+                Instruction::LoadString(s) => self.stack.push(TerbiumObject::String(
+                    self.string_interner.intern(s.as_str()),
+                )),
+                Instruction::LoadFloat(f) => self.stack.push(TerbiumObject::Float(f)),
+                Instruction::AddInt => match (self.stack.pop(), self.stack.pop()) {
+                    (TerbiumObject::Integer(rhs), TerbiumObject::Integer(lhs)) => {
+                        self.stack.push(TerbiumObject::Integer(lhs + rhs))
+                    }
+                    _ => panic!("bytecode triggered AddInt on non-integers"),
+                },
+                Instruction::Pop => {
+                    self.stack.pop();
+                }
+                _ => todo!(),
+            }
         }
     }
-}
-
-impl Mutator<()> for Interpreter {
-    fn run(&self, mem: &MutatorView, input: I) -> Result<O, BlockAllocError> {}
 }

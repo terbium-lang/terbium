@@ -13,3 +13,4 @@ readme = "../README.md"
 
 [dependencies]
 terbium_grammar = { version = "0", path = "../terbium_grammar" }
+terbium_bytecode = { version = "0", path = "../terbium_bytecode" }
