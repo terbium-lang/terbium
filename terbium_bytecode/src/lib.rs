@@ -7,12 +7,20 @@
 mod interpreter;
 mod util;
 
+use std::collections::HashMap;
 use std::mem::size_of;
 use std::ops::Add;
 pub use util::EqComparableFloat;
 
-pub type Addr = u32;
 pub type ObjectPtr = u32;
+pub type AddrRepr = u32;
+
+#[derive(Copy, Clone, Debug, PartialOrd, PartialEq, Hash)]
+pub enum Addr {
+    Absolute(AddrRepr),
+    Procedure(AddrRepr),
+    Offset(AddrRepr, AddrRepr),
+}
 
 #[derive(Clone, Debug)]
 pub enum Instruction {
@@ -22,6 +30,7 @@ pub enum Instruction {
     LoadString(String),
     LoadBool(bool),
     Load(ObjectPtr),
+    LoadFrame(ObjectPtr),
 
     // Operations
     UnOpPos,
@@ -57,13 +66,15 @@ pub enum Instruction {
 
     // Functions
     MakeFunc(usize), // Field 0 is the amount of items to take from the stack as parameters
-    CallFunc,
+    CallFunc(usize), // Field 0 is the number of items
 
     Jump(Addr),
     JumpIf(Addr),
+    JumpIfElse(Addr, Addr),
 
     Pop,
     Ret,
+    RetNull,
     Halt,
 }
 
@@ -85,8 +96,9 @@ impl Instruction {
             Self::LoadString(s) => s.len(),
             Self::LoadBool(_) => 1,
             Self::LoadLocal(_) | Self::PopLocal(_) | Self::MakeFunc(_) => size_of::<usize>(),
-            Self::Load(_) => size_of::<ObjectPtr>(),
-            Self::Jump(_) | Self::JumpIf(_) => size_of::<Addr>(),
+            Self::Load(_) | Self::LoadFrame(_) => size_of::<ObjectPtr>(),
+            Self::Jump(_) | Self::JumpIf(_) => size_of::<AddrRepr>(),
+            Self::JumpIfElse(_, _) => size_of::<AddrRepr>() * 2,
             _ => 0,
         }
     }
@@ -123,12 +135,15 @@ impl Instruction {
             Self::PopLocal(_) => 27,
             Self::LoadLocal(_) => 28,
             Self::MakeFunc(_) => 29,
-            Self::CallFunc => 30,
+            Self::CallFunc(_) => 30,
             Self::Jump(_) => 31,
             Self::JumpIf(_) => 32,
-            Self::Pop => 33,
-            Self::Ret => 34,
-            Self::Halt => 35,
+            Self::JumpIfElse(_, _) => 33,
+            Self::Pop => 34,
+            Self::Ret => 35,
+            Self::RetNull => 36,
+            Self::Halt => 37,
+            Self::LoadFrame(_) => 38,
         }
     }
 
@@ -140,33 +155,87 @@ impl Instruction {
 #[derive(Debug)]
 pub struct Program {
     inner: Vec<Instruction>,
-}
-
-macro_rules! consume {
-    ($split:expr => $($i:ident),* => $then:expr) => {{
-        $(
-            let $i = $split.next().ok_or("invalid bytecode".to_string())?;
-        )*
-        $then
-    }}
-}
-
-macro_rules! parse {
-    ($e:expr) => {{
-        $e.parse().map_err(|_| "invalid number")?
-    }};
-    ($e:expr, $msg:literal) => {{
-        $e.parse().map_err(|_| $msg)?
-    }};
+    procedures: Vec<Vec<Instruction>>,
 }
 
 impl Program {
     pub fn new() -> Self {
-        Self { inner: Vec::new() }
+        Self { inner: Vec::new(), procedures: Vec::new() }
     }
 
     pub fn inner(&self) -> impl Iterator<Item = &Instruction> {
         self.inner.iter()
+    }
+
+    pub fn create_procedure(&mut self) -> AddrRepr {
+        self.procedures.push(Vec::new());
+
+        (self.procedures.len() - 1).into()
+    }
+
+    pub fn push(&mut self, procedure: Option<AddrRepr>, instr: Instruction) {
+        if let Some(procedure) = procedure {
+            return self.procedures
+                .get_mut(procedure)
+                .expect("no procedure there")
+                .push(instr);
+        }
+
+        self.inner.push(instr);
+    }
+
+    pub fn current_addr(&self, procedure: Option<AddrRepr>) -> Addr {
+        match self.next_addr(procedure) {
+            Addr::Absolute(i) => Addr::Absolute(i - 1),
+            Addr::Offset(p, i) => Addr::Offset(p, i - 1),
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn next_addr(&self, procedure: Option<AddrRepr>) -> Addr {
+        if let Some(proc) = procedure {
+            return Addr::Offset(
+                proc,
+                self.procedures
+                    .get(proc)
+                    .expect("procedure not found")
+                    .len()
+                    .into()
+            );
+        }
+
+        Addr::Absolute(self.inner.len().into())
+    }
+
+    /// Resolves all procedures to their absolute address
+    pub fn resolve(&mut self) -> &Self {
+        if self.inner.last() != Some(&Instruction::Halt) {
+            self.inner.push(Instruction::Halt);
+        }
+
+        // Lookup of proc -> absolute
+        let mut lookup: HashMap<AddrRepr, AddrRepr> = HashMap::new();
+        for (i, mut proc) in self.procedures.iter().enumerate() {
+            lookup.insert(i, self.inner.len() as AddrRepr);
+
+            self.inner.extend(proc);
+        }
+
+        for instr in self.inner {
+            if let Instruction::Jump(addr) | Instruction::JumpIf(addr) = instr {
+                match addr {
+                    Addr::Procedure(proc) => *addr = Addr::Absolute(
+                        lookup.get(&proc).expect("unknown procedure").clone()
+                    ),
+                    Addr::Offset(proc, offset) => *addr = Addr.Absolute(
+                        lookup.get(&proc).expect("unknown procedure").clone() + offset
+                    ),
+                    _ => (),
+                }
+            }
+        }
+
+        self
     }
     
     pub fn bytes(&self) -> Vec<u8> {
@@ -182,7 +251,16 @@ impl Program {
                 I::LoadString(s) => &s.as_bytes(),
                 I::LoadBool(b) => &[if b { 0 } else { 1 }],
                 I::LoadLocal(i) | I::PopLocal(i) | I::MakeFunc(i) => &i.to_ne_bytes(),
-                I::Jump(a) | I::JumpIf(a) => &a.to_ne_bytes(),
+                I::Jump(a) | I::JumpIf(a) => match a {
+                    Addr::Absolute(p) => &p.to_ne_bytes(),
+                    _ => panic!("procedures must be resolved prior to conversion"),
+                },
+                I::JumpIfElse(a, b) => match (a, b) {
+                    (Addr::Absolute(a), Addr::Absolute(b)) => {
+                        &[a.to_ne_bytes(), b.to_ne_bytes()].concat()
+                    }
+                    _ => panic!("procedures must be resolved prior to conversion"),
+                }
                 _ => &[],
             })
         }
@@ -199,6 +277,7 @@ impl FromIterator<Instruction> for Program {
     fn from_iter<I: IntoIterator<Item = Instruction>>(iter: I) -> Self {
         Self {
             inner: iter.into_iter().collect(),
+            procedures: Vec::new(),
         }
     }
 }
