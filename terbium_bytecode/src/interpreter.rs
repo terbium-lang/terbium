@@ -1,8 +1,8 @@
 //! Interprets Terbium AST into Bytecode.
 
 use super::{AddrRepr, Instruction, Program};
-use terbium_grammar::{Body, Expr, Node, Operator};
 use crate::Addr;
+use terbium_grammar::{Body, Expr, Node, Operator};
 
 pub struct Interpreter {
     program: Program,
@@ -12,7 +12,9 @@ type MaybeProc = Option<AddrRepr>;
 
 impl Interpreter {
     pub fn new() -> Self {
-        Self { program: Program::new() }
+        Self {
+            program: Program::new(),
+        }
     }
 
     pub fn program(self) -> Program {
@@ -24,11 +26,14 @@ impl Interpreter {
     }
 
     pub fn push_return(&mut self, procedure: AddrRepr, return_last: bool) {
-        self.push(Some(procedure), if return_last {
-            Instruction::Ret
-        } else {
-            Instruction::RetNull
-        });
+        self.push(
+            Some(procedure),
+            if return_last {
+                Instruction::Ret
+            } else {
+                Instruction::RetNull
+            },
+        );
     }
 
     pub fn interpret_expr(&mut self, proc: MaybeProc, expr: Expr) {
@@ -36,29 +41,38 @@ impl Interpreter {
             Expr::Integer(i) => self.push(proc, Instruction::LoadInt(i as i128)),
             Expr::Bool(b) => self.push(proc, Instruction::LoadBool(b)),
             Expr::String(s) => self.push(proc, Instruction::LoadString(s)),
-            Expr::Float(f) => self.push(proc, Instruction::LoadFloat(f.parse::<f64>().unwrap().into())),
+            Expr::Float(f) => self.push(
+                proc,
+                Instruction::LoadFloat(f.parse::<f64>().unwrap().into()),
+            ),
             Expr::UnaryExpr { operator, value } => {
                 self.interpret_expr(proc, *value);
 
-                self.push(proc, match operator {
-                    Operator::Add => Instruction::UnOpPos,
-                    Operator::Sub => Instruction::UnOpNeg,
-                    Operator::Not => Instruction::OpLogicalNot,
-                    _ => unimplemented!(),
-                });
+                self.push(
+                    proc,
+                    match operator {
+                        Operator::Add => Instruction::UnOpPos,
+                        Operator::Sub => Instruction::UnOpNeg,
+                        Operator::Not => Instruction::OpLogicalNot,
+                        _ => unimplemented!(),
+                    },
+                );
             }
             Expr::BinaryExpr { operator, lhs, rhs } => {
                 self.interpret_expr(proc, *lhs);
                 self.interpret_expr(proc, *rhs);
 
-                self.push(proc, match operator {
-                    Operator::Add => Instruction::BinOpAdd,
-                    Operator::Sub => Instruction::BinOpSub,
-                    Operator::Mul => Instruction::BinOpMul,
-                    Operator::Div => Instruction::BinOpDiv,
-                    Operator::Eq => Instruction::OpEq,
-                    _ => todo!(),
-                });
+                self.push(
+                    proc,
+                    match operator {
+                        Operator::Add => Instruction::BinOpAdd,
+                        Operator::Sub => Instruction::BinOpSub,
+                        Operator::Mul => Instruction::BinOpMul,
+                        Operator::Div => Instruction::BinOpDiv,
+                        Operator::Eq => Instruction::OpEq,
+                        _ => todo!(),
+                    },
+                );
             }
             Expr::If {
                 condition,
@@ -75,15 +89,15 @@ impl Interpreter {
 
                     if let Some(else_body) = else_body {
                         let else_proc = self.program.create_procedure();
-                        self.interpret_body(Some(else_proc), Body(
-                            else_body.0,
-                            return_last,
-                        ));
+                        self.interpret_body(Some(else_proc), Body(else_body.0, return_last));
 
-                        self.push(proc, Instruction::JumpIfElse(
-                            Addr::Procedure(then_proc),
-                            Addr::Procedure(else_proc),
-                        ));
+                        self.push(
+                            proc,
+                            Instruction::JumpIfElse(
+                                Addr::Procedure(then_proc),
+                                Addr::Procedure(else_proc),
+                            ),
+                        );
                         return;
                     }
 
@@ -102,10 +116,13 @@ impl Interpreter {
                     let then_proc = self.program.create_procedure();
                     self.interpret_body(Some(then_proc), body);
 
-                    self.push(last_parent, Instruction::JumpIfElse(
-                        Addr::Procedure(then_proc),
-                        Addr::Procedure(last_else),
-                    ));
+                    self.push(
+                        last_parent,
+                        Instruction::JumpIfElse(
+                            Addr::Procedure(then_proc),
+                            Addr::Procedure(last_else),
+                        ),
+                    );
 
                     last_parent = Some(last_else);
                     last_else = self.program.create_procedure();

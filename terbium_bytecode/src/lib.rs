@@ -45,12 +45,12 @@ pub enum Instruction {
     BinOpDiv,
     BinOpTrueDiv, // Div keeps type, while TrueDiv doesn't. e.g. Div(5, 2) -> 2 but TrueDiv(5, 2) -> 2.5
     BinOpPow,
-    
+
     BinOpBitOr,
     BinOpBitXor,
     BinOpBitAnd,
     BinOpBitNot, // Unary
-    
+
     // Logical Operations
     OpEq,
     OpNe,
@@ -63,8 +63,8 @@ pub enum Instruction {
     OpLogicalNot, // Unary
 
     // Variables
-    PushLocal, // Push the item on the stack to locals
-    PopLocal(usize), // Pop and don't push to stack
+    PushLocal,        // Push the item on the stack to locals
+    PopLocal(usize),  // Pop and don't push to stack
     LoadLocal(usize), // "Duplicate" (as a reference) and push to stack
 
     // Functions
@@ -91,7 +91,7 @@ impl Instruction {
             _ => todo!(),
         }
     }
-    
+
     pub fn size(&self) -> u8 {
         1_u8 + match self {
             Self::LoadInt(_) => size_of::<i128>(),
@@ -105,7 +105,7 @@ impl Instruction {
             _ => 0,
         } as u8
     }
-    
+
     pub fn to_instr_id(&self) -> u8 {
         match self {
             Self::LoadInt(_) => 0,
@@ -114,7 +114,7 @@ impl Instruction {
             Self::LoadBool(_) => 3,
             Self::Load(_) => 4,
             Self::UnOpPos => 5,
-            Self::UnOpNeg => 6, 
+            Self::UnOpNeg => 6,
             Self::BinOpAdd => 7,
             Self::BinOpSub => 8,
             Self::BinOpMul => 9,
@@ -189,12 +189,15 @@ macro_rules! progress {
     ($ptr:ident, $e:expr) => {{
         $ptr += 1;
         $e
-    }}
+    }};
 }
 
 impl Program {
     pub fn new() -> Self {
-        Self { inner: Vec::new(), procedures: Vec::new() }
+        Self {
+            inner: Vec::new(),
+            procedures: Vec::new(),
+        }
     }
 
     pub fn inner(&self) -> impl Iterator<Item = &Instruction> {
@@ -209,7 +212,8 @@ impl Program {
 
     pub fn push(&mut self, procedure: Option<AddrRepr>, instr: Instruction) {
         if let Some(procedure) = procedure {
-            return self.procedures
+            return self
+                .procedures
                 .get_mut(procedure as usize)
                 .expect("no procedure there")
                 .push(instr);
@@ -233,8 +237,7 @@ impl Program {
                 self.procedures
                     .get(proc as usize)
                     .expect("procedure not found")
-                    .len()
-                    as AddrRepr
+                    .len() as AddrRepr,
             );
         }
 
@@ -243,12 +246,12 @@ impl Program {
 
     fn resolve_addr(lookup: &HashMap<AddrRepr, AddrRepr>, addr: Addr) -> Addr {
         match addr {
-            Addr::Procedure(proc) => Addr::Absolute(
-                lookup.get(&proc).expect("unknown procedure").clone()
-            ),
-            Addr::Offset(proc, offset) => Addr::Absolute(
-                lookup.get(&proc).expect("unknown procedure").clone() + offset
-            ),
+            Addr::Procedure(proc) => {
+                Addr::Absolute(lookup.get(&proc).expect("unknown procedure").clone())
+            }
+            Addr::Offset(proc, offset) => {
+                Addr::Absolute(lookup.get(&proc).expect("unknown procedure").clone() + offset)
+            }
             o => o,
         }
     }
@@ -268,30 +271,33 @@ impl Program {
             self.inner.extend(proc.clone());
         }
 
-        self.inner = self.inner.iter().map(|instr| {
-            match instr {
-                Instruction::Jump(addr) =>
-                    Instruction::Jump(Self::resolve_addr(&lookup, addr.clone())),
-                Instruction::JumpIf(addr) =>
-                    Instruction::JumpIf(Self::resolve_addr(&lookup, addr.clone())),
-                Instruction::JumpIfElse(a, b) => {
-                    Instruction::JumpIfElse(
+        self.inner = self
+            .inner
+            .iter()
+            .map(|instr| {
+                match instr {
+                    Instruction::Jump(addr) => {
+                        Instruction::Jump(Self::resolve_addr(&lookup, addr.clone()))
+                    }
+                    Instruction::JumpIf(addr) => {
+                        Instruction::JumpIf(Self::resolve_addr(&lookup, addr.clone()))
+                    }
+                    Instruction::JumpIfElse(a, b) => Instruction::JumpIfElse(
                         Self::resolve_addr(&lookup, a.clone()),
                         Self::resolve_addr(&lookup, b.clone()),
-                    )
+                    ),
+                    o => o.clone(), // TODO: don't clone
                 }
-                o => o.clone(), // TODO: don't clone
-            }
-        })
-        .collect();
+            })
+            .collect();
 
         self
     }
-    
+
     pub fn bytes(&self) -> Vec<u8> {
         type I = Instruction;
         let mut bytes = Vec::new();
-        
+
         for instr in self.inner() {
             bytes.push(instr.to_instr_id());
 
@@ -301,9 +307,11 @@ impl Program {
                 I::LoadString(s) => {
                     bytes.extend_from_slice(&s.len().to_ne_bytes());
                     bytes.extend_from_slice(s.as_bytes())
-                },
+                }
                 I::LoadBool(b) => bytes.extend_from_slice(&[if *b { 0 } else { 1 }]),
-                I::LoadLocal(i) | I::PopLocal(i) | I::MakeFunc(i) => bytes.extend_from_slice(&i.to_ne_bytes()),
+                I::LoadLocal(i) | I::PopLocal(i) | I::MakeFunc(i) => {
+                    bytes.extend_from_slice(&i.to_ne_bytes())
+                }
                 I::Jump(a) | I::JumpIf(a) => match a {
                     Addr::Absolute(p) => bytes.extend_from_slice(&p.to_ne_bytes()),
                     _ => panic!("procedures must be resolved prior to conversion"),
@@ -313,11 +321,11 @@ impl Program {
                         bytes.extend_from_slice(&[a.to_ne_bytes(), b.to_ne_bytes()].concat())
                     }
                     _ => panic!("procedures must be resolved prior to conversion"),
-                }
+                },
                 _ => (),
             }
         }
-        
+
         bytes
     }
 
@@ -332,7 +340,9 @@ impl Program {
                 I::LoadBool(b) => writeln!(w, "load_bool {:?}", b)?,
                 I::Jump(Addr::Absolute(addr)) => writeln!(w, "jump {}", addr)?,
                 I::JumpIf(Addr::Absolute(addr)) => writeln!(w, "jump_if {}", addr)?,
-                I::JumpIfElse(Addr::Absolute(a), Addr::Absolute(b)) => writeln!(w, "jump_if_else {} {}", a, b)?,
+                I::JumpIfElse(Addr::Absolute(a), Addr::Absolute(b)) => {
+                    writeln!(w, "jump_if_else {} {}", a, b)?
+                }
                 I::BinOpAdd => writeln!(w, "bin_add")?,
                 I::BinOpSub => writeln!(w, "bin_sub")?,
                 I::BinOpMul => writeln!(w, "bin_mul")?,
@@ -380,7 +390,9 @@ impl Program {
                         let len = read_ne_usize(&mut &bytes[(ptr - size)..ptr]);
 
                         ptr += 1 + len;
-                        I::LoadString(String::from_utf8(Vec::from(&bytes[(ptr - len)..ptr])).unwrap())
+                        I::LoadString(
+                            String::from_utf8(Vec::from(&bytes[(ptr - len)..ptr])).unwrap(),
+                        )
                     }
                     3 => {
                         ptr += 1 + size_of::<bool>();
@@ -415,18 +427,29 @@ impl Program {
                     30 => unimplemented!(),
                     31 => {
                         ptr += 1 + size_of::<AddrRepr>();
-                        I::Jump(Addr::Absolute(read_ne_addr(&mut &bytes[(ptr - size_of::<AddrRepr>())..ptr])))
+                        I::Jump(Addr::Absolute(read_ne_addr(
+                            &mut &bytes[(ptr - size_of::<AddrRepr>())..ptr],
+                        )))
                     }
                     32 => {
                         ptr += 1 + size_of::<AddrRepr>();
-                        I::JumpIf(Addr::Absolute(read_ne_addr(&mut &bytes[(ptr - size_of::<AddrRepr>())..ptr])))
+                        I::JumpIf(Addr::Absolute(read_ne_addr(
+                            &mut &bytes[(ptr - size_of::<AddrRepr>())..ptr],
+                        )))
                     }
                     33 => {
                         ptr += 1 + size_of::<AddrRepr>();
-                        let first = Addr::Absolute(read_ne_addr(&mut &bytes[(ptr - size_of::<AddrRepr>())..ptr]));
+                        let first = Addr::Absolute(read_ne_addr(
+                            &mut &bytes[(ptr - size_of::<AddrRepr>())..ptr],
+                        ));
 
                         ptr += size_of::<AddrRepr>();
-                        I::JumpIfElse(first, Addr::Absolute(read_ne_addr(&mut &bytes[(ptr - size_of::<AddrRepr>())..ptr])))
+                        I::JumpIfElse(
+                            first,
+                            Addr::Absolute(read_ne_addr(
+                                &mut &bytes[(ptr - size_of::<AddrRepr>())..ptr],
+                            )),
+                        )
                     }
                     34 => progress!(ptr, I::Pop),
                     35 => progress!(ptr, I::Ret),
@@ -439,7 +462,10 @@ impl Program {
             });
         }
 
-        Program { inner: instructions, procedures: Vec::new() }
+        Program {
+            inner: instructions,
+            procedures: Vec::new(),
+        }
     }
 }
 

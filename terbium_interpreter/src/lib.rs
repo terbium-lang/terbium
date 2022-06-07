@@ -149,16 +149,12 @@ impl<const STACK_SIZE: usize> Interpreter<STACK_SIZE> {
                     o @ TerbiumObject::Integer(_) => self.stack.push(o),
                     o @ TerbiumObject::Float(_) => self.stack.push(o),
                     _ => todo!(),
-                }
+                },
                 Instruction::UnOpNeg => match self.stack.pop() {
-                    TerbiumObject::Integer(i) => self.stack.push(
-                        TerbiumObject::Integer(-i),
-                    ),
-                    TerbiumObject::Float(f) => self.stack.push(
-                        TerbiumObject::Float((-f.0).into())
-                    ),
+                    TerbiumObject::Integer(i) => self.stack.push(TerbiumObject::Integer(-i)),
+                    TerbiumObject::Float(f) => self.stack.push(TerbiumObject::Float((-f.0).into())),
                     _ => todo!(),
-                }
+                },
                 Instruction::BinOpAdd => pat_num_ops!(
                     self.stack, lhs, rhs;
                     TerbiumObject::Integer(lhs + rhs),
@@ -200,7 +196,7 @@ impl<const STACK_SIZE: usize> Interpreter<STACK_SIZE> {
                         jump_history.push(pos.clone());
                         pos = a;
                         continue;
-                    },
+                    }
                     _ => panic!("attempted to run unresolved bytecode"),
                 },
                 Instruction::JumpIf(addr) => match addr {
@@ -211,7 +207,7 @@ impl<const STACK_SIZE: usize> Interpreter<STACK_SIZE> {
                             pos = a;
                             continue;
                         }
-                    },
+                    }
                     _ => panic!("attempted to run unresolved bytecode"),
                 },
                 Instruction::JumpIfElse(then, fb) => match (then, fb) {
@@ -219,15 +215,11 @@ impl<const STACK_SIZE: usize> Interpreter<STACK_SIZE> {
                         jump_history.push(pos.clone());
                         let popped = self.stack.pop();
 
-                        pos = if self.is_truthy(popped) {
-                            then
-                        } else {
-                            fb
-                        };
+                        pos = if self.is_truthy(popped) { then } else { fb };
                         continue;
                     }
                     _ => panic!("attempted to run unresolved bytecode"),
-                }
+                },
                 Instruction::Ret => {
                     if let Some(back) = jump_history.pop() {
                         pos = back;
@@ -258,9 +250,9 @@ pub type DefaultInterpreter = Interpreter<512>;
 
 #[cfg(test)]
 mod tests {
-    use terbium_bytecode::{Interpreter as Transformer, Instruction, Program};
-    use terbium_grammar::{Body, ParseInterface};
     use super::{DefaultInterpreter, TerbiumObject};
+    use terbium_bytecode::{Instruction, Interpreter as Transformer, Program};
+    use terbium_grammar::{Body, ParseInterface};
 
     #[test]
     fn test_interpreter() {
