@@ -2,7 +2,7 @@
 
 mod interner;
 
-use terbium_bytecode::{EqComparableFloat, Instruction, Program};
+use terbium_bytecode::{Addr, AddrRepr, EqComparableFloat, Instruction, Program};
 
 pub use interner::Interner;
 use interner::StringId;
@@ -115,14 +115,36 @@ impl<const STACK_SIZE: usize> Interpreter<STACK_SIZE> {
         &mut self.stack
     }
 
+    pub fn is_truthy(&self, o: TerbiumObject) -> bool {
+        match o {
+            TerbiumObject::Bool(b) => b,
+            TerbiumObject::Integer(i) => i != 0,
+            TerbiumObject::Float(f) => f != 0_f64,
+            TerbiumObject::String(s) => self.string_interner.lookup(s).len() > 0,
+            TerbiumObject::Null => false,
+            _ => unimplemented!(),
+        }
+    }
+
+    pub fn to_bool_object(&self, o: TerbiumObject) -> TerbiumObject {
+        TerbiumObject::Bool(self.is_truthy(o))
+    }
+
     pub fn run_bytecode(&mut self, code: Program) {
-        for instr in code.inner() {
+        let mut pos: AddrRepr = 0;
+        let mut jump_history: Vec<AddrRepr> = Vec::new();
+        let instructions = code.inner().collect::<Vec<_>>();
+
+        loop {
+            let instr = instructions[pos as usize];
+
             match instr.to_owned() {
                 Instruction::LoadInt(i) => self.stack.push(TerbiumObject::Integer(i)),
                 Instruction::LoadString(s) => self.stack.push(TerbiumObject::String(
                     self.string_interner.intern(s.as_str()),
                 )),
                 Instruction::LoadFloat(f) => self.stack.push(TerbiumObject::Float(f)),
+                Instruction::LoadBool(b) => self.stack.push(TerbiumObject::Bool(b)),
                 Instruction::UnOpPos => match self.stack.pop() {
                     o @ TerbiumObject::Integer(_) => self.stack.push(o),
                     o @ TerbiumObject::Float(_) => self.stack.push(o),
@@ -165,11 +187,69 @@ impl<const STACK_SIZE: usize> Interpreter<STACK_SIZE> {
                         // TODO
                     }
                 ),
+                Instruction::OpLogicalNot => match self.stack.pop() {
+                    TerbiumObject::Bool(b) => self.stack.push(TerbiumObject::Bool(!b)),
+                    // TODO: support custom not operation
+                    o => self.stack.push(TerbiumObject::Bool(!self.is_truthy(o))),
+                },
                 Instruction::Pop => {
                     self.stack.pop();
                 }
+                Instruction::Jump(addr) => match addr {
+                    Addr::Absolute(a) => {
+                        jump_history.push(pos.clone());
+                        pos = a;
+                        continue;
+                    },
+                    _ => panic!("attempted to run unresolved bytecode"),
+                },
+                Instruction::JumpIf(addr) => match addr {
+                    Addr::Absolute(a) => {
+                        let popped = self.stack.pop();
+                        if self.is_truthy(popped) {
+                            jump_history.push(pos.clone());
+                            pos = a;
+                            continue;
+                        }
+                    },
+                    _ => panic!("attempted to run unresolved bytecode"),
+                },
+                Instruction::JumpIfElse(then, fb) => match (then, fb) {
+                    (Addr::Absolute(then), Addr::Absolute(fb)) => {
+                        jump_history.push(pos.clone());
+                        let popped = self.stack.pop();
+
+                        pos = if self.is_truthy(popped) {
+                            then
+                        } else {
+                            fb
+                        };
+                        continue;
+                    }
+                    _ => panic!("attempted to run unresolved bytecode"),
+                }
+                Instruction::Ret => {
+                    if let Some(back) = jump_history.pop() {
+                        pos = back;
+                    } else {
+                        break;
+                    }
+                }
+                Instruction::RetNull => {
+                    self.stack.push(TerbiumObject::Null);
+                    if let Some(back) = jump_history.pop() {
+                        pos = back;
+                    } else {
+                        break;
+                    }
+                }
+                Instruction::Halt => {
+                    break;
+                }
                 _ => todo!(),
             }
+
+            pos += 1;
         }
     }
 }
@@ -178,7 +258,8 @@ pub type DefaultInterpreter = Interpreter<512>;
 
 #[cfg(test)]
 mod tests {
-    use terbium_bytecode::{Instruction, Program};
+    use terbium_bytecode::{Interpreter as Transformer, Instruction, Program};
+    use terbium_grammar::{Body, ParseInterface};
     use super::{DefaultInterpreter, TerbiumObject};
 
     #[test]
@@ -192,5 +273,33 @@ mod tests {
         interpreter.run_bytecode(program);
 
         assert_eq!(interpreter.stack().pop(), TerbiumObject::Integer(2));
+    }
+
+    #[test]
+    fn test_interpreter_from_string() {
+        let code = r#"
+            if true {
+                1 + 1
+            } else {
+                5 + 5
+            }
+        "#;
+
+        let (body, errors) = Body::from_string(code.to_string()).unwrap_or_else(|e| {
+            panic!("tokenization error: {:?}", e);
+        });
+        let mut transformer = Transformer::new();
+        transformer.interpret_body(None, body);
+
+        let mut program = transformer.program();
+        program.resolve();
+        println!("{:#?}", program.inner().collect::<Vec<_>>());
+        let bytes = program.bytes();
+        println!("{:?}", bytes);
+        println!("{:#?}", Program::from_bytes(bytes));
+
+        let mut interpreter = DefaultInterpreter::new();
+        interpreter.run_bytecode(program);
+        println!("{:?}", interpreter.stack().pop());
     }
 }
