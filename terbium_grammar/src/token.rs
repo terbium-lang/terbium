@@ -147,7 +147,7 @@ pub enum Keyword {
     // Variables
     Let,
     Const,
-    Immut,
+    Mut,
     // Attributes
     Private,
     // Control flow
@@ -174,7 +174,7 @@ impl Display for Keyword {
             Self::Export => "export",
             Self::Let => "let",
             Self::Const => "const",
-            Self::Immut => "immut",
+            Self::Mut => "mut",
             Self::Private => "private",
             Self::If => "if",
             Self::Else => "else",
@@ -201,7 +201,7 @@ impl Keyword {
                 | Self::Class
                 | Self::Let
                 | Self::Const
-                | Self::Immut
+                | Self::Mut
                 | Self::If
                 | Self::Else
                 | Self::For
@@ -362,7 +362,7 @@ pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Error> {
         "export" => Token::Keyword(Keyword::Export),
         "let" => Token::Keyword(Keyword::Let),
         "const" => Token::Keyword(Keyword::Const),
-        "immut" => Token::Keyword(Keyword::Immut),
+        "mut" => Token::Keyword(Keyword::Mut),
         "private" => Token::Keyword(Keyword::Private),
         "if" => Token::Keyword(Keyword::If),
         "else" => Token::Keyword(Keyword::Else),

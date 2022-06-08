@@ -124,7 +124,7 @@ pub enum Target {
     // Could represent a variable or a parameter. Supports destructuring.
     Ident(String),
     Array(Vec<Target>),
-    Attr(Box<Target>, String), // Invalid as a parameter or when let/immut is used.
+    Attr(Box<Target>, String), // Invalid as a parameter in a declaration statement or parameter.
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -145,12 +145,15 @@ pub enum Node {
     },
     Expr(Expr),
     // e.g. x.y = z becomes Assign { target: Attr(Ident("x"), "y"), value: Ident("z"), .. }
+    Declare {
+        targets: Vec<Target>,
+        value: Expr,
+        r#mut: bool,
+        r#const: bool,
+    },
     Assign {
         targets: Vec<Target>,
         value: Expr,
-        r#let: bool,
-        immut: bool,
-        r#const: bool,
     },
     Return(Option<Expr>),
     Require(Vec<String>), // TODO: require y from x; require * from x
@@ -480,52 +483,52 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, Body> {
             .then_ignore(just::<_, Token, _>(Token::Semicolon))
             .map(Node::Require);
 
-        let assign = just::<_, Token, _>(Token::Keyword(Keyword::Let))
-            .or_not()
-            .then(just::<_, Token, _>(Token::Keyword(Keyword::Immut)).or_not())
-            .or(just(Token::Keyword(Keyword::Const))
-                .map(|_| (None, Some(Token::Keyword(Keyword::Const)))))
-            .or_not()
-            .then(select! {
-                // TODO: target parser (only supports raw idents)
-                Token::Identifier(i) => i,
-            })
-            .then(
-                just::<_, Token, _>(Token::Assign)
-                    .ignore_then(select! { Token::Identifier(i) => i })
-                    .repeated(),
+        // TODO: support more targets
+        let target = recursive(|t| {
+            (select! {
+                Token::Identifier(i) => Target::Ident(i),
+            }).or(t.separated_by(just::<_, Token, _>(Token::Comma))
+                .allow_trailing()
+                .at_least(1)
+                .delimited_by(
+                    just(Token::StartBracket(Bracket::Bracket)),
+                    just(Token::EndBracket(Bracket::Bracket)),
+                )
+                .map(Target::Array),
             )
-            .then_ignore(just::<_, Token, _>(Token::Assign))
+        });
+
+        let declare = just::<_, Token, _>(Token::Keyword(Keyword::Let))
+            .or(just(Token::Keyword(Keyword::Const)))
+            .then(just(Token::Keyword(Keyword::Mut)).or_not())
+            .then(target.clone()
+                .then_ignore(just::<_, Token, _>(Token::Assign))
+                .repeated(),
+            )
             .then(e.clone())
             .then_ignore(just::<_, Token, _>(Token::Semicolon))
-            .map(|(((modifiers, first_target), targets), expr)| {
-                let (r#let, immut, r#const) = match modifiers {
-                    Some((r#let, immut_or_const)) => match r#let {
-                        Some(_) => (true, immut_or_const.is_some(), false),
-                        None => match immut_or_const {
-                            Some(Token::Keyword(Keyword::Const)) => (false, false, true),
-                            Some(Token::Keyword(Keyword::Immut)) => (false, true, false),
-                            Some(_) => unreachable!(),
-                            None => (false, false, false),
-                        },
-                    },
-                    None => (false, false, false),
-                };
+            .map(|(((modifier, is_mut), targets), expr)| {
+                let r#mut = is_mut.is_some();
+                let r#const = matches!(modifier, Token::Keyword(Keyword::Const));
 
-                let targets = vec![first_target]
-                    .into_iter()
-                    .chain(targets)
-                    .map(Target::Ident)
-                    .collect::<Vec<_>>();
+                if r#mut && r#const {
+                    panic!("\"const mut\" declarations are not supported anymore, use \"let mut\" instead.");
+                }
 
-                Node::Assign {
+                Node::Declare {
                     targets,
                     value: expr,
-                    r#let,
-                    immut,
+                    r#mut,
                     r#const,
                 }
             });
+
+        let assign = target
+            .then_ignore(just::<_, Token, _>(Token::Assign))
+            .repeated()
+            .then(e.clone())
+            .then_ignore(just::<_, Token, _>(Token::Semicolon))
+            .map(|(targets, expr)| Node::Assign { targets, value: expr });
 
         let param = select! {
             Token::Identifier(i) => Target::Ident(i),
@@ -589,7 +592,7 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, Body> {
                 .then_ignore(none_of(Token::EndBracket(Bracket::Brace)).rewind()))
             .map(Node::Expr);
 
-        choice((func, assign, r#return, require, expr))
+        choice((func, declare, assign, r#return, require, expr))
             .repeated()
             .then(e.clone().or_not().map(|o| o.map(Node::Expr)))
             .map(|(mut nodes, last)| {
@@ -713,11 +716,10 @@ mod tests {
                                     }),
                                     rhs: Box::new(Integer(2)),
                                 }),
-                                body: vec![Assign {
+                                body: vec![Declare {
                                     targets: vec![Target::Ident("x".to_string()),],
                                     value: Integer(5),
-                                    r#let: true,
-                                    immut: false,
+                                    r#mut: false,
                                     r#const: false,
                                 },],
                                 else_if_bodies: vec![],

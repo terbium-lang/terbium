@@ -12,7 +12,6 @@ use std::io::Write;
 use std::mem::size_of;
 
 pub use interpreter::Interpreter;
-use terbium_grammar::Operator::Add;
 pub use util::EqComparableFloat;
 
 pub type ObjectPtr = u32;
@@ -49,7 +48,7 @@ pub enum Instruction {
     BinOpBitOr,
     BinOpBitXor,
     BinOpBitAnd,
-    BinOpBitNot, // Unary
+    UnOpBitNot, // Unary
 
     // Logical Operations
     OpEq,
@@ -124,7 +123,7 @@ impl Instruction {
             Self::BinOpBitOr => 13,
             Self::BinOpBitXor => 14,
             Self::BinOpBitAnd => 15,
-            Self::BinOpBitNot => 16,
+            Self::UnOpBitNot => 16,
             Self::OpEq => 17,
             Self::OpNe => 18,
             Self::OpLt => 19,
@@ -351,7 +350,7 @@ impl Program {
                 I::BinOpPow => writeln!(w, "bin_pow")?,
                 I::BinOpBitOr => writeln!(w, "bin_bit_or")?,
                 I::BinOpBitXor => writeln!(w, "bin_bit_xor")?,
-                I::BinOpBitNot => writeln!(w, "bin_bit_not")?,
+                I::UnOpBitNot => writeln!(w, "bin_bit_not")?,
                 I::BinOpBitAnd => writeln!(w, "bin_bit_and")?,
                 I::OpLogicalOr => writeln!(w, "log_or")?,
                 I::OpLogicalAnd => writeln!(w, "log_and")?,
@@ -410,7 +409,7 @@ impl Program {
                     13 => progress!(ptr, I::BinOpBitOr),
                     14 => progress!(ptr, I::BinOpBitXor),
                     15 => progress!(ptr, I::BinOpBitAnd),
-                    16 => progress!(ptr, I::BinOpBitNot),
+                    16 => progress!(ptr, I::UnOpBitNot),
                     17 => progress!(ptr, I::OpEq),
                     18 => progress!(ptr, I::OpNe),
                     19 => progress!(ptr, I::OpLt),

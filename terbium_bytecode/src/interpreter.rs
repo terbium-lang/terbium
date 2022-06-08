@@ -54,6 +54,7 @@ impl Interpreter {
                         Operator::Add => Instruction::UnOpPos,
                         Operator::Sub => Instruction::UnOpNeg,
                         Operator::Not => Instruction::OpLogicalNot,
+                        Operator::BitNot => Instruction::UnOpBitNot,
                         _ => unimplemented!(),
                     },
                 );
@@ -70,7 +71,18 @@ impl Interpreter {
                         Operator::Mul => Instruction::BinOpMul,
                         Operator::Div => Instruction::BinOpDiv,
                         Operator::Eq => Instruction::OpEq,
-                        _ => todo!(),
+                        Operator::Ne => Instruction::OpNe,
+                        Operator::Lt => Instruction::OpLt,
+                        Operator::Le => Instruction::OpLe,
+                        Operator::Gt => Instruction::OpGt,
+                        Operator::Ge => Instruction::OpGe,
+                        Operator::Or => Instruction::OpLogicalOr,
+                        Operator::And => Instruction::OpLogicalAnd,
+                        Operator::BitOr => Instruction::BinOpBitOr,
+                        Operator::BitXor => Instruction::BinOpBitXor,
+                        Operator::BitAnd => Instruction::BinOpBitAnd,
+                        Operator::Range => todo!(),
+                        _ => unimplemented!(),
                     },
                 );
             }

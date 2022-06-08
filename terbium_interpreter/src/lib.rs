@@ -183,6 +183,73 @@ impl<const STACK_SIZE: usize> Interpreter<STACK_SIZE> {
                         // TODO
                     }
                 ),
+                Instruction::BinOpMul => pat_num_ops!(
+                    self.stack, lhs, rhs;
+                    TerbiumObject::Integer(lhs * rhs),
+                    TerbiumObject::Float((lhs.0 * rhs.0).into()),
+                    TerbiumObject::Float((lhs as f64 - rhs.0).into()),
+                    TerbiumObject::Float((lhs.0 - rhs as f64).into());
+                    (TerbiumObject::Integer(rhs), TerbiumObject::String(lhs)) => {
+                        self.stack.push(TerbiumObject::String(
+                            self.string_interner.intern(
+                                self.string_interner.lookup(lhs).repeat(rhs as usize).as_str(),
+                            )
+                        ))
+                    },
+                    _ => {
+                        // TODO
+                    }
+                ),
+                Instruction::OpEq => pat_num_ops!(
+                    self.stack, lhs, rhs;
+                    TerbiumObject::Bool(lhs == rhs),
+                    TerbiumObject::Bool(lhs == rhs),
+                    TerbiumObject::Bool(rhs.eq(&(lhs as f64))),
+                    TerbiumObject::Bool(lhs.eq(&(rhs as f64)));
+                    (TerbiumObject::String(rhs), TerbiumObject::String(lhs)) => {
+                        self.stack.push(TerbiumObject::Bool(
+                            self.string_interner.lookup(lhs)
+                            == self.string_interner.lookup(rhs)
+                        ))
+                    },
+                    (TerbiumObject::Bool(rhs), TerbiumObject::Bool(lhs)) => {
+                        self.stack.push(TerbiumObject::Bool(lhs == rhs))
+                    },
+                    (TerbiumObject::Null, TerbiumObject::Null) => {
+                        self.stack.push(TerbiumObject::Bool(true))
+                    },
+                    ((TerbiumObject::Null, _) | (_, TerbiumObject::Null)) => {
+                        self.stack.push(TerbiumObject::Bool(false))
+                    },
+                    _ => {
+                        // TODO
+                    }
+                ),
+                Instruction::OpNe => pat_num_ops!(
+                    self.stack, lhs, rhs;
+                    TerbiumObject::Bool(lhs != rhs),
+                    TerbiumObject::Bool(lhs != rhs),
+                    TerbiumObject::Bool(rhs.eq(&(lhs as f64))),
+                    TerbiumObject::Bool(lhs.eq(&(rhs as f64)));
+                    (TerbiumObject::String(rhs), TerbiumObject::String(lhs)) => {
+                        self.stack.push(TerbiumObject::Bool(
+                            self.string_interner.lookup(lhs)
+                            != self.string_interner.lookup(rhs)
+                        ))
+                    },
+                    (TerbiumObject::Bool(rhs), TerbiumObject::Bool(lhs)) => {
+                        self.stack.push(TerbiumObject::Bool(lhs != rhs))
+                    },
+                    (TerbiumObject::Null, TerbiumObject::Null) => {
+                        self.stack.push(TerbiumObject::Bool(false))
+                    },
+                    ((TerbiumObject::Null, _) | (_, TerbiumObject::Null)) => {
+                        self.stack.push(TerbiumObject::Bool(true))
+                    },
+                    _ => {
+                        // TODO
+                    }
+                ),
                 Instruction::OpLogicalNot => match self.stack.pop() {
                     TerbiumObject::Bool(b) => self.stack.push(TerbiumObject::Bool(!b)),
                     // TODO: support custom not operation
