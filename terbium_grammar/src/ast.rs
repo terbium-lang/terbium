@@ -503,7 +503,8 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, Body> {
             .then(just(Token::Keyword(Keyword::Mut)).or_not())
             .then(target.clone()
                 .then_ignore(just::<_, Token, _>(Token::Assign))
-                .repeated(),
+                .repeated()
+                .at_least(1),
             )
             .then(e.clone())
             .then_ignore(just::<_, Token, _>(Token::Semicolon))
@@ -512,6 +513,7 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, Body> {
                 let r#const = matches!(modifier, Token::Keyword(Keyword::Const));
 
                 if r#mut && r#const {
+                    // TODO: don't panic here, just return Err
                     panic!("\"const mut\" declarations are not supported anymore, use \"let mut\" instead.");
                 }
 
@@ -526,6 +528,7 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, Body> {
         let assign = target
             .then_ignore(just::<_, Token, _>(Token::Assign))
             .repeated()
+            .at_least(1)
             .then(e.clone())
             .then_ignore(just::<_, Token, _>(Token::Semicolon))
             .map(|(targets, expr)| Node::Assign { targets, value: expr });
