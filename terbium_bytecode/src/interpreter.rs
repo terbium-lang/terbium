@@ -139,11 +139,12 @@ impl Interpreter {
                     last_parent = Some(last_else);
                     last_else = self.program.create_procedure();
                 }
+                self.program.pop_procedure();
 
                 if let Some(else_body) = else_body {
-                    self.interpret_body(Some(last_else), else_body);
+                    self.interpret_body(last_parent, else_body);
                 } else {
-                    self.push(Some(last_else), Instruction::RetNull);
+                    self.push(last_parent, Instruction::RetNull);
                 }
             }
             _ => todo!(),

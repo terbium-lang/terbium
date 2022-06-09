@@ -209,6 +209,10 @@ impl Program {
         (self.procedures.len() - 1) as AddrRepr
     }
 
+    pub fn pop_procedure(&mut self) {
+        std::mem::drop(self.procedures.pop());
+    }
+
     pub fn push(&mut self, procedure: Option<AddrRepr>, instr: Instruction) {
         if let Some(procedure) = procedure {
             return self
