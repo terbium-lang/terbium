@@ -19,4 +19,12 @@ pub use terbium_bytecode::{
     EqComparableFloat,
 };
 
+pub use terbium_interpreter::{
+    self as interpreter,
+    DefaultInterpreter, 
+    Interpreter, 
+    Stack, 
+    TerbiumObject,
+};
+
 pub fn run() {}
