@@ -135,6 +135,10 @@ impl Interpreter {
                             Addr::Procedure(last_else),
                         ),
                     );
+                    // If last_parent is None, Halt instruction should be inserted automatically.
+                    if let Some(p) = last_parent {
+                        self.push_return(p, return_last);
+                    }
 
                     last_parent = Some(last_else);
                     last_else = self.program.create_procedure();

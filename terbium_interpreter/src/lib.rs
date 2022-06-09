@@ -337,10 +337,12 @@ mod tests {
     #[test]
     fn test_interpreter_from_string() {
         let code = r#"
-            if true {
-                1 + 1
+            if 1 + 1 == 3 {
+                0
+            } else if 1 + 1 == 2 {
+                1
             } else {
-                5 + 5
+                2
             }
         "#;
 
@@ -352,13 +354,12 @@ mod tests {
 
         let mut program = transformer.program();
         program.resolve();
-        println!("{:#?}", program.inner().collect::<Vec<_>>());
+
         let bytes = program.bytes();
-        println!("{:?}", bytes);
-        println!("{:#?}", Program::from_bytes(bytes));
 
         let mut interpreter = DefaultInterpreter::new();
         interpreter.run_bytecode(program);
-        println!("{:?}", interpreter.stack().pop());
+
+        assert_eq!(interpreter.stack().pop(), TerbiumObject::Integer(1));
     }
 }

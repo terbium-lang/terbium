@@ -334,8 +334,10 @@ impl Program {
 
     pub fn dis(&self, w: &mut impl Write) -> std::io::Result<()> {
         type I = Instruction;
+        let pad_length = self.inner.len().saturating_sub(1).to_string().len();
 
-        for instr in self.inner() {
+        for (j, instr) in self.inner().enumerate() {
+            write!(w, "{:01$} | ", j, pad_length)?;
             match instr {
                 I::LoadInt(i) => writeln!(w, "load_int {}", i)?,
                 I::LoadFloat(f) => writeln!(w, "load_float {}", f.0)?,
