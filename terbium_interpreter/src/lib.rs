@@ -114,6 +114,10 @@ impl<const STACK_SIZE: usize> Interpreter<STACK_SIZE> {
     pub fn stack(&mut self) -> &mut Stack<STACK_SIZE> {
         &mut self.stack
     }
+    
+    pub fn string_lookup(&self, id: StringId) -> &str {
+        self.string_interner.lookup(id)
+    }
 
     pub fn is_truthy(&self, o: TerbiumObject) -> bool {
         match o {
