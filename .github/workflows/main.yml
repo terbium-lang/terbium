@@ -132,24 +132,49 @@ jobs:
         run: cargo test --verbose --workspace
 
   miri_test:
-      name: Miri Test
-      runs-on: ubuntu-latest
+    name: Miri Test
+    runs-on: ubuntu-latest
 
-      steps:
-        - uses: actions/checkout@v2
+    steps:
+      - uses: actions/checkout@v2
 
-        - name: Install latest nightly with miri
-          uses: actions-rs/toolchain@v1
-          with:
-            toolchain: nightly
-            override: true
-            components: miri
+      - name: Install latest nightly with miri
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          override: true
+          components: miri
 
-        - name: Setup cache
-          uses: Swatinem/rust-cache@v1
+      - name: Setup cache
+        uses: Swatinem/rust-cache@v1
+
+      - name: Setup miri
+        run: cargo miri setup
+
+      - name: Run miri test
+        run: cargo miri test --verbose --workspace
+  
+  wasm:
+    name: Wasm Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
       
-        - name: Setup miri
-          run: cargo miri setup
+      - name: Install latest nightly
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          override: true
+          target: wasm32-unknown-unknown
+
+      - name: Setup cache
+        uses: Swatinem/rust-cache@v1
+      
+      - name: Test WASM
+        run: cargo test --verbose --workspace --target wasm32-unknown-unknown
         
-        - name: Run miri test
-          run: cargo miri test --verbose --workspace
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: wasm-debug
+          path: target/wasm32-unknown-unknown/debug/terbium.wasm
