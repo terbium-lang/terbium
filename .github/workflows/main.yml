@@ -170,8 +170,8 @@ jobs:
       - name: Setup cache
         uses: Swatinem/rust-cache@v1
       
-      - name: Test WASM
-        run: cargo test --verbose --workspace --target wasm32-unknown-unknown
+      - name: Build WASM
+        run: cargo build --verbose --target wasm32-unknown-unknown
         
       - name: Upload artifact
         uses: actions/upload-artifact@v3
