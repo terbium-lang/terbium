@@ -106,7 +106,6 @@ trait Iterator<T> {
     }
 
     skip(count: int = 1) -> $ throws StopIteration {
-
         for _ in 0..count { $next(); }
         $
     }
@@ -172,7 +171,7 @@ trait Iterator<T> {
         ZipIterator($, other)
     }
 
-    unzip<Z, A, B>() -> [Iterator<A>, Iterator<B>]
+    unzip<A, B>() -> [Iterator<A>, Iterator<B>]
     where
         T: [A, B],
     {
