@@ -133,7 +133,7 @@ impl Scope {
 
 #[derive(Debug)]
 pub struct Context<const STACK_SIZE: usize = 512> {
-    pub(crate) store: ObjectStore,
+    pub store: ObjectStore,
     pub(crate) stack: Stack<STACK_SIZE>,
     scopes: Vec<Scope>,
     integer_lookup: HashMap<i128, ObjectRef>,
@@ -567,6 +567,16 @@ impl<const STACK_SIZE: usize> Interpreter<STACK_SIZE> {
             }
 
             pos += 1;
+        }
+    }
+
+    pub fn get_object_repr(&self, o: &TerbiumObject) -> String {
+        match o {
+            TerbiumObject::Integer(i) => i.to_string(),
+            TerbiumObject::Float(f) => f.0.to_string(),
+            TerbiumObject::String(s_id) => format!("{:?}", self.string_lookup(*s_id)),
+            TerbiumObject::Bool(b) => b.to_string(),
+            TerbiumObject::Null => "null".to_string(),
         }
     }
 }
