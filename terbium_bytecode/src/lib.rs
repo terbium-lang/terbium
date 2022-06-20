@@ -14,7 +14,6 @@ use std::mem::size_of;
 pub use interpreter::Interpreter;
 pub use util::EqComparableFloat;
 
-pub type ObjectPtr = u32;
 pub type AddrRepr = u32;
 
 #[derive(Copy, Clone, Debug, PartialOrd, PartialEq, Hash)]
@@ -31,8 +30,12 @@ pub enum Instruction {
     LoadFloat(EqComparableFloat),
     LoadString(String),
     LoadBool(bool),
-    Load(ObjectPtr),
-    LoadFrame(ObjectPtr),
+    Load(usize),
+    LoadFrame(usize),
+
+    // Scope
+    EnterScope,
+    ExitScope,
 
     // Operations
     UnOpPos,
@@ -62,9 +65,11 @@ pub enum Instruction {
     OpLogicalNot, // Unary
 
     // Variables
-    PushLocal,        // Push the item on the stack to locals
-    PopLocal(usize),  // Pop and don't push to stack
-    LoadLocal(usize), // "Duplicate" (as a reference) and push to stack
+    Store(usize),
+    StoreVar(usize),
+    StoreMutVar(usize),
+    StoreConstVar(usize),
+    LoadVar(usize),
 
     // Functions
     MakeFunc(usize), // Field 0 is the amount of items to take from the stack as parameters
@@ -97,8 +102,14 @@ impl Instruction {
             Self::LoadFloat(_) => size_of::<f64>(),
             Self::LoadString(s) => s.len(),
             Self::LoadBool(_) => 1,
-            Self::LoadLocal(_) | Self::PopLocal(_) | Self::MakeFunc(_) => size_of::<usize>(),
-            Self::Load(_) | Self::LoadFrame(_) => size_of::<ObjectPtr>(),
+            Self::LoadVar(_)
+            | Self::StoreVar(_)
+            | Self::StoreMutVar(_)
+            | Self::StoreConstVar(_)
+            | Self::MakeFunc(_)
+            | Self::Load(_)
+            | Self::Store(_)
+            | Self::LoadFrame(_) => size_of::<usize>(),
             Self::Jump(_) | Self::JumpIf(_) => size_of::<AddrRepr>(),
             Self::JumpIfElse(_, _) => size_of::<AddrRepr>() * 2,
             _ => 0,
@@ -133,24 +144,24 @@ impl Instruction {
             Self::OpLogicalOr => 23,
             Self::OpLogicalAnd => 24,
             Self::OpLogicalNot => 25,
-            Self::PushLocal => 26,
-            Self::PopLocal(_) => 27,
-            Self::LoadLocal(_) => 28,
-            Self::MakeFunc(_) => 29,
-            Self::CallFunc(_) => 30,
-            Self::Jump(_) => 31,
-            Self::JumpIf(_) => 32,
-            Self::JumpIfElse(_, _) => 33,
-            Self::Pop => 34,
-            Self::Ret => 35,
-            Self::RetNull => 36,
-            Self::Halt => 37,
-            Self::LoadFrame(_) => 38,
+            Self::LoadVar(_) => 26,
+            Self::StoreVar(_) => 27,
+            Self::StoreMutVar(_) => 28,
+            Self::StoreConstVar(_) => 29,
+            Self::MakeFunc(_) => 30,
+            Self::CallFunc(_) => 31,
+            Self::Jump(_) => 32,
+            Self::JumpIf(_) => 33,
+            Self::JumpIfElse(_, _) => 34,
+            Self::Pop => 35,
+            Self::Ret => 36,
+            Self::RetNull => 37,
+            Self::Halt => 38,
+            Self::LoadFrame(_) => 39,
+            Self::Store(_) => 40,
+            Self::EnterScope => 41,
+            Self::ExitScope => 42,
         }
-    }
-
-    pub fn from_instr_id(id: u8) -> Self {
-        todo!()
     }
 }
 
@@ -312,7 +323,13 @@ impl Program {
                     bytes.extend_from_slice(s.as_bytes())
                 }
                 I::LoadBool(b) => bytes.extend_from_slice(&[if *b { 0 } else { 1 }]),
-                I::LoadLocal(i) | I::PopLocal(i) | I::MakeFunc(i) => {
+                I::LoadVar(i)
+                | I::Load(i)
+                | I::Store(i)
+                | I::StoreMutVar(i)
+                | I::StoreConstVar(i)
+                | I::StoreVar(i)
+                | I::MakeFunc(i) => {
                     bytes.extend_from_slice(&i.to_ne_bytes())
                 }
                 I::Jump(a) | I::JumpIf(a) => match a {
@@ -343,6 +360,12 @@ impl Program {
                 I::LoadFloat(f) => writeln!(w, "load_float {}", f.0)?,
                 I::LoadString(s) => writeln!(w, "load_string {:?}", s)?,
                 I::LoadBool(b) => writeln!(w, "load_bool {:?}", b)?,
+                I::Load(i) => writeln!(w, "load {}", i)?,
+                I::LoadVar(i) => writeln!(w, "load_var {}", i)?,
+                I::Store(i) => writeln!(w, "store {}", i)?,
+                I::StoreVar(i) => writeln!(w, "store_var {}", i)?,
+                I::StoreMutVar(i) => writeln!(w, "store_mut_var {}", i)?,
+                I::StoreConstVar(i) => writeln!(w, "store_const_var {}", i)?,
                 I::Jump(Addr::Absolute(addr)) => writeln!(w, "jump {}", addr)?,
                 I::JumpIf(Addr::Absolute(addr)) => writeln!(w, "jump_if {}", addr)?,
                 I::JumpIfElse(Addr::Absolute(a), Addr::Absolute(b)) => {
@@ -371,6 +394,8 @@ impl Program {
                 I::Ret => writeln!(w, "ret")?,
                 I::RetNull => writeln!(w, "ret_null")?,
                 I::Halt => writeln!(w, "halt")?,
+                I::EnterScope => writeln!(w, "enter_scope")?,
+                I::ExitScope => writeln!(w, "exit_scope")?,
                 _ => unimplemented!(),
             }
         }
@@ -409,7 +434,10 @@ impl Program {
                         ptr += 1 + size_of::<bool>();
                         I::LoadBool(if bytes[ptr - 1] == 0 { true } else { false })
                     }
-                    4 => unimplemented!(),
+                    4 => {
+                        ptr += 1 + size_of::<usize>();
+                        I::Load(read_ne_usize(&mut &bytes[(ptr - size_of::<usize>())..ptr]).into())
+                    },
                     5 => progress!(ptr, I::UnOpPos),
                     6 => progress!(ptr, I::UnOpNeg),
                     7 => progress!(ptr, I::BinOpAdd),
@@ -431,24 +459,37 @@ impl Program {
                     23 => progress!(ptr, I::OpLogicalOr),
                     24 => progress!(ptr, I::OpLogicalAnd),
                     25 => progress!(ptr, I::OpLogicalNot),
-                    26 => progress!(ptr, I::PushLocal),
-                    27 => unimplemented!(),
-                    28 => unimplemented!(),
-                    29 => unimplemented!(),
+                    26 => {
+                        ptr += 1 + size_of::<usize>();
+                        I::LoadVar(read_ne_usize(&mut &bytes[(ptr - size_of::<usize>())..ptr]).into())
+                    },
+                    27 => {
+                        ptr += 1 + size_of::<usize>();
+                        I::StoreVar(read_ne_usize(&mut &bytes[(ptr - size_of::<usize>())..ptr]).into())
+                    },
+                    28 => {
+                        ptr += 1 + size_of::<usize>();
+                        I::StoreMutVar(read_ne_usize(&mut &bytes[(ptr - size_of::<usize>())..ptr]).into())
+                    },
+                    29 => {
+                        ptr += 1 + size_of::<usize>();
+                        I::StoreConstVar(read_ne_usize(&mut &bytes[(ptr - size_of::<usize>())..ptr]).into())
+                    },
                     30 => unimplemented!(),
-                    31 => {
+                    31 => unimplemented!(),
+                    32 => {
                         ptr += 1 + size_of::<AddrRepr>();
                         I::Jump(Addr::Absolute(read_ne_addr(
                             &mut &bytes[(ptr - size_of::<AddrRepr>())..ptr],
                         )))
                     }
-                    32 => {
+                    33 => {
                         ptr += 1 + size_of::<AddrRepr>();
                         I::JumpIf(Addr::Absolute(read_ne_addr(
                             &mut &bytes[(ptr - size_of::<AddrRepr>())..ptr],
                         )))
                     }
-                    33 => {
+                    34 => {
                         ptr += 1 + size_of::<AddrRepr>();
                         let first = Addr::Absolute(read_ne_addr(
                             &mut &bytes[(ptr - size_of::<AddrRepr>())..ptr],
@@ -462,11 +503,17 @@ impl Program {
                             )),
                         )
                     }
-                    34 => progress!(ptr, I::Pop),
-                    35 => progress!(ptr, I::Ret),
-                    36 => progress!(ptr, I::RetNull),
-                    37 => progress!(ptr, I::Halt),
-                    38 => unimplemented!(),
+                    35 => progress!(ptr, I::Pop),
+                    36 => progress!(ptr, I::Ret),
+                    37 => progress!(ptr, I::RetNull),
+                    38 => progress!(ptr, I::Halt),
+                    39 => unimplemented!(),
+                    40 => {
+                        ptr += 1 + size_of::<usize>();
+                        I::Store(read_ne_usize(&mut &bytes[(ptr - size_of::<usize>())..ptr]).into())
+                    }
+                    41 => progress!(ptr, I::EnterScope),
+                    42 => progress!(ptr, I::ExitScope),
                     b => panic!("invalid byte 0x{:0x} at position {}", b, ptr),
                 },
                 None => break,

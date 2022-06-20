@@ -30,6 +30,8 @@ pub enum Operator {
     BitXor,
     BitAnd,
     BitNot,
+    BitLShift,
+    BitRShift,
     // Programmatic
     Range,
 }
@@ -63,6 +65,8 @@ impl Operator {
                 | Self::BitOr
                 | Self::BitXor
                 | Self::BitAnd
+                | Self::BitLShift
+                | Self::BitRShift
                 | Self::Range
         )
     }
@@ -90,6 +94,8 @@ impl Display for Operator {
             Self::BitXor => "^",
             Self::BitAnd => "&",
             Self::BitNot => "~",
+            Self::BitLShift => "<<",
+            Self::BitRShift => ">>",
             Self::Range => "..",
         })
     }
@@ -107,10 +113,10 @@ impl Display for StringLiteral {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.write_str(
             match self {
-                Self::String(s) => format!("\"{}\"", s),
-                Self::ByteString(s) => format!("~\"{}\"", s),
-                Self::RawString(s) => format!("r\"{}\"", s),
-                Self::InterpolatedString(s) => format!("$\"{}\"", s),
+                Self::String(s) => format!("{:?}", s),
+                Self::ByteString(s) => format!("~{:?}", s),
+                Self::RawString(s) => format!("r{:?}", s),
+                Self::InterpolatedString(s) => format!("${:?}", s),
             }
             .as_str(),
         )
@@ -220,7 +226,6 @@ pub enum Bracket {
     Paren,   // ()
     Bracket, // []
     Brace,   // {}
-    Angle,   // <>
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -266,13 +271,11 @@ impl Display for Token {
                 Bracket::Paren => "(",
                 Bracket::Bracket => "[",
                 Bracket::Brace => "{",
-                Bracket::Angle => "<",
             },
             Self::EndBracket(b) => match b {
                 Bracket::Paren => ")",
                 Bracket::Bracket => "]",
                 Bracket::Brace => "}",
-                Bracket::Angle => ">",
             },
             Self::Comma => ",",
             Self::Dot => ".",
@@ -389,6 +392,9 @@ pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Error> {
 
     let comment = single_line.or(multi_line).or_not();
 
+    let right_shift = just(">>")
+        .then_ignore(none_of(")<>]},;"));
+
     let symbol = choice::<_, Error>((
         just(',').to(Token::Comma),
         just(';').to(Token::Semicolon),
@@ -411,6 +417,8 @@ pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Error> {
         just('=').to(Token::Assign),                       // Conflicts with ==
         just("<=").map(|_| Token::Operator(Operator::Le)),
         just(">=").map(|_| Token::Operator(Operator::Ge)),
+        just("<<").to(Token::Operator(Operator::BitLShift)),
+        right_shift.to(Token::Operator(Operator::BitRShift)),
         just('<').map(|_| Token::Operator(Operator::Lt)),
         just('>').map(|_| Token::Operator(Operator::Gt)),
         just("||").map(|_| Token::Operator(Operator::Or)),

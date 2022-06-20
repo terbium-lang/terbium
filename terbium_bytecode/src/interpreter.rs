@@ -1,11 +1,43 @@
 //! Interprets Terbium AST into Bytecode.
+// TODO: utilize #![feature(box_patterns)] for this module
 
-use super::{AddrRepr, Instruction, Program};
-use crate::Addr;
+use std::collections::HashMap;
+
+use super::{Addr, AddrRepr, Instruction, Program};
 use terbium_grammar::{Body, Expr, Node, Operator};
+use terbium_grammar::ast::Target;
+
+// Contrary to assumption, this does not take into account scope and in reality
+// it's just a super basic string-interner, in a way.
+//
+// This was made so that over multiple Programs, identifier names could be commonly mapped.
+#[derive(Debug)]
+pub struct IdentLookup {
+    inner: HashMap<String, usize>,
+    increment: usize,
+}
+
+impl IdentLookup {
+    pub fn new() -> Self {
+        Self {
+            inner: HashMap::new(),
+            increment: 0,
+        }
+    }
+
+    pub fn get(&mut self, ident: String) -> usize {
+        *self.inner.entry(ident).or_insert_with(|| {
+            let old = self.increment;
+            self.increment += 1;
+
+            old
+        })
+    }
+}
 
 pub struct Interpreter {
     program: Program,
+    lookup: IdentLookup,
 }
 
 type MaybeProc = Option<AddrRepr>;
@@ -14,7 +46,12 @@ impl Interpreter {
     pub fn new() -> Self {
         Self {
             program: Program::new(),
+            lookup: IdentLookup::new(),
         }
+    }
+
+    pub fn reset_program(&mut self) {
+        self.program = Program::new();
     }
 
     pub fn program(self) -> Program {
@@ -34,6 +71,14 @@ impl Interpreter {
                 Instruction::RetNull
             },
         );
+    }
+
+    pub fn push_enter_scope(&mut self, procedure: AddrRepr) {
+        self.push(Some(procedure), Instruction::EnterScope);
+    }
+
+    pub fn push_exit_scope(&mut self, procedure: AddrRepr) {
+        self.push(Some(procedure), Instruction::ExitScope);
     }
 
     pub fn interpret_expr(&mut self, proc: MaybeProc, expr: Expr) {
@@ -86,6 +131,10 @@ impl Interpreter {
                     },
                 );
             }
+            Expr::Ident(ident) => {
+                let var = self.lookup.get(ident);
+                self.push(proc, Instruction::LoadVar(var));
+            }
             Expr::If {
                 condition,
                 body,
@@ -97,11 +146,11 @@ impl Interpreter {
                     self.interpret_expr(proc, *condition);
 
                     let then_proc = self.program.create_procedure();
-                    self.interpret_body(Some(then_proc), Body(body, return_last));
+                    self.interpret_body_scoped(then_proc, Body(body, return_last));
 
                     if let Some(else_body) = else_body {
                         let else_proc = self.program.create_procedure();
-                        self.interpret_body(Some(else_proc), Body(else_body.0, return_last));
+                        self.interpret_body_scoped(else_proc, Body(else_body.0, return_last));
 
                         self.push(
                             proc,
@@ -126,7 +175,7 @@ impl Interpreter {
                     self.interpret_expr(last_parent, cond);
 
                     let then_proc = self.program.create_procedure();
-                    self.interpret_body(Some(then_proc), body);
+                    self.interpret_body_scoped(then_proc, body);
 
                     self.push(
                         last_parent,
@@ -146,7 +195,7 @@ impl Interpreter {
                 self.program.pop_procedure();
 
                 if let Some(else_body) = else_body {
-                    self.interpret_body(last_parent, else_body);
+                    self.interpret_body_scoped(last_parent.unwrap(), else_body);
                 } else {
                     self.push(last_parent, Instruction::RetNull);
                 }
@@ -167,19 +216,52 @@ impl Interpreter {
                     self.push(proc, Instruction::RetNull);
                 }
             }
+            // TODO: maybe we can check const and mut at runtime, but those should be caught by the analyzer
+            Node::Declare { targets, value, r#mut, r#const } => {
+                self.interpret_expr(proc, value);
+
+                // TODO: currently we assume only one target
+                let target = targets.first().unwrap();
+
+                match target {
+                    Target::Ident(s) => {
+                        let key = self.lookup.get(s.clone());
+
+                        self.push(proc, if r#mut {
+                            Instruction::StoreMutVar(key)
+                        } else if r#const {
+                            Instruction::StoreConstVar(key)
+                        } else {
+                            Instruction::StoreVar(key)
+                        });
+                    }
+                    _ => return,
+                }
+            }
             _ => todo!(),
         }
     }
 
-    pub fn interpret_body(&mut self, proc: MaybeProc, Body(body, return_last): Body) {
+    pub fn interpret_body_no_return(&mut self, proc: MaybeProc, body: Vec<Node>) {
         for node in body {
             self.interpret_node(proc, node);
         }
+    }
+
+    pub fn interpret_body(&mut self, proc: MaybeProc, Body(body, return_last): Body) {
+        self.interpret_body_no_return(proc, body);
 
         if let Some(proc) = proc {
             self.push_return(proc, return_last);
         } else {
             self.push(None, Instruction::Halt);
         }
+    }
+
+    pub fn interpret_body_scoped(&mut self, proc: AddrRepr, Body(body, return_last): Body) {
+        self.push_enter_scope(proc);
+        self.interpret_body_no_return(Some(proc), body);
+        self.push_exit_scope(proc);
+        self.push_return(proc, return_last);
     }
 }
