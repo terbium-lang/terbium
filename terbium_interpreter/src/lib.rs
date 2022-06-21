@@ -611,8 +611,6 @@ impl<const STACK_SIZE: usize> Interpreter<STACK_SIZE> {
             }
 
             pos += 1;
-            // println!("{:?} {:?}", instr, (&self.ctx.stack.inner[..self.ctx.stack.ptr]).iter()
-            // .map(|o| self.ctx.store.resolve(*o)).collect::<Vec<_>>());
         }
     }
 
@@ -641,6 +639,7 @@ mod tests {
             Instruction::LoadInt(1),
             Instruction::LoadInt(1),
             Instruction::BinOpAdd,
+            Instruction::Halt,
         ]);
         let mut interpreter = DefaultInterpreter::new();
         interpreter.run_bytecode(program);
