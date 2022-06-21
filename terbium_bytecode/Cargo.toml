@@ -8,6 +8,8 @@ license = "MIT"
 homepage = "https://github.com/TerbiumLang/Terbium"
 repository = "https://github.com/TerbiumLang/Terbium"
 readme = "../README.md"
+keywords = ["terbium", "language", "lang", "interpreter", "bytecode", "compiler", "trb"]
+categories = ["compilers", "parsing", "wasm"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

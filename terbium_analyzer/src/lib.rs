@@ -24,7 +24,8 @@ impl WarningType {
     /// A higher number means a more severe warning.
     /// By default, the analyzer is set to ignore no errors and stop
     /// analysis at only level 5.
-    pub fn severity(&self) -> u8 {
+    #[must_use]
+    pub const fn severity(&self) -> u8 {
         match self {
             Self::NonSnakeCase(_) => 1,
             Self::NonAscii(_) => 2,
@@ -55,7 +56,7 @@ pub struct AnalyzerMessage {
 /// Represents a single analyzer which attempts to anaylize or optimize
 /// a specific pattern of code.
 pub trait Analyzer<P, E = &'static str> {
-    /// The config/flag form of this, e.g. UnusedVariables -> "unused-variables"
+    /// The config/flag form of this, e.g. `UnusedVariables` -> "unused-variables"
     /// as in `// @trb:allow unused-variables`
     const ID: &'static str;
 
@@ -66,6 +67,7 @@ pub trait Analyzer<P, E = &'static str> {
         P::from_tokens(tokens.into_iter().collect()).0
     }
 
+    #[allow(clippy::missing_errors_doc)]
     fn analyze(input: &P, messages: &mut Vec<AnalyzerMessage>) -> Result<(), E>;
 }
 
@@ -91,9 +93,9 @@ impl Analyzer<Vec<Token>> for NonSnakeCaseAnalyzer {
                 }
 
                 messages.push(AnalyzerMessage {
-                    kind: AnalyzerMessageKind::Warning(WarningType::NonSnakeCase(tk.to_owned())),
+                    kind: AnalyzerMessageKind::Warning(WarningType::NonSnakeCase(tk.clone())),
                     message: "convention is to use snake_case casing for identifiers".to_string(),
-                })
+                });
             }
         }
 
@@ -116,10 +118,10 @@ impl Analyzer<Vec<Token>> for NonAsciiAnalyzer {
                 }
 
                 messages.push(AnalyzerMessage {
-                    kind: AnalyzerMessageKind::Warning(WarningType::NonAscii(tk.to_owned())),
+                    kind: AnalyzerMessageKind::Warning(WarningType::NonAscii(tk.clone())),
                     message: "convention is to exclude non-ascii characters in identifier names"
                         .to_string(),
-                })
+                });
             }
         }
 
@@ -127,17 +129,18 @@ impl Analyzer<Vec<Token>> for NonAsciiAnalyzer {
     }
 }
 
+#[allow(clippy::ptr_arg)]
 pub(crate) fn run_analyzer(
-    id: String,
+    id: &str,
     tokens: &Vec<Token>,
     messages: &mut Vec<AnalyzerMessage>,
 ) -> Result<(), String> {
-    match id.as_str() {
+    match id {
         "non-snake-case" => NonSnakeCaseAnalyzer::analyze(tokens, messages),
         "non-ascii" => NonAsciiAnalyzer::analyze(tokens, messages),
-        _ => Err(format!("unknown analyzer with id {:?}", id))?,
+        _ => return Err(format!("unknown analyzer with id {:?}", id)),
     }
-    .map_err(|e| e.to_string())
+    .map_err(ToString::to_string)
 }
 
 #[derive(Debug)]
@@ -147,13 +150,15 @@ pub struct BulkAnalyzer {
 }
 
 impl BulkAnalyzer {
-    pub fn new() -> Self {
+    #[must_use]
+    pub const fn new() -> Self {
         Self {
             analyzers: Vec::new(),
             messages: Vec::new(),
         }
     }
 
+    #[must_use]
     pub fn new_with_analyzers(analyzers: Vec<String>) -> Self {
         Self {
             analyzers,
@@ -161,22 +166,30 @@ impl BulkAnalyzer {
         }
     }
 
+    #[allow(clippy::needless_pass_by_value, clippy::missing_panics_doc)]
     pub fn analyze_tokens(&mut self, tokens: Vec<Token>) {
         for a in &self.analyzers {
-            run_analyzer(a.clone(), &tokens, &mut self.messages).expect("error trying to analyze")
+            run_analyzer(a.as_str(), &tokens, &mut self.messages).expect("error trying to analyze");
         }
     }
 
+    #[allow(clippy::needless_pass_by_value, clippy::missing_panics_doc)]
     pub fn analyze_string(&mut self, s: String) {
         let tokens = tokenizer().parse(s.as_str()).unwrap_or_else(|_| todo!());
 
-        self.analyze_tokens(tokens)
+        self.analyze_tokens(tokens);
     }
 
     pub fn write(&self, mut writer: impl Write) {
         for m in &self.messages {
             writeln!(writer, "{:?}", m).expect("failed to write");
         }
+    }
+}
+
+impl Default for BulkAnalyzer {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

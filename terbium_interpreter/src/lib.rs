@@ -93,7 +93,9 @@ impl ObjectStore {
     }
 
     pub fn resolve(&self, loc: ObjectRef) -> &TerbiumObject {
-        self.0.get(&loc).expect(&*format!("no object at location {:0x}", loc))
+        self.0
+            .get(&loc)
+            .expect(&*format!("no object at location {:0x}", loc))
     }
 
     pub fn resolve_or_null(&self, loc: ObjectRef) -> &TerbiumObject {
@@ -109,9 +111,13 @@ pub struct ScopeEntry {
 }
 
 impl ScopeEntry {
-    pub fn is_const(&self) -> bool { self.r#const }
+    pub fn is_const(&self) -> bool {
+        self.r#const
+    }
 
-    pub fn is_mut(&self) -> bool { self.r#mut }
+    pub fn is_mut(&self) -> bool {
+        self.r#mut
+    }
 }
 
 impl Into<ObjectRef> for ScopeEntry {
@@ -127,7 +133,9 @@ pub struct Scope {
 
 impl Scope {
     pub fn new() -> Self {
-        Self { locals: HashMap::new() }
+        Self {
+            locals: HashMap::new(),
+        }
     }
 }
 
@@ -158,13 +166,13 @@ impl<const STACK_SIZE: usize> Context<STACK_SIZE> {
     pub fn pop_ref(&mut self) -> ObjectRef {
         self.stack.pop()
     }
-    
+
     pub fn pop_detailed(&mut self) -> (ObjectRef, &TerbiumObject) {
         let loc = self.stack.pop();
-        
+
         (loc, self.store.resolve(loc))
     }
-    
+
     pub fn pop(&mut self) -> &TerbiumObject {
         let loc = self.pop_ref();
 
@@ -282,33 +290,33 @@ macro_rules! pat_num_ops {
 macro_rules! deferred_method {
     ($ctx:expr, $meth:ident, $e:expr) => {{
         let subject = $e;
-        
+
         $ctx.$meth(subject)
-    }}
+    }};
 }
 
 macro_rules! store_auto {
     ($ctx:expr, $e:expr) => {
         deferred_method!($ctx, store_auto, $e)
-    }
+    };
 }
 
 macro_rules! load_int {
     ($ctx:expr, $e:expr) => {
         deferred_method!($ctx, load_int, $e)
-    }
+    };
 }
 
 macro_rules! load_bool {
     ($ctx:expr, $e:expr) => {
         deferred_method!($ctx, load_bool, $e)
-    }
+    };
 }
 
 macro_rules! push {
     ($ctx:expr, $e:expr) => {
         deferred_method!($ctx, push, $e)
-    }
+    };
 }
 
 impl<const STACK_SIZE: usize> Interpreter<STACK_SIZE> {
@@ -323,7 +331,7 @@ impl<const STACK_SIZE: usize> Interpreter<STACK_SIZE> {
     pub fn stack(&mut self) -> &mut Stack<STACK_SIZE> {
         &mut self.ctx.stack
     }
-    
+
     pub fn string_lookup(&self, id: StringId) -> &str {
         self.string_interner.lookup(id)
     }
@@ -352,14 +360,16 @@ impl<const STACK_SIZE: usize> Interpreter<STACK_SIZE> {
 
             match instr.to_owned() {
                 Instruction::LoadInt(i) => push!(self.ctx, load_int!(self.ctx, i)),
-                Instruction::LoadString(s) => push!(self.ctx, store_auto!(self.ctx,
-                    TerbiumObject::String(
-                        self.string_interner.intern(s.as_str()),
+                Instruction::LoadString(s) => push!(
+                    self.ctx,
+                    store_auto!(
+                        self.ctx,
+                        TerbiumObject::String(self.string_interner.intern(s.as_str()),)
                     )
-                )),
-                Instruction::LoadFloat(f) => push!(self.ctx,
-                    store_auto!(self.ctx, TerbiumObject::Float(f))
                 ),
+                Instruction::LoadFloat(f) => {
+                    push!(self.ctx, store_auto!(self.ctx, TerbiumObject::Float(f)))
+                }
                 Instruction::LoadBool(b) => push!(self.ctx, load_bool!(self.ctx, b)),
                 Instruction::UnOpPos => match self.ctx.pop_detailed() {
                     (o, TerbiumObject::Integer(_)) => self.ctx.push(o),
@@ -368,7 +378,8 @@ impl<const STACK_SIZE: usize> Interpreter<STACK_SIZE> {
                 },
                 Instruction::UnOpNeg => match self.ctx.pop() {
                     TerbiumObject::Integer(i) => push!(self.ctx, load_int!(self.ctx, -*i)),
-                    TerbiumObject::Float(f) => push!(self.ctx,
+                    TerbiumObject::Float(f) => push!(
+                        self.ctx,
                         store_auto!(self.ctx, TerbiumObject::Float((-f.0).into()))
                     ),
                     _ => todo!(),
@@ -486,7 +497,7 @@ impl<const STACK_SIZE: usize> Interpreter<STACK_SIZE> {
                         // TODO: support custom not operation
                         o => push!(self.ctx, load_bool!(self.ctx, !self.is_truthy(o))),
                     }
-                },
+                }
                 Instruction::Pop => {
                     self.ctx.pop_ref();
                 }
@@ -543,25 +554,29 @@ impl<const STACK_SIZE: usize> Interpreter<STACK_SIZE> {
                 Instruction::EnterScope => self.ctx.enter_scope(),
                 Instruction::ExitScope => self.ctx.exit_scope(),
                 Instruction::LoadVar(key) => {
-                    push!(self.ctx, match self.ctx.lookup_var(key) {
-                        Some(ScopeEntry { loc, .. }) => *loc,
-                        None => {
-                            todo!(); // TODO error if variable is not found
+                    push!(
+                        self.ctx,
+                        match self.ctx.lookup_var(key) {
+                            Some(ScopeEntry { loc, .. }) => *loc,
+                            None => {
+                                todo!(); // TODO error if variable is not found
+                            }
                         }
-                    });
+                    );
                 }
-                ref instr @ (
-                    Instruction::StoreVar(key)
-                    | Instruction::StoreMutVar(key)
-                    | Instruction::StoreConstVar(key)
-                ) => {
+                ref instr @ (Instruction::StoreVar(key)
+                | Instruction::StoreMutVar(key)
+                | Instruction::StoreConstVar(key)) => {
                     let loc = self.ctx.pop_ref();
 
-                    self.ctx.store_var(key, ScopeEntry {
-                        loc,
-                        r#mut: matches!(instr, Instruction::StoreMutVar(_)),
-                        r#const: matches!(instr, Instruction::StoreConstVar(_)),
-                    })
+                    self.ctx.store_var(
+                        key,
+                        ScopeEntry {
+                            loc,
+                            r#mut: matches!(instr, Instruction::StoreMutVar(_)),
+                            r#const: matches!(instr, Instruction::StoreConstVar(_)),
+                        },
+                    )
                 }
                 _ => todo!(),
             }

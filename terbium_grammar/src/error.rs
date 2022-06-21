@@ -41,6 +41,7 @@ impl Display for TargetKind {
 }
 
 #[derive(Debug, PartialEq, Eq)]
+#[allow(clippy::module_name_repetitions)]
 pub enum ErrorKind {
     Custom,
     UnexpectedEnd,

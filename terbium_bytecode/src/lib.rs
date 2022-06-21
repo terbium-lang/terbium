@@ -236,6 +236,7 @@ impl Program {
         self.inner.push(instr);
     }
 
+    #[must_use]
     pub fn current_addr(&self, procedure: Option<AddrRepr>) -> Addr {
         match self.next_addr(procedure) {
             Addr::Absolute(i) => Addr::Absolute(i - 1),
@@ -244,6 +245,7 @@ impl Program {
         }
     }
 
+    #[must_use]
     pub fn next_addr(&self, procedure: Option<AddrRepr>) -> Addr {
         if let Some(proc) = procedure {
             return Addr::Offset(
@@ -261,10 +263,10 @@ impl Program {
     fn resolve_addr(lookup: &HashMap<AddrRepr, AddrRepr>, addr: Addr) -> Addr {
         match addr {
             Addr::Procedure(proc) => {
-                Addr::Absolute(lookup.get(&proc).expect("unknown procedure").clone())
+                Addr::Absolute(*lookup.get(&proc).expect("unknown procedure"))
             }
             Addr::Offset(proc, offset) => {
-                Addr::Absolute(lookup.get(&proc).expect("unknown procedure").clone() + offset)
+                Addr::Absolute(lookup.get(&proc).expect("unknown procedure") + offset)
             }
             o => o,
         }
@@ -329,9 +331,7 @@ impl Program {
                 | I::StoreMutVar(i)
                 | I::StoreConstVar(i)
                 | I::StoreVar(i)
-                | I::MakeFunc(i) => {
-                    bytes.extend_from_slice(&i.to_ne_bytes())
-                }
+                | I::MakeFunc(i) => bytes.extend_from_slice(&i.to_ne_bytes()),
                 I::Jump(a) | I::JumpIf(a) => match a {
                     Addr::Absolute(p) => bytes.extend_from_slice(&p.to_ne_bytes()),
                     _ => panic!("procedures must be resolved prior to conversion"),
@@ -437,7 +437,7 @@ impl Program {
                     4 => {
                         ptr += 1 + size_of::<usize>();
                         I::Load(read_ne_usize(&mut &bytes[(ptr - size_of::<usize>())..ptr]).into())
-                    },
+                    }
                     5 => progress!(ptr, I::UnOpPos),
                     6 => progress!(ptr, I::UnOpNeg),
                     7 => progress!(ptr, I::BinOpAdd),
@@ -461,20 +461,28 @@ impl Program {
                     25 => progress!(ptr, I::OpLogicalNot),
                     26 => {
                         ptr += 1 + size_of::<usize>();
-                        I::LoadVar(read_ne_usize(&mut &bytes[(ptr - size_of::<usize>())..ptr]).into())
-                    },
+                        I::LoadVar(
+                            read_ne_usize(&mut &bytes[(ptr - size_of::<usize>())..ptr]).into(),
+                        )
+                    }
                     27 => {
                         ptr += 1 + size_of::<usize>();
-                        I::StoreVar(read_ne_usize(&mut &bytes[(ptr - size_of::<usize>())..ptr]).into())
-                    },
+                        I::StoreVar(
+                            read_ne_usize(&mut &bytes[(ptr - size_of::<usize>())..ptr]).into(),
+                        )
+                    }
                     28 => {
                         ptr += 1 + size_of::<usize>();
-                        I::StoreMutVar(read_ne_usize(&mut &bytes[(ptr - size_of::<usize>())..ptr]).into())
-                    },
+                        I::StoreMutVar(
+                            read_ne_usize(&mut &bytes[(ptr - size_of::<usize>())..ptr]).into(),
+                        )
+                    }
                     29 => {
                         ptr += 1 + size_of::<usize>();
-                        I::StoreConstVar(read_ne_usize(&mut &bytes[(ptr - size_of::<usize>())..ptr]).into())
-                    },
+                        I::StoreConstVar(
+                            read_ne_usize(&mut &bytes[(ptr - size_of::<usize>())..ptr]).into(),
+                        )
+                    }
                     30 => unimplemented!(),
                     31 => unimplemented!(),
                     32 => {

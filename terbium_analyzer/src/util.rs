@@ -1,5 +1,6 @@
 use std::iter::Peekable;
 
+#[must_use]
 pub fn to_snake_case(s: &str) -> String {
     CamelCaseRemover::new(s.chars())
         .flat_map(char::to_lowercase)

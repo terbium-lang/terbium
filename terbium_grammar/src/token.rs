@@ -308,6 +308,7 @@ macro_rules! escape_hex {
 }
 
 #[must_use]
+#[allow(clippy::too_many_lines)]
 pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Error> {
     let integer = text::int::<_, Error>(10)
         .from_str::<u128>()
@@ -392,8 +393,7 @@ pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Error> {
 
     let comment = single_line.or(multi_line).or_not();
 
-    let right_shift = just(">>")
-        .then_ignore(none_of(")<>]},;"));
+    let right_shift = just(">>").then_ignore(none_of(")<>]},;"));
 
     let symbol = choice::<_, Error>((
         just(',').to(Token::Comma),

@@ -4,8 +4,8 @@
 use std::collections::HashMap;
 
 use super::{Addr, AddrRepr, Instruction, Program};
-use terbium_grammar::{Body, Expr, Node, Operator};
 use terbium_grammar::ast::Target;
+use terbium_grammar::{Body, Expr, Node, Operator};
 
 // Contrary to assumption, this does not take into account scope and in reality
 // it's just a super basic string-interner, in a way.
@@ -217,7 +217,12 @@ impl Interpreter {
                 }
             }
             // TODO: maybe we can check const and mut at runtime, but those should be caught by the analyzer
-            Node::Declare { targets, value, r#mut, r#const } => {
+            Node::Declare {
+                targets,
+                value,
+                r#mut,
+                r#const,
+            } => {
                 self.interpret_expr(proc, value);
 
                 // TODO: currently we assume only one target
@@ -227,15 +232,18 @@ impl Interpreter {
                     Target::Ident(s) => {
                         let key = self.lookup.get(s.clone());
 
-                        self.push(proc, if r#mut {
-                            Instruction::StoreMutVar(key)
-                        } else if r#const {
-                            Instruction::StoreConstVar(key)
-                        } else {
-                            Instruction::StoreVar(key)
-                        });
+                        self.push(
+                            proc,
+                            if r#mut {
+                                Instruction::StoreMutVar(key)
+                            } else if r#const {
+                                Instruction::StoreConstVar(key)
+                            } else {
+                                Instruction::StoreVar(key)
+                            },
+                        );
                     }
-                    _ => return,
+                    _ => (),
                 }
             }
             _ => todo!(),

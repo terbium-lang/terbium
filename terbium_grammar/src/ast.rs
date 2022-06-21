@@ -109,6 +109,10 @@ pub trait ParseInterface {
         (expr.unwrap(), errors)
     }
 
+    /// Tokenizes source code and parses it using this parser.
+    ///
+    /// # Errors
+    /// * The string does not match Terbium grammar.
     fn from_string(s: String) -> Result<(Self, Vec<Error>), Vec<Error>>
     where
         Self: Sized,
@@ -174,7 +178,7 @@ impl ParseInterface for Expr {
         get_body_parser()
             .map(|Body(body, _)| {
                 if let Node::Expr(e) = body.get(0).unwrap() {
-                    e.to_owned()
+                    e.clone()
                 } else {
                     unreachable!();
                 }
@@ -207,6 +211,7 @@ pub trait CommonParser<T> = Parser<Token, T, Error = Error> + Clone;
 pub type RecursiveParser<'a, T> = Recursive<'a, Token, T, Error>;
 
 #[must_use]
+#[allow(clippy::too_many_lines, clippy::missing_panics_doc)]
 pub fn get_body_parser<'a>() -> RecursiveParser<'a, Body> {
     recursive(|body: Recursive<Token, Body, Error>| {
         let e = recursive(|e: Recursive<Token, Expr, Error>| {
@@ -487,15 +492,16 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, Body> {
         let target = recursive(|t| {
             (select! {
                 Token::Identifier(i) => Target::Ident(i),
-            }).or(t.separated_by(just::<_, Token, _>(Token::Comma))
+            })
+            .or(t
+                .separated_by(just::<_, Token, _>(Token::Comma))
                 .allow_trailing()
                 .at_least(1)
                 .delimited_by(
                     just(Token::StartBracket(Bracket::Bracket)),
                     just(Token::EndBracket(Bracket::Bracket)),
                 )
-                .map(Target::Array),
-            )
+                .map(Target::Array))
         });
 
         let declare = just::<_, Token, _>(Token::Keyword(Keyword::Let))
@@ -512,10 +518,11 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, Body> {
                 let r#mut = is_mut.is_some();
                 let r#const = matches!(modifier, Token::Keyword(Keyword::Const));
 
-                if r#mut && r#const {
-                    // TODO: don't panic here, just return Err
-                    panic!("\"const mut\" declarations are not supported anymore, use \"let mut\" instead.");
-                }
+                // TODO: don't panic here, just return Err
+                assert!(
+                    !(r#mut && r#const),
+                    "\"const mut\" declarations are not supported anymore, use \"let mut\" instead.",
+                );
 
                 Node::Declare {
                     targets,
@@ -531,7 +538,10 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, Body> {
             .at_least(1)
             .then(e.clone())
             .then_ignore(just::<_, Token, _>(Token::Semicolon))
-            .map(|(targets, expr)| Node::Assign { targets, value: expr });
+            .map(|(targets, expr)| Node::Assign {
+                targets,
+                value: expr,
+            });
 
         let param = select! {
             Token::Identifier(i) => Target::Ident(i),

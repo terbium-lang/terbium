@@ -74,8 +74,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let ast = match (file, code) {
                 (Some(file), None) => std::fs::read_to_string(file)?,
                 (None, Some(code)) => code,
-                (Some(_), Some(_)) => Err("must provide only one of file or code")?,
-                (None, None) => Err("must provide one of file or code")?,
+                (Some(_), Some(_)) => return Err("must provide only one of file or code".into()),
+                (None, None) => return Err("must provide one of file or code".into()),
             };
 
             let (node, errors) = match AstNode::from_string(ast) {
@@ -101,8 +101,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let code = match (file, code) {
                 (Some(file), None) => std::fs::read_to_string(file)?,
                 (None, Some(code)) => code,
-                (Some(_), Some(_)) => Err("must provide only one of file or code")?,
-                (None, None) => Err("must provide one of file or code")?,
+                (Some(_), Some(_)) => return Err("must provide only one of file or code".into()),
+                (None, None) => return Err("must provide one of file or code".into()),
             };
 
             let (body, errors) = match AstBody::from_string(code) {
@@ -122,7 +122,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let mut stdout = std::io::stdout();
             if raw {
                 let bytes = program.bytes();
-                stdout.write(bytes.as_slice())?;
+                stdout.write_all(bytes.as_slice())?;
             } else {
                 program.dis(&mut stdout)?;
             }
@@ -135,8 +135,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let code = match (file, code) {
                 (Some(file), None) => std::fs::read_to_string(file)?,
                 (None, Some(code)) => code,
-                (Some(_), Some(_)) => Err("must provide only one of file or code")?,
-                (None, None) => Err("must provide one of file or code")?,
+                (Some(_), Some(_)) => return Err("must provide only one of file or code".into()),
+                (None, None) => return Err("must provide one of file or code".into()),
             };
 
             let (body, errors) = match AstBody::from_string(code) {
