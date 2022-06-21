@@ -615,8 +615,7 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, Body> {
             .or(e
                 .clone()
                 .try_map(|e, _| match e {
-                    Expr::If { .. } => Ok(e),
-                    Expr::While { .. } => Ok(e),
+                    Expr::If { .. } | Expr::While { .. } => Ok(e),
                     _ => Err(Error::placeholder()),
                 })
                 .then_ignore(none_of(Token::EndBracket(Bracket::Brace)).rewind()))
