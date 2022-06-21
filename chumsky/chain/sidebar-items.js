@@ -1,1 +1,0 @@
-initSidebarItems({"trait":[["Chain","A utility trait that facilitates chaining parser outputs together into [`Vec`]s."]]});
