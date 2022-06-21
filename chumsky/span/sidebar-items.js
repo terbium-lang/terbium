@@ -1,0 +1,1 @@
+initSidebarItems({"trait":[["Span","A trait that describes a span over a particular range of inputs."]]});

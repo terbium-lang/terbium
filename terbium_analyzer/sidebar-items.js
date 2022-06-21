@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["AnalyzerMessageKind",""],["ErrorType",""],["WarningType",""]],"mod":[["util",""]],"struct":[["AnalyzerMessage",""],["BulkAnalyzer",""],["NonAsciiAnalyzer",""],["NonSnakeCaseAnalyzer",""]],"trait":[["Analyzer","Represents a single analyzer which attempts to anaylize or optimize a specific pattern of code."]]});

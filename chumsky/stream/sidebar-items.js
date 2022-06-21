@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["Flat","A utility type used to flatten input trees. See [`Stream::from_nested`]."]],"struct":[["Stream","A type that represents a stream of input tokens. Unlike [`Iterator`], this type supports backtracking and a few other features required by the crate."]],"type":[["BoxStream","A [`Stream`] that pulls tokens from a boxed [`Iterator`]."]]});
