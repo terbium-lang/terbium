@@ -200,6 +200,16 @@ impl Interpreter {
                     self.push(last_parent, Instruction::RetNull);
                 }
             }
+            Expr::While { condition, body } => {
+                let loc = self.program.next_addr(proc);
+                self.interpret_expr(proc, *condition);
+
+                let body_proc = self.program.create_procedure();
+                self.interpret_body_scoped_no_return(body_proc, body);
+
+                self.push(Some(body_proc), Instruction::Jump(loc));
+                self.push(proc, Instruction::JumpIf(Addr::Procedure(body_proc)));
+            }
             _ => todo!(),
         }
     }
@@ -281,10 +291,14 @@ impl Interpreter {
         }
     }
 
-    pub fn interpret_body_scoped(&mut self, proc: AddrRepr, Body(body, return_last): Body) {
+    pub fn interpret_body_scoped_no_return(&mut self, proc: AddrRepr, body: Vec<Node>) {
         self.push_enter_scope(proc);
         self.interpret_body_no_return(Some(proc), body);
         self.push_exit_scope(proc);
+    }
+
+    pub fn interpret_body_scoped(&mut self, proc: AddrRepr, Body(body, return_last): Body) {
+        self.interpret_body_scoped_no_return(proc, body);
         self.push_return(proc, return_last);
     }
 }

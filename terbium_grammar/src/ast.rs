@@ -35,6 +35,10 @@ pub enum Expr {
         else_body: Option<Body>,
         return_last: bool,
     },
+    While {
+        condition: Box<Expr>,
+        body: Vec<Node>,
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -278,6 +282,17 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, Body> {
                     },
                 );
 
+            let while_stmt = just::<_, Token, _>(Token::Keyword(Keyword::While))
+                .ignore_then(e.clone())
+                .then(body.clone().delimited_by(
+                    just(Token::StartBracket(Bracket::Brace)),
+                    just(Token::EndBracket(Bracket::Brace)),
+                ))
+                .map(|(condition, Body(body, _))| Expr::While {
+                    condition: Box::new(condition),
+                    body,
+                });
+
             let atom = choice((
                 literal,
                 ident,
@@ -288,6 +303,7 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, Body> {
                     )
                     .boxed(),
                 if_stmt,
+                while_stmt,
                 array,
             ))
             .boxed();
@@ -600,6 +616,7 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, Body> {
                 .clone()
                 .try_map(|e, _| match e {
                     Expr::If { .. } => Ok(e),
+                    Expr::While { .. } => Ok(e),
                     _ => Err(Error::placeholder()),
                 })
                 .then_ignore(none_of(Token::EndBracket(Bracket::Brace)).rewind()))

@@ -611,6 +611,8 @@ impl<const STACK_SIZE: usize> Interpreter<STACK_SIZE> {
             }
 
             pos += 1;
+            // println!("{:?} {:?}", instr, (&self.ctx.stack.inner[..self.ctx.stack.ptr]).iter()
+            // .map(|o| self.ctx.store.resolve(*o)).collect::<Vec<_>>());
         }
     }
 
