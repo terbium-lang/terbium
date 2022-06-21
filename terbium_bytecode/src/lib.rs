@@ -16,7 +16,7 @@ pub use util::EqComparableFloat;
 
 pub type AddrRepr = u32;
 
-#[derive(Copy, Clone, Debug, PartialOrd, PartialEq, Hash)]
+#[derive(Copy, Clone, Debug, PartialOrd, PartialEq, Eq, Hash)]
 pub enum Addr {
     Absolute(AddrRepr),
     Procedure(AddrRepr),
@@ -88,6 +88,7 @@ pub enum Instruction {
 
 impl Instruction {
     /// Return a i8 representing the change in the count of elements in the stack.
+    #[must_use]
     pub fn stack_diff(&self) -> i8 {
         match self {
             Self::LoadInt(_) => 1,
@@ -97,6 +98,7 @@ impl Instruction {
         }
     }
 
+    #[must_use]
     pub fn size(&self) -> u8 {
         1_u8 + match self {
             Self::LoadInt(_) => size_of::<i128>(),
@@ -118,7 +120,8 @@ impl Instruction {
         } as u8
     }
 
-    pub fn to_instr_id(&self) -> u8 {
+    #[must_use]
+    pub const fn to_instr_id(&self) -> u8 {
         match self {
             Self::LoadInt(_) => 0,
             Self::LoadFloat(_) => 1,
@@ -215,7 +218,8 @@ macro_rules! parse_usize {
 }
 
 impl Program {
-    pub fn new() -> Self {
+    #[must_use]
+    pub const fn new() -> Self {
         Self {
             inner: Vec::new(),
             procedures: Vec::new(),
@@ -305,14 +309,14 @@ impl Program {
             .map(|instr| {
                 match instr {
                     Instruction::Jump(addr) => {
-                        Instruction::Jump(Self::resolve_addr(&lookup, addr.clone()))
+                        Instruction::Jump(Self::resolve_addr(&lookup, *addr))
                     }
                     Instruction::JumpIf(addr) => {
-                        Instruction::JumpIf(Self::resolve_addr(&lookup, addr.clone()))
+                        Instruction::JumpIf(Self::resolve_addr(&lookup, *addr))
                     }
                     Instruction::JumpIfElse(a, b) => Instruction::JumpIfElse(
-                        Self::resolve_addr(&lookup, a.clone()),
-                        Self::resolve_addr(&lookup, b.clone()),
+                        Self::resolve_addr(&lookup, *a),
+                        Self::resolve_addr(&lookup, *b),
                     ),
                     o => o.clone(), // TODO: don't clone
                 }
@@ -322,6 +326,7 @@ impl Program {
         self
     }
 
+    #[must_use]
     pub fn bytes(&self) -> Vec<u8> {
         type I = Instruction;
         let mut bytes = Vec::new();
@@ -334,7 +339,7 @@ impl Program {
                 I::LoadFloat(f) => bytes.extend_from_slice(&f.0.to_ne_bytes()),
                 I::LoadString(s) => {
                     bytes.extend_from_slice(&s.len().to_ne_bytes());
-                    bytes.extend_from_slice(s.as_bytes())
+                    bytes.extend_from_slice(s.as_bytes());
                 }
                 I::LoadBool(b) => bytes.extend_from_slice(&[if *b { 0 } else { 1 }]),
                 I::LoadVar(i)
@@ -351,7 +356,7 @@ impl Program {
                 },
                 I::JumpIfElse(a, b) => match (a, b) {
                     (Addr::Absolute(a), Addr::Absolute(b)) => {
-                        bytes.extend_from_slice(&[a.to_ne_bytes(), b.to_ne_bytes()].concat())
+                        bytes.extend_from_slice(&[a.to_ne_bytes(), b.to_ne_bytes()].concat());
                     }
                     _ => panic!("procedures must be resolved prior to conversion"),
                 },
@@ -383,7 +388,7 @@ impl Program {
                 I::Jump(Addr::Absolute(addr)) => writeln!(w, "jump {}", addr)?,
                 I::JumpIf(Addr::Absolute(addr)) => writeln!(w, "jump_if {}", addr)?,
                 I::JumpIfElse(Addr::Absolute(a), Addr::Absolute(b)) => {
-                    writeln!(w, "jump_if_else {} {}", a, b)?
+                    writeln!(w, "jump_if_else {} {}", a, b)?;
                 }
                 I::BinOpAdd => writeln!(w, "bin_add")?,
                 I::BinOpSub => writeln!(w, "bin_sub")?,
@@ -417,6 +422,7 @@ impl Program {
         Ok(())
     }
 
+    #[must_use]
     pub fn from_bytes(bytes: Vec<u8>) -> Self {
         type I = Instruction;
 
@@ -530,5 +536,11 @@ impl FromIterator<Instruction> for Program {
             inner: iter.into_iter().collect(),
             procedures: Vec::new(),
         }
+    }
+}
+
+impl Default for Program {
+    fn default() -> Self {
+        Self::new()
     }
 }

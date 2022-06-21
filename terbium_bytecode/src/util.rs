@@ -38,7 +38,7 @@ impl Eq for EqComparableFloat {}
 
 impl Hash for EqComparableFloat {
     fn hash<H: Hasher>(&self, h: &mut H) {
-        self.key().hash(h)
+        self.key().hash(h);
     }
 }
 

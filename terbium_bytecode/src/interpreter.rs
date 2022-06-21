@@ -43,6 +43,7 @@ pub struct Interpreter {
 type MaybeProc = Option<AddrRepr>;
 
 impl Interpreter {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             program: Program::new(),
@@ -54,12 +55,13 @@ impl Interpreter {
         self.program = Program::new();
     }
 
+    #[must_use]
     pub fn program(self) -> Program {
         self.program
     }
 
     pub fn push(&mut self, procedure: MaybeProc, instr: Instruction) {
-        self.program.push(procedure, instr)
+        self.program.push(procedure, instr);
     }
 
     pub fn push_return(&mut self, procedure: AddrRepr, return_last: bool) {
@@ -238,22 +240,19 @@ impl Interpreter {
                 // TODO: currently we assume only one target
                 let target = targets.first().unwrap();
 
-                match target {
-                    Target::Ident(s) => {
-                        let key = self.lookup.get(s.clone());
+                if let Target::Ident(s) = target {
+                    let key = self.lookup.get(s.clone());
 
-                        self.push(
-                            proc,
-                            if r#mut {
-                                Instruction::StoreMutVar(key)
-                            } else if r#const {
-                                Instruction::StoreConstVar(key)
-                            } else {
-                                Instruction::StoreVar(key)
-                            },
-                        );
-                    }
-                    _ => (),
+                    self.push(
+                        proc,
+                        if r#mut {
+                            Instruction::StoreMutVar(key)
+                        } else if r#const {
+                            Instruction::StoreConstVar(key)
+                        } else {
+                            Instruction::StoreVar(key)
+                        },
+                    );
                 }
             }
             Node::Assign { targets, value } => {
@@ -262,13 +261,10 @@ impl Interpreter {
                 // TODO: currently we assume only one target
                 let target = targets.first().unwrap();
 
-                match target {
-                    Target::Ident(s) => {
-                        let key = self.lookup.get(s.clone());
+                if let Target::Ident(s) = target {
+                    let key = self.lookup.get(s.clone());
 
-                        self.push(proc, Instruction::AssignVar(key));
-                    },
-                    _ => (),
+                    self.push(proc, Instruction::AssignVar(key));
                 }
             }
             _ => todo!(),
@@ -300,5 +296,11 @@ impl Interpreter {
     pub fn interpret_body_scoped(&mut self, proc: AddrRepr, Body(body, return_last): Body) {
         self.interpret_body_scoped_no_return(proc, body);
         self.push_return(proc, return_last);
+    }
+}
+
+impl Default for Interpreter {
+    fn default() -> Self {
+        Self::new()
     }
 }
