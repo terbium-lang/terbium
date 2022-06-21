@@ -739,7 +739,7 @@ impl<T> Tagged<T> for Ptr<T> {
     }
 
     fn untag(from: NonNull<T>) -> Ptr<T> {
-        Self::<T>::new((from.as_ptr() as usize & TaggedPtr::MASK) as *const T)
+        Self::new((from.as_ptr() as usize & TaggedPtr::MASK) as *const T)
     }
 }
 

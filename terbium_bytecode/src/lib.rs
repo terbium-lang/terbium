@@ -3,6 +3,8 @@
 //! Because Terbium can be directly interpreted or be compiled into LLVM IR,
 //! there must be a representation of Terbium code that can provide an easy
 //! entrypoint to both.
+#![allow(clippy::missing_panics_doc)]
+#![allow(clippy::missing_errors_doc)]
 
 mod interpreter;
 mod util;
@@ -14,7 +16,7 @@ use std::mem::size_of;
 pub use interpreter::Interpreter;
 pub use util::EqComparableFloat;
 
-pub type AddrRepr = u32;
+pub type AddrRepr = usize;
 
 #[derive(Copy, Clone, Debug, PartialOrd, PartialEq, Eq, Hash)]
 pub enum Addr {
@@ -26,7 +28,7 @@ pub enum Addr {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Instruction {
     // Constants mapped to a lookup table
-    LoadInt(i128), // TODO: this takes 16 bytes in raw bytecode representation, not the best
+    LoadInt(u128), // TODO: this takes 16 bytes in raw bytecode representation, not the best
     LoadFloat(EqComparableFloat),
     LoadString(String),
     LoadBool(bool),
@@ -99,11 +101,12 @@ impl Instruction {
     }
 
     #[must_use]
+    #[warn(clippy::cast_possible_truncation)] 
     pub fn size(&self) -> u8 {
         1_u8 + match self {
-            Self::LoadInt(_) => size_of::<i128>(),
+            Self::LoadInt(_) => size_of::<u128>(),
             Self::LoadFloat(_) => size_of::<f64>(),
-            Self::LoadString(s) => s.len(),
+            Self::LoadString(s) => s.len(), // FIXME: String might exceeds 255
             Self::LoadBool(_) => 1,
             Self::LoadVar(_)
             | Self::StoreVar(_)
@@ -177,10 +180,10 @@ pub struct Program {
     procedures: Vec<Vec<Instruction>>,
 }
 
-pub(crate) fn read_ne_i128(input: &mut &[u8]) -> i128 {
-    let (int_bytes, rest) = input.split_at(std::mem::size_of::<i128>());
+pub(crate) fn read_ne_u128(input: &mut &[u8]) -> u128 {
+    let (int_bytes, rest) = input.split_at(std::mem::size_of::<u128>());
     *input = rest;
-    i128::from_ne_bytes(int_bytes.try_into().unwrap())
+    u128::from_ne_bytes(int_bytes.try_into().unwrap())
 }
 
 pub(crate) fn read_ne_f64(input: &mut &[u8]) -> f64 {
@@ -193,12 +196,6 @@ pub(crate) fn read_ne_usize(input: &mut &[u8]) -> usize {
     let (int_bytes, rest) = input.split_at(std::mem::size_of::<usize>());
     *input = rest;
     usize::from_ne_bytes(int_bytes.try_into().unwrap())
-}
-
-pub(crate) fn read_ne_addr(input: &mut &[u8]) -> AddrRepr {
-    let (int_bytes, rest) = input.split_at(std::mem::size_of::<AddrRepr>());
-    *input = rest;
-    AddrRepr::from_ne_bytes(int_bytes.try_into().unwrap())
 }
 
 macro_rules! progress {
@@ -233,7 +230,7 @@ impl Program {
     pub fn create_procedure(&mut self) -> AddrRepr {
         self.procedures.push(Vec::new());
 
-        (self.procedures.len() - 1) as AddrRepr
+        self.procedures.len() - 1
     }
 
     pub fn pop_procedure(&mut self) {
@@ -244,7 +241,7 @@ impl Program {
         if let Some(procedure) = procedure {
             return self
                 .procedures
-                .get_mut(procedure as usize)
+                .get_mut(procedure)
                 .expect("no procedure there")
                 .push(instr);
         }
@@ -253,6 +250,7 @@ impl Program {
     }
 
     #[must_use]
+    #[allow(clippy::match_wildcard_for_single_variants)]
     pub fn current_addr(&self, procedure: Option<AddrRepr>) -> Addr {
         match self.next_addr(procedure) {
             Addr::Absolute(i) => Addr::Absolute(i - 1),
@@ -267,15 +265,16 @@ impl Program {
             return Addr::Offset(
                 proc,
                 self.procedures
-                    .get(proc as usize)
+                    .get(proc)
                     .expect("procedure not found")
-                    .len() as AddrRepr,
+                    .len(),
             );
         }
 
-        Addr::Absolute(self.inner.len() as AddrRepr)
+        Addr::Absolute(self.inner.len())
     }
 
+    #[allow(clippy::match_wildcard_for_single_variants)]
     fn resolve_addr(lookup: &HashMap<AddrRepr, AddrRepr>, addr: Addr) -> Addr {
         match addr {
             Addr::Procedure(proc) => {
@@ -297,7 +296,7 @@ impl Program {
         // Lookup of proc -> absolute
         let mut lookup: HashMap<AddrRepr, AddrRepr> = HashMap::new();
         for (i, proc) in self.procedures.iter().enumerate() {
-            lookup.insert(i as AddrRepr, self.inner.len() as AddrRepr);
+            lookup.insert(i, self.inner.len());
 
             // TODO: don't clone here
             self.inner.extend(proc.clone());
@@ -423,7 +422,8 @@ impl Program {
     }
 
     #[must_use]
-    pub fn from_bytes(bytes: Vec<u8>) -> Self {
+    #[allow(clippy::match_same_arms)] // Remove when unimplemented!() are all implemented
+    pub fn from_bytes(bytes: &[u8]) -> Self {
         type I = Instruction;
 
         let mut ptr = 0;
@@ -433,8 +433,8 @@ impl Program {
             instructions.push(match bytes.get(ptr) {
                 Some(b) => match b {
                     0 => {
-                        ptr += 1 + size_of::<i128>();
-                        I::LoadInt(read_ne_i128(&mut &bytes[(ptr - 16)..ptr]))
+                        ptr += 1 + size_of::<u128>();
+                        I::LoadInt(read_ne_u128(&mut &bytes[(ptr - 16)..ptr]))
                     }
                     1 => {
                         ptr += 1 + size_of::<f64>();
@@ -452,7 +452,7 @@ impl Program {
                     }
                     3 => {
                         ptr += 1 + size_of::<bool>();
-                        I::LoadBool(if bytes[ptr - 1] == 0 { true } else { false })
+                        I::LoadBool(bytes[ptr - 1] == 0)
                     }
                     4 => parse_usize!(ptr, bytes, Load),
                     5 => progress!(ptr, I::UnOpPos),
@@ -484,26 +484,26 @@ impl Program {
                     31 => unimplemented!(),
                     32 => {
                         ptr += 1 + size_of::<AddrRepr>();
-                        I::Jump(Addr::Absolute(read_ne_addr(
+                        I::Jump(Addr::Absolute(read_ne_usize(
                             &mut &bytes[(ptr - size_of::<AddrRepr>())..ptr],
                         )))
                     }
                     33 => {
                         ptr += 1 + size_of::<AddrRepr>();
-                        I::JumpIf(Addr::Absolute(read_ne_addr(
+                        I::JumpIf(Addr::Absolute(read_ne_usize(
                             &mut &bytes[(ptr - size_of::<AddrRepr>())..ptr],
                         )))
                     }
                     34 => {
                         ptr += 1 + size_of::<AddrRepr>();
-                        let first = Addr::Absolute(read_ne_addr(
+                        let first = Addr::Absolute(read_ne_usize(
                             &mut &bytes[(ptr - size_of::<AddrRepr>())..ptr],
                         ));
 
                         ptr += size_of::<AddrRepr>();
                         I::JumpIfElse(
                             first,
-                            Addr::Absolute(read_ne_addr(
+                            Addr::Absolute(read_ne_usize(
                                 &mut &bytes[(ptr - size_of::<AddrRepr>())..ptr],
                             )),
                         )
@@ -523,7 +523,7 @@ impl Program {
             });
         }
 
-        Program {
+        Self {
             inner: instructions,
             procedures: Vec::new(),
         }

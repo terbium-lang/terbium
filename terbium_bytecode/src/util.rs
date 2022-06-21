@@ -5,7 +5,7 @@ use std::hash::{Hash, Hasher};
 pub struct EqComparableFloat(pub f64);
 
 impl EqComparableFloat {
-    fn key(&self) -> u64 {
+    fn key(self) -> u64 {
         u64::from_ne_bytes(self.0.to_ne_bytes())
     }
 }
@@ -51,7 +51,7 @@ mod tests {
     pub fn test_float_eq() {
         assert_eq!(EqComparableFloat(0.1), EqComparableFloat(0.1));
 
-        let mut sample = HashMap::<EqComparableFloat, u8>::new();
+        let mut sample = HashMap::<EqComparableFloat, u8>::with_capacity(1);
         sample.insert(EqComparableFloat(0.1), 0);
 
         assert_eq!(sample.get(&EqComparableFloat(0.1)), Some(&0_u8));

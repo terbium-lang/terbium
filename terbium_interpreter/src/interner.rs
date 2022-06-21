@@ -2,7 +2,7 @@
 
 use std::{collections::HashMap, mem};
 
-pub(crate) type StringId = u32;
+pub type StringId = u32;
 
 #[derive(Debug)]
 pub struct Interner {
@@ -13,6 +13,7 @@ pub struct Interner {
 }
 
 impl Interner {
+    #[must_use]
     pub fn with_capacity(cap: usize) -> Self {
         let cap = cap.next_power_of_two();
 
@@ -37,6 +38,7 @@ impl Interner {
         id
     }
 
+    #[must_use]
     pub fn lookup(&self, id: StringId) -> &str {
         self.vec[id as usize]
     }

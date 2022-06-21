@@ -113,7 +113,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             };
 
-            let mut transformer = BcTransformer::new();
+            let mut transformer = BcTransformer::default();
             transformer.interpret_body(None, body);
 
             let mut program = transformer.program();
@@ -147,14 +147,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             };
 
-            let mut transformer = BcTransformer::new();
+            let mut transformer = BcTransformer::default();
             transformer.interpret_body(None, body);
 
             let mut program = transformer.program();
             program.resolve();
 
-            let mut interpreter = DefaultInterpreter::new();
-            interpreter.run_bytecode(program);
+            let mut interpreter = DefaultInterpreter::default();
+            interpreter.run_bytecode(&program);
 
             let popped = interpreter.ctx.pop_ref();
             let popped = interpreter.ctx.store.resolve(popped);

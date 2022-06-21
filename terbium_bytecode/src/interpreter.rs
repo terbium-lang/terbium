@@ -35,6 +35,12 @@ impl IdentLookup {
     }
 }
 
+impl Default for IdentLookup {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub struct Interpreter {
     program: Program,
     lookup: IdentLookup,
@@ -46,16 +52,17 @@ impl Interpreter {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            program: Program::new(),
-            lookup: IdentLookup::new(),
+            program: Program::default(),
+            lookup: IdentLookup::default(),
         }
     }
 
     pub fn reset_program(&mut self) {
-        self.program = Program::new();
+        self.program = Program::default();
     }
 
     #[must_use]
+    #[allow(clippy::missing_const_for_fn)] // destructors cannot be evaluated at compile-time E0493
     pub fn program(self) -> Program {
         self.program
     }
@@ -83,9 +90,10 @@ impl Interpreter {
         self.push(Some(procedure), Instruction::ExitScope);
     }
 
+    #[allow(clippy::too_many_lines)] // Should probably refactor it later
     pub fn interpret_expr(&mut self, proc: MaybeProc, expr: Expr) {
         match expr {
-            Expr::Integer(i) => self.push(proc, Instruction::LoadInt(i as i128)),
+            Expr::Integer(i) => self.push(proc, Instruction::LoadInt(i)),
             Expr::Bool(b) => self.push(proc, Instruction::LoadBool(b)),
             Expr::String(s) => self.push(proc, Instruction::LoadString(s)),
             Expr::Float(f) => self.push(
