@@ -10,9 +10,11 @@ use terbium_bytecode::{Addr, AddrRepr, EqComparableFloat, Instruction, Program};
 pub use interner::Interner;
 use interner::StringId;
 
+/// The integer type of the location of a `TerbiumObject`.
 pub type ObjectRef = usize;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
+/// The internal Terbium object model. These are created during the interpreter runtime.
 pub enum TerbiumObject {
     Null,
     Integer(i128),
@@ -22,6 +24,7 @@ pub enum TerbiumObject {
 }
 
 #[derive(Debug)]
+/// Represents stack wrapper around an array.
 pub struct Stack<const STACK_SIZE: usize = 512> {
     pub(crate) inner: [ObjectRef; STACK_SIZE],
     pub(crate) ptr: usize,
@@ -36,17 +39,16 @@ impl<const STACK_SIZE: usize> Stack<STACK_SIZE> {
         }
     }
 
-    /// Push an object to the stack.
+    /// Pushes the given object to the stack.
     pub fn push(&mut self, o: ObjectRef) {
         self.inner[self.ptr] = o;
         self.incr_ptr();
     }
 
-    /// Increments the ptr
+    /// Increments `ptr` by 1.
     ///
     /// # Panics
-    ///
-    /// Panics if it goes above `STACK_SIZE`
+    /// - The pointer has surpassed `STACK_SIZE`
     pub fn incr_ptr(&mut self) {
         self.ptr += 1;
 
@@ -57,37 +59,36 @@ impl<const STACK_SIZE: usize> Stack<STACK_SIZE> {
         );
     }
 
-    /// Decrements the ptr
+    /// Decrements `ptr` by 1.
     ///
     /// # Panics
-    ///
-    /// Panics if it goes below 0
+    /// - The pointer is below 0
     pub fn decr_ptr(&mut self) {
         self.ptr = self.ptr.checked_sub(1).expect("stack ptr already at 0");
     }
 
-    /// Pop the previous object in the stack and move the pointer there
+    /// Pops the previous object in the stack and moves the pointer there.
     pub fn pop(&mut self) -> ObjectRef {
         self.decr_ptr();
 
         std::mem::replace(&mut self.inner[self.ptr], 0)
     }
 
-    /// Get a cloned version of the previous object in the stack,
-    /// but also move the pointer there
+    /// Gets a cloned version of the previous object in the stack,
+    /// but also moves the pointer there.
     pub fn pop_cloned(&mut self) -> ObjectRef {
         self.decr_ptr();
 
         self.inner[self.ptr]
     }
 
-    /// Retrieve a reference to the next free slot
+    /// Retrieves a reference to the next free slot.
     #[must_use]
     pub const fn next_free(&self) -> &ObjectRef {
         &self.inner[self.ptr]
     }
 
-    /// Retrieve a mutable reference to the free slot
+    /// Retrieves a mutable reference to the free slot.
     pub fn next_free_mut(&mut self) -> &mut ObjectRef {
         &mut self.inner[self.ptr]
     }
@@ -100,6 +101,11 @@ impl Default for Stack {
 }
 
 #[derive(Debug)]
+/// A wrapper around a `HashMap` that maps object locations to their actual objects.
+/// This owns all objects throughout the interpreter runtime.
+///
+/// # Note
+/// This was designed as a temporary solution; this struct may be removed in the future.
 pub struct ObjectStore(pub(crate) HashMap<ObjectRef, TerbiumObject>);
 
 impl ObjectStore {
@@ -112,6 +118,10 @@ impl ObjectStore {
     }
 
     #[must_use]
+    /// Resolves an object pointer into a reference of the object its pointing to.
+    ///
+    /// # Panics
+    /// - There is no object stored at `loc`
     pub fn resolve(&self, loc: ObjectRef) -> &TerbiumObject {
         self.0
             .get(&loc)
@@ -119,6 +129,8 @@ impl ObjectStore {
     }
 
     #[must_use]
+    /// Resolves an object pointer into a reference of the object its pointing to,
+    /// but returns `&TerbiumObejct::Null` if no object is stored at `loc`.
     pub fn resolve_or_null(&self, loc: ObjectRef) -> &TerbiumObject {
         self.0.get(&loc).unwrap_or(&TerbiumObject::Null)
     }
@@ -131,6 +143,11 @@ impl Default for ObjectStore {
 }
 
 #[derive(Debug)]
+/// Represents an entry in a scope.
+///
+/// Apart from which object this entry references,
+/// it also stores metadata such was whether or not this
+/// entry is a constant or if it is mutable.
 pub struct ScopeEntry {
     pub loc: ObjectRef,
     r#mut: bool,
@@ -139,11 +156,24 @@ pub struct ScopeEntry {
 
 impl ScopeEntry {
     #[must_use]
+    /// Whether or not this entry is a constant.
+    ///
+    /// Constant objects cannot be overwritten in its own scope,
+    /// reassigned to nor mutated.
     pub const fn is_const(&self) -> bool {
         self.r#const
     }
 
     #[must_use]
+    /// Whether or not this entry is mutable.
+    ///
+    /// Objects which are **not** mutable are immutable,
+    /// and cannot be reassigned or mutated.
+    ///
+    /// The difference between an immutable object and a constant
+    /// is that an immutable object can be overwritten in its own scope,
+    /// while a constant cannot be. In other words, Redefinition is
+    /// allowed with immutable variables but not with constants.
     pub const fn is_mut(&self) -> bool {
         self.r#mut
     }
@@ -156,6 +186,7 @@ impl From<ScopeEntry> for ObjectRef {
 }
 
 #[derive(Debug)]
+/// Represents a scope of identifiers.
 pub struct Scope {
     pub locals: HashMap<usize, ScopeEntry>,
 }
@@ -176,6 +207,7 @@ impl Default for Scope {
 }
 
 #[derive(Debug)]
+/// Represents an interpreter's context during runtime.
 pub struct Context<const STACK_SIZE: usize = 512> {
     pub store: ObjectStore,
     pub(crate) stack: Stack<STACK_SIZE>,
@@ -196,42 +228,57 @@ impl<const STACK_SIZE: usize> Context<STACK_SIZE> {
         }
     }
 
+    /// Pushes an object by location to the stack.
     pub fn push(&mut self, o: ObjectRef) {
         self.stack.push(o);
     }
 
+    /// Pops the last object from the stack and returns its location.
     pub fn pop_ref(&mut self) -> ObjectRef {
         self.stack.pop()
     }
 
+    /// Pops the last object from the stack and returns a tuple containing
+    /// the location of the object in field 0 and a reference to the resolved
+    /// object in field 1.
     pub fn pop_detailed(&mut self) -> (ObjectRef, &TerbiumObject) {
         let loc = self.stack.pop();
 
         (loc, self.store.resolve(loc))
     }
 
+    /// Pops the last object from the stack and returns a reference to it.
     pub fn pop(&mut self) -> &TerbiumObject {
         let loc = self.pop_ref();
 
         self.store.resolve(loc)
     }
 
+    /// Pops the last object from the stack and returns a reference to it.
+    ///
+    /// If any of the following happen, `&TerbiumObject::Null` is returned instead:
+    ///
+    /// - Nothing is on the stack
+    /// - What was popped from the stack could not be resolved into an object
     pub fn pop_or_null(&mut self) -> &TerbiumObject {
         let loc = self.pop_ref();
 
         self.store.resolve_or_null(loc)
     }
 
+    /// Pops the last object from the stack, clones it, and returns it.
     pub fn pop_cloned(&mut self) -> TerbiumObject {
         *self.store.resolve(self.stack.pop_cloned())
     }
 
+    /// Stores the object at the given location.
     pub fn store(&mut self, loc: ObjectRef, o: TerbiumObject) -> ObjectRef {
         self.store.0.insert(loc, o);
 
         loc
     }
 
+    /// Stores the object at a pre-determined location.
     pub fn store_auto(&mut self, o: TerbiumObject) -> ObjectRef {
         // TODO: this is O(n), not really the best
         let key = self.store.0.keys().max().unwrap_or(&0) + 1;
@@ -240,12 +287,14 @@ impl<const STACK_SIZE: usize> Context<STACK_SIZE> {
         key
     }
 
+    /// Loads the given integer and returns its location.
     pub fn load_int(&mut self, i: i128) -> ObjectRef {
         let loc = self.store_auto(TerbiumObject::Integer(i));
 
         *self.integer_lookup.entry(i).or_insert(loc)
     }
 
+    /// Loads the given bool and returns its location.
     pub fn load_bool(&mut self, b: bool) -> ObjectRef {
         let index = usize::from(b);
         let ptr = self.bool_lookup[index];
@@ -261,18 +310,22 @@ impl<const STACK_SIZE: usize> Context<STACK_SIZE> {
     }
 
     #[must_use]
+    /// Returns a reference to the current local scope.
     pub fn locals(&self) -> &Scope {
         self.scopes.last().unwrap_or_else(|| unreachable!())
     }
 
+    /// Returns a mutable reference to the current local scope.
     pub fn locals_mut(&mut self) -> &mut Scope {
         self.scopes.last_mut().unwrap_or_else(|| unreachable!())
     }
 
+    /// Stores the `ScopeEntry` in the given `key`
     pub fn store_var(&mut self, key: usize, entry: ScopeEntry) {
         self.locals_mut().locals.insert(key, entry);
     }
 
+    /// Reassigns the value at the given location to the given `key`.
     pub fn assign_var(&mut self, key: usize, value: ObjectRef) {
         let entry = self.lookup_var_mut(key).unwrap_or_else(|| {
             // TODO: variable not found, error
