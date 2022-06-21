@@ -69,6 +69,7 @@ pub enum Instruction {
     StoreVar(usize),
     StoreMutVar(usize),
     StoreConstVar(usize),
+    AssignVar(usize),
     LoadVar(usize),
 
     // Functions
@@ -109,7 +110,8 @@ impl Instruction {
             | Self::MakeFunc(_)
             | Self::Load(_)
             | Self::Store(_)
-            | Self::LoadFrame(_) => size_of::<usize>(),
+            | Self::LoadFrame(_)
+            | Self::AssignVar(_) => size_of::<usize>(),
             Self::Jump(_) | Self::JumpIf(_) => size_of::<AddrRepr>(),
             Self::JumpIfElse(_, _) => size_of::<AddrRepr>() * 2,
             _ => 0,
@@ -161,6 +163,7 @@ impl Instruction {
             Self::Store(_) => 40,
             Self::EnterScope => 41,
             Self::ExitScope => 42,
+            Self::AssignVar(_) => 43,
         }
     }
 }
@@ -171,25 +174,25 @@ pub struct Program {
     procedures: Vec<Vec<Instruction>>,
 }
 
-fn read_ne_i128(input: &mut &[u8]) -> i128 {
+pub(crate) fn read_ne_i128(input: &mut &[u8]) -> i128 {
     let (int_bytes, rest) = input.split_at(std::mem::size_of::<i128>());
     *input = rest;
     i128::from_ne_bytes(int_bytes.try_into().unwrap())
 }
 
-fn read_ne_f64(input: &mut &[u8]) -> f64 {
+pub(crate) fn read_ne_f64(input: &mut &[u8]) -> f64 {
     let (int_bytes, rest) = input.split_at(std::mem::size_of::<f64>());
     *input = rest;
     f64::from_ne_bytes(int_bytes.try_into().unwrap())
 }
 
-fn read_ne_usize(input: &mut &[u8]) -> usize {
+pub(crate) fn read_ne_usize(input: &mut &[u8]) -> usize {
     let (int_bytes, rest) = input.split_at(std::mem::size_of::<usize>());
     *input = rest;
     usize::from_ne_bytes(int_bytes.try_into().unwrap())
 }
 
-fn read_ne_addr(input: &mut &[u8]) -> AddrRepr {
+pub(crate) fn read_ne_addr(input: &mut &[u8]) -> AddrRepr {
     let (int_bytes, rest) = input.split_at(std::mem::size_of::<AddrRepr>());
     *input = rest;
     AddrRepr::from_ne_bytes(int_bytes.try_into().unwrap())
@@ -199,6 +202,15 @@ macro_rules! progress {
     ($ptr:ident, $e:expr) => {{
         $ptr += 1;
         $e
+    }};
+}
+
+macro_rules! parse_usize {
+    ($ptr:ident, $bytes:expr, $member:ident) => {{
+        $ptr += 1 + size_of::<usize>();
+        Instruction::$member(
+            $crate::read_ne_usize(&mut &$bytes[($ptr - ::std::mem::size_of::<usize>())..$ptr]).into(),
+        )
     }};
 }
 
@@ -331,6 +343,7 @@ impl Program {
                 | I::StoreMutVar(i)
                 | I::StoreConstVar(i)
                 | I::StoreVar(i)
+                | I::AssignVar(i)
                 | I::MakeFunc(i) => bytes.extend_from_slice(&i.to_ne_bytes()),
                 I::Jump(a) | I::JumpIf(a) => match a {
                     Addr::Absolute(p) => bytes.extend_from_slice(&p.to_ne_bytes()),
@@ -366,6 +379,7 @@ impl Program {
                 I::StoreVar(i) => writeln!(w, "store_var {}", i)?,
                 I::StoreMutVar(i) => writeln!(w, "store_mut_var {}", i)?,
                 I::StoreConstVar(i) => writeln!(w, "store_const_var {}", i)?,
+                I::AssignVar(i) => writeln!(w, "assign_var {}", i)?,
                 I::Jump(Addr::Absolute(addr)) => writeln!(w, "jump {}", addr)?,
                 I::JumpIf(Addr::Absolute(addr)) => writeln!(w, "jump_if {}", addr)?,
                 I::JumpIfElse(Addr::Absolute(a), Addr::Absolute(b)) => {
@@ -434,10 +448,7 @@ impl Program {
                         ptr += 1 + size_of::<bool>();
                         I::LoadBool(if bytes[ptr - 1] == 0 { true } else { false })
                     }
-                    4 => {
-                        ptr += 1 + size_of::<usize>();
-                        I::Load(read_ne_usize(&mut &bytes[(ptr - size_of::<usize>())..ptr]).into())
-                    }
+                    4 => parse_usize!(ptr, bytes, Load),
                     5 => progress!(ptr, I::UnOpPos),
                     6 => progress!(ptr, I::UnOpNeg),
                     7 => progress!(ptr, I::BinOpAdd),
@@ -459,30 +470,10 @@ impl Program {
                     23 => progress!(ptr, I::OpLogicalOr),
                     24 => progress!(ptr, I::OpLogicalAnd),
                     25 => progress!(ptr, I::OpLogicalNot),
-                    26 => {
-                        ptr += 1 + size_of::<usize>();
-                        I::LoadVar(
-                            read_ne_usize(&mut &bytes[(ptr - size_of::<usize>())..ptr]).into(),
-                        )
-                    }
-                    27 => {
-                        ptr += 1 + size_of::<usize>();
-                        I::StoreVar(
-                            read_ne_usize(&mut &bytes[(ptr - size_of::<usize>())..ptr]).into(),
-                        )
-                    }
-                    28 => {
-                        ptr += 1 + size_of::<usize>();
-                        I::StoreMutVar(
-                            read_ne_usize(&mut &bytes[(ptr - size_of::<usize>())..ptr]).into(),
-                        )
-                    }
-                    29 => {
-                        ptr += 1 + size_of::<usize>();
-                        I::StoreConstVar(
-                            read_ne_usize(&mut &bytes[(ptr - size_of::<usize>())..ptr]).into(),
-                        )
-                    }
+                    26 => parse_usize!(ptr, bytes, LoadVar),
+                    27 => parse_usize!(ptr, bytes, StoreVar),
+                    28 => parse_usize!(ptr, bytes, StoreMutVar),
+                    29 => parse_usize!(ptr, bytes, StoreConstVar),
                     30 => unimplemented!(),
                     31 => unimplemented!(),
                     32 => {
@@ -516,12 +507,10 @@ impl Program {
                     37 => progress!(ptr, I::RetNull),
                     38 => progress!(ptr, I::Halt),
                     39 => unimplemented!(),
-                    40 => {
-                        ptr += 1 + size_of::<usize>();
-                        I::Store(read_ne_usize(&mut &bytes[(ptr - size_of::<usize>())..ptr]).into())
-                    }
+                    40 => parse_usize!(ptr, bytes, Store),
                     41 => progress!(ptr, I::EnterScope),
                     42 => progress!(ptr, I::ExitScope),
+                    43 => parse_usize!(ptr, bytes, AssignVar),
                     b => panic!("invalid byte 0x{:0x} at position {}", b, ptr),
                 },
                 None => break,

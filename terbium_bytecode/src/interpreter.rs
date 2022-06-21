@@ -246,6 +246,21 @@ impl Interpreter {
                     _ => (),
                 }
             }
+            Node::Assign { targets, value } => {
+                self.interpret_expr(proc, value);
+
+                // TODO: currently we assume only one target
+                let target = targets.first().unwrap();
+
+                match target {
+                    Target::Ident(s) => {
+                        let key = self.lookup.get(s.clone());
+
+                        self.push(proc, Instruction::AssignVar(key));
+                    },
+                    _ => (),
+                }
+            }
             _ => todo!(),
         }
     }

@@ -235,9 +235,33 @@ impl<const STACK_SIZE: usize> Context<STACK_SIZE> {
         self.locals_mut().locals.insert(key, entry);
     }
 
+    pub fn assign_var(&mut self, key: usize, value: ObjectRef) {
+        let entry = self.lookup_var_mut(key).unwrap_or_else(|| {
+            // TODO: variable not found, error
+            unimplemented!();
+        });
+
+        if entry.is_const() || !entry.is_mut() {
+            // TODO: variable is immutable or const, error
+            unimplemented!();
+        }
+
+        entry.loc = value;
+    }
+
     pub fn lookup_var(&self, key: usize) -> Option<&ScopeEntry> {
         for scope in self.scopes.iter().rev() {
             if let Some(entry) = scope.locals.get(&key) {
+                return Some(entry);
+            }
+        }
+
+        None
+    }
+
+    pub fn lookup_var_mut(&mut self, key: usize) -> Option<&mut ScopeEntry> {
+        for scope in self.scopes.iter_mut().rev() {
+            if let Some(entry) = scope.locals.get_mut(&key) {
                 return Some(entry);
             }
         }
@@ -577,6 +601,11 @@ impl<const STACK_SIZE: usize> Interpreter<STACK_SIZE> {
                             r#const: matches!(instr, Instruction::StoreConstVar(_)),
                         },
                     )
+                }
+                Instruction::AssignVar(key) => {
+                    let loc = self.ctx.pop_ref();
+
+                    self.ctx.assign_var(key, loc);
                 }
                 _ => todo!(),
             }
