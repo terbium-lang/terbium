@@ -98,7 +98,15 @@ impl Interpreter {
             Expr::String(s) => self.push(proc, Instruction::LoadString(s)),
             Expr::Float(f) => self.push(
                 proc,
-                Instruction::LoadFloat(f.parse::<f64>().unwrap().into()),
+                Instruction::LoadFloat(
+                    f.parse::<f64>()
+                        .unwrap_or_else(|_| {
+                            unreachable!(
+                                "Unreachable because the String provided is guaranteed to be a valid float"
+                            )
+                        })
+                        .into(),
+                ),
             ),
             Expr::UnaryExpr { operator, value } => {
                 self.interpret_expr(proc, *value);
@@ -205,7 +213,9 @@ impl Interpreter {
                 self.program.pop_procedure();
 
                 if let Some(else_body) = else_body {
-                    self.interpret_body_scoped(last_parent.unwrap(), else_body);
+                    self.interpret_body_scoped(last_parent.unwrap_or_else(
+                        || unreachable!("last_parent is always an if or else if block and never the top level")
+                    ), else_body);
                 } else {
                     self.push(last_parent, Instruction::RetNull);
                 }

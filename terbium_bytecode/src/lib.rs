@@ -101,7 +101,7 @@ impl Instruction {
     }
 
     #[must_use]
-    #[warn(clippy::cast_possible_truncation)] 
+    #[warn(clippy::cast_possible_truncation)]
     pub fn size(&self) -> u8 {
         1_u8 + match self {
             Self::LoadInt(_) => size_of::<u128>(),
@@ -209,7 +209,8 @@ macro_rules! parse_usize {
     ($ptr:ident, $bytes:expr, $member:ident) => {{
         $ptr += 1 + size_of::<usize>();
         Instruction::$member(
-            $crate::read_ne_usize(&mut &$bytes[($ptr - ::std::mem::size_of::<usize>())..$ptr]).into(),
+            $crate::read_ne_usize(&mut &$bytes[($ptr - ::std::mem::size_of::<usize>())..$ptr])
+                .into(),
         )
     }};
 }
@@ -277,9 +278,7 @@ impl Program {
     #[allow(clippy::match_wildcard_for_single_variants)]
     fn resolve_addr(lookup: &HashMap<AddrRepr, AddrRepr>, addr: Addr) -> Addr {
         match addr {
-            Addr::Procedure(proc) => {
-                Addr::Absolute(*lookup.get(&proc).expect("unknown procedure"))
-            }
+            Addr::Procedure(proc) => Addr::Absolute(*lookup.get(&proc).expect("unknown procedure")),
             Addr::Offset(proc, offset) => {
                 Addr::Absolute(lookup.get(&proc).expect("unknown procedure") + offset)
             }

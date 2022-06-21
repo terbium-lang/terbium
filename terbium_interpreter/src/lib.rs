@@ -43,20 +43,24 @@ impl<const STACK_SIZE: usize> Stack<STACK_SIZE> {
     }
 
     /// Increments the ptr
-    /// 
+    ///
     /// # Panics
-    /// 
+    ///
     /// Panics if it goes above `STACK_SIZE`
     pub fn incr_ptr(&mut self) {
         self.ptr += 1;
 
-        assert!(self.ptr < STACK_SIZE, "stack overflow (surpassed stack size of {})", STACK_SIZE);
+        assert!(
+            self.ptr < STACK_SIZE,
+            "stack overflow (surpassed stack size of {})",
+            STACK_SIZE
+        );
     }
 
     /// Decrements the ptr
-    /// 
+    ///
     /// # Panics
-    /// 
+    ///
     /// Panics if it goes below 0
     pub fn decr_ptr(&mut self) {
         self.ptr = self.ptr.checked_sub(1).expect("stack ptr already at 0");
@@ -150,7 +154,6 @@ impl From<ScopeEntry> for ObjectRef {
         s.loc
     }
 }
-
 
 #[derive(Debug)]
 pub struct Scope {

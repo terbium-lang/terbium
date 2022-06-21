@@ -38,7 +38,7 @@ pub enum Expr {
     While {
         condition: Box<Expr>,
         body: Vec<Node>,
-    }
+    },
 }
 
 #[derive(Clone, Debug, PartialEq)]
