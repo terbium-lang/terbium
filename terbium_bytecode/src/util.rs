@@ -8,7 +8,7 @@ pub struct EqComparableFloat(pub f64);
 
 impl EqComparableFloat {
     fn key(self) -> u64 {
-        u64::from_ne_bytes(self.0.to_ne_bytes())
+        u64::from_be_bytes(self.0.to_be_bytes())
     }
 }
 
