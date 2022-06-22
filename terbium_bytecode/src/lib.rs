@@ -101,9 +101,8 @@ impl Instruction {
     }
 
     #[must_use]
-    #[warn(clippy::cast_possible_truncation)]
-    pub fn size(&self) -> u8 {
-        1_u8 + match self {
+    pub fn size(&self) -> usize {
+        1_usize + match self {
             Self::LoadInt(_) => size_of::<u128>(),
             Self::LoadFloat(_) => size_of::<f64>(),
             Self::LoadString(s) => s.len(), // FIXME: String might exceeds 255
@@ -120,7 +119,7 @@ impl Instruction {
             Self::Jump(_) | Self::JumpIf(_) => size_of::<AddrRepr>(),
             Self::JumpIfElse(_, _) => size_of::<AddrRepr>() * 2,
             _ => 0,
-        } as u8
+        }
     }
 
     #[must_use]
