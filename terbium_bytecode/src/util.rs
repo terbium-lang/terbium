@@ -1,4 +1,6 @@
-use std::hash::{Hash, Hasher};
+use std::{hash::{Hash, Hasher}, fmt::Debug};
+use std::fmt::{Display, Formatter, Result as FmtResult};
+
 
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug)]
@@ -39,6 +41,19 @@ impl Eq for EqComparableFloat {}
 impl Hash for EqComparableFloat {
     fn hash<H: Hasher>(&self, h: &mut H) {
         self.key().hash(h);
+    }
+}
+
+impl Default for EqComparableFloat {
+    /// Returns the default value of 0.0
+    fn default() -> Self {
+        Self(0.0)
+    }
+}
+
+impl Display for EqComparableFloat {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        self.0.fmt(f)
     }
 }
 
