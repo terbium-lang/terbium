@@ -1,1 +1,1 @@
-initSidebarItems({"enum":[["Addr",""],["Instruction",""]],"struct":[["EqComparableFloat",""],["Interpreter",""],["Program",""]],"type":[["AddrRepr",""]]});
+window.SIDEBAR_ITEMS = {"enum":[["Addr",""],["Instruction",""]],"struct":[["EqComparableFloat",""],["Interpreter",""],["Program",""]],"type":[["AddrRepr",""]]};

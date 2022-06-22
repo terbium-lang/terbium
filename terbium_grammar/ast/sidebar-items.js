@@ -1,1 +1,1 @@
-initSidebarItems({"enum":[["Expr",""],["Node",""],["Target",""],["TypeExpr",""]],"fn":[["get_body_parser",""]],"struct":[["Body",""],["Param",""]],"trait":[["ParseInterface",""]],"traitalias":[["CommonParser",""]],"type":[["RecursiveParser",""]]});
+window.SIDEBAR_ITEMS = {"enum":[["Expr",""],["Node",""],["Target",""],["TypeExpr",""]],"fn":[["get_body_parser",""]],"struct":[["Body",""],["Param",""]],"trait":[["ParseInterface",""]],"traitalias":[["CommonParser",""]],"type":[["RecursiveParser",""]]};

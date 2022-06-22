@@ -1,1 +1,1 @@
-initSidebarItems({"enum":[["ErrorKind",""],["TargetKind",""]],"struct":[["Error",""]]});
+window.SIDEBAR_ITEMS = {"enum":[["ErrorKind",""],["TargetKind",""]],"struct":[["Error",""]]};

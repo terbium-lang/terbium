@@ -1,1 +1,1 @@
-initSidebarItems({"fn":[["to_snake_case",""]]});
+window.SIDEBAR_ITEMS = {"fn":[["to_snake_case",""]]};
