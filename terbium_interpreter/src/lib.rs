@@ -479,6 +479,7 @@ impl<const STACK_SIZE: usize> Interpreter<STACK_SIZE> {
 
     #[allow(clippy::too_many_lines)]
     #[allow(clippy::missing_panics_doc)] // Remove when todo is done
+    #[allow(clippy::cast_possible_wrap)] // Wrap is not possible because is parsed as i128
     pub fn run_bytecode(&mut self, code: &Program) {
         let mut pos: AddrRepr = 0;
         let mut jump_history: Vec<AddrRepr> = Vec::new();

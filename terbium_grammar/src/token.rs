@@ -310,12 +310,13 @@ macro_rules! escape_hex {
 
 #[must_use]
 #[allow(clippy::too_many_lines)]
+#[allow(clippy::cast_sign_loss)] // text::int does not handle signed
 pub fn get_lexer() -> impl Parser<char, Vec<(Token, Span)>, Error = Error> {
     let integer = text::int::<_, Error>(10)
-        .from_str::<u128>() 
+        .from_str::<i128>() 
         // This is done to ensure that the interger won't overflow i128
         .unwrapped()
-        .map(Literal::Integer)
+        .map(|int| Literal::Integer(int as u128))
         .map(Token::Literal)
         .labelled("integer literal");
 
