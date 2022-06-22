@@ -1,11 +1,12 @@
-use super::Token;
+use super::{Token, Source, Span};
 
 use std::collections::HashSet;
 use std::fmt::{Display, Formatter, Result as FmtResult};
+use std::io::Write;
 use std::ops::Range;
 use std::string::ToString;
 
-type Span = Range<usize>;
+use ariadne;
 
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub enum TargetKind {
@@ -53,6 +54,20 @@ pub enum ErrorKind {
     },
 }
 
+#[derive(Copy, Clone, Debug)]
+pub enum HintAction {
+    Replace(String),
+    Insert(String),
+    Remove(String),
+    None,
+}
+
+#[derive(Debug)]
+pub struct Hint {
+    pub message: String,
+    pub action: HintAction,
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct Error {
     pub kind: ErrorKind,
@@ -60,6 +75,7 @@ pub struct Error {
     pub expected: HashSet<TargetKind>,
     pub label: Option<&'static str>,
     pub message: String,
+    pub hint: Option<Hint>,
 }
 
 impl Error {
@@ -67,10 +83,11 @@ impl Error {
     pub fn placeholder() -> Self {
         Self {
             kind: ErrorKind::Custom,
-            span: 0..0,
+            span: Span::default(),
             expected: HashSet::new(),
             label: None,
             message: String::new(),
+            hint: None,
         }
     }
 
@@ -82,6 +99,7 @@ impl Error {
             expected: HashSet::new(),
             label: None,
             message: message.to_string(),
+            hint: None,
         }
     }
 
@@ -93,12 +111,56 @@ impl Error {
             expected: HashSet::new(),
             label: None,
             message: format!("unexpected token {}", token),
+            hint: None,
         }
     }
 
-    pub fn print(&self) {
-        // TODO: more comprehensive error messages
-        eprintln!("[{:?}] {}", self.span, self.message);
+    #[must_use]
+    pub fn no_const_mut(span: Span) -> Self {
+        Self {
+            kind: ErrorKind::Custom,
+            span,
+            expected: HashSet::new(),
+            label: None,
+            message: format!("cannot declare as 'const mut'"),
+            hint: Some(Hint {
+                message: "consider using 'let mut' instead".to_string(),
+                action: HintAction::Replace("let mut".to_string()),
+            }),
+        }
+    }
+
+    pub fn write<C>(self, cache: C, writer: impl Write)
+    where
+        C: ariadne::Cache<Source>,
+    {
+        use ariadne::{Report, ReportKind, Label, ColorGenerator, Fmt};
+
+        let mut colors = ColorGenerator::new();
+        let primary = colors.next();
+
+        let report = Report::build(ReportKind::Error, self.span.source, self.span.range.start())
+            .with_code(0)
+            .with_message(self.message)
+            .with_label(Label::new(self.span.clone())
+                .with_message("error occurred here")
+                .with_color(primary)
+            );
+
+        let report = if let Some(hint) = self.hint {
+            report.with_help(hint.message)
+        } else {
+            report
+        };
+
+        report
+            .finish()
+            .write(cache, writer)
+            .unwrap();
+    }
+
+    pub fn print(self) {
+        self.write()
     }
 }
 
@@ -138,10 +200,11 @@ impl<T: Into<TargetKind> + Clone> chumsky::Error<T> for Error {
             expected,
             label: None,
             message: format!(
-                "expected {}{}",
+                "expected {}, found {} instead",
                 expected_message,
                 found.map_or_else(String::new, |found| found.into().to_string())
             ),
+            hint: None,
         }
     }
 
@@ -164,6 +227,10 @@ impl<T: Into<TargetKind> + Clone> chumsky::Error<T> for Error {
             message: format!("unclosed delimiter: expected {}", {
                 expected.into().to_string()
             }),
+            hint: Some(Hint {
+                message: "add the missing delimiter".to_string(),
+                action: HintAction::Insert(expected.into().to_string()),
+            }),
         }
     }
 
@@ -179,10 +246,11 @@ impl<T: Into<TargetKind> + Clone> chumsky::Error<T> for Error {
 
         Self {
             kind: self.kind,
-            span: self.span.start..other.span.end,
+            span: self.span.merge(other.span),
             expected: self.expected,
             label: self.label,
             message: self.message,
+            hint: self.hint.or(other.hint),
         }
     }
 }

@@ -15,3 +15,4 @@ categories = ["compilers", "parsing"]
 
 [dependencies]
 chumsky = "^0.8"
+ariadne = "^0.1.5"

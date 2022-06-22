@@ -1,10 +1,11 @@
-use super::Error;
+use super::{Error, Span};
 
-use chumsky::prelude::*;
-use chumsky::text::Character;
+use chumsky::{
+    prelude::*,
+    text::character,
+};
 
-use std::fmt::Display;
-use std::hash::Hash;
+use std::{fmt::Display, hash::Hash};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Operator {
@@ -309,7 +310,7 @@ macro_rules! escape_hex {
 
 #[must_use]
 #[allow(clippy::too_many_lines)]
-pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Error> {
+pub fn get_lexer() -> impl Parser<char, Vec<(Token, Span)>, Error = Error> {
     let integer = text::int::<_, Error>(10)
         .from_str::<u128>()
         .unwrapped()
@@ -393,7 +394,8 @@ pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Error> {
 
     let comment = single_line.or(multi_line).or_not();
 
-    let right_shift = just(">>").then_ignore(none_of(")<>]},;"));
+    let right_shift = just(">>")
+        .then_ignore(none_of(")<>]},;").rewind());
 
     let symbol = choice::<_, Error>((
         just(',').to(Token::Comma),
@@ -410,11 +412,12 @@ pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Error> {
         just('%').map(|_| Token::Operator(Operator::Mod)),
     ))
     .or(choice((
-        // Weird split-off as chumsky only supports choices up to 26-length tuples. Maybe it would be better to separate them based off of category
+        // Weird split-off as chumsky only supports choices up to 26-length tuples.
+        // Maybe it would be better to separate them based off of category
         just("==").map(|_| Token::Operator(Operator::Eq)),
         just("!=").map(|_| Token::Operator(Operator::Ne)),
         just('!').map(|_| Token::Operator(Operator::Not)), // Conflicts with !=
-        just('=').to(Token::Assign),                       // Conflicts with ==
+        just('=').to(Token::Assign),                    // Conflicts with ==
         just("<=").map(|_| Token::Operator(Operator::Le)),
         just(">=").map(|_| Token::Operator(Operator::Ge)),
         just("<<").to(Token::Operator(Operator::BitLShift)),
@@ -438,12 +441,12 @@ pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Error> {
         just('}').map(|_| Token::EndBracket(Bracket::Brace)),
     ));
 
-    choice::<_, Error>((symbol, brackets, ident_or_keyword, string, integer, float))
+    choice::<_, Error>((symbol, brackets, ident_or_keyword, string, float, integer))
         .or(any().map(Token::Invalid).validate(|token, span, emit| {
             emit(Error::unexpected_token(span, &token));
             token
         }))
-        // .map_with_span(move |token, span| (token, span)) Could be useful for debugging
+        .map_with_span(move |token, span| (token, span))
         .padded()
         .recover_with(skip_then_retry_until([]))
         .padded_by(comment)
@@ -455,7 +458,9 @@ pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Error> {
 #[cfg(test)]
 mod tests {
     use crate::token::*;
-    use chumsky::Parser;
+    use crate::{Source, Span};
+
+    use chumsky::{Parser, Stream};
 
     #[test]
     fn test_lexer() {
@@ -468,10 +473,19 @@ mod tests {
             }
         "#;
 
-        let (tokens, errors) = get_lexer().parse_recovery(raw);
+        let (tokens, errors) = get_lexer().parse_recovery(
+            Stream::<_, Span, _>::from_iter(
+                Span::single(Source::default(), raw.chars().count()),
+                raw.chars().enumerate().map(|(i, c)| (c, Span::single(Source::default(), i))),
+            ),
+        );
 
         assert_eq!(
-            tokens,
+            tokens.map(|t| t
+                .into_iter()
+                .map(|t| t.0)
+                .collect::<Vec<_>>()
+            ),
             Some(vec![
                 Token::Keyword(Keyword::Func),
                 Token::Identifier("main".to_string()),
