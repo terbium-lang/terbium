@@ -2,7 +2,7 @@
 
 use std::{collections::HashMap, mem};
 
-pub type StringId = u32;
+pub type StringId = usize;
 
 #[derive(Debug)]
 pub struct Interner {
@@ -30,7 +30,7 @@ impl Interner {
             return id;
         }
         let name = unsafe { self.alloc(name) };
-        let id = self.map.len() as StringId;
+        let id = self.map.len();
 
         self.map.insert(name, id);
         self.vec.push(name);
@@ -40,7 +40,7 @@ impl Interner {
 
     #[must_use]
     pub fn lookup(&self, id: StringId) -> &str {
-        self.vec[id as usize]
+        self.vec[id]
     }
 
     unsafe fn alloc(&mut self, name: &str) -> &'static str {

@@ -311,7 +311,8 @@ macro_rules! escape_hex {
 #[allow(clippy::too_many_lines)]
 pub fn get_lexer() -> impl Parser<char, Vec<Token>, Error = Error> {
     let integer = text::int::<_, Error>(10)
-        .from_str::<u128>()
+        .from_str::<u128>() 
+        // This is done to ensure that the interger won't overflow i128
         .unwrapped()
         .map(Literal::Integer)
         .map(Token::Literal)
