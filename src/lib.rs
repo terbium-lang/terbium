@@ -30,3 +30,4 @@ pub use terbium_interpreter::{
 };
 
 pub use terbium_analyzer as analyzer;
+pub use ariadne::sources;
