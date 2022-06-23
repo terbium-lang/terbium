@@ -16,7 +16,7 @@ name = "terbium"
 path = "src/bin/terbium.rs"
 
 [workspace]
-members = ["terbium_analyzer", "terbium_bytecode", "terbium_grammar", "terbium_interpreter"]
+members = ["terbium_analyzer", "terbium_bytecode", "terbium_grammar", "terbium_interpreter", "tests"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
