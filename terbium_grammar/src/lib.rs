@@ -10,7 +10,7 @@ pub use crate::token::{get_lexer as tokenizer, Operator, Token};
 
 use std::{
     cmp::{Eq, PartialEq},
-    fmt::{Debug, Display, Formatter, Result as FmtResult, Write},
+    fmt::{Debug, Display, Formatter, Result as FmtResult},
     ops::{Deref, DerefMut, Range},
     path::{PathBuf, Path},
 };
@@ -18,7 +18,7 @@ use std::{
 use chumsky::Span as ChumskySpan;
 use ariadne::Span as AriadneSpan;
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Source(Vec<String>);
 
 impl Source {
@@ -62,34 +62,42 @@ impl Debug for Source {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Span {
     pub(crate) source: Source,
-    pub(crate) range: (usize, usize),
+    pub range: (usize, usize),
 }
 
 impl Span {
     pub fn single(source: Source, loc: usize) -> Self {
-        Self::new(source, loc..loc + 1)
+        Self::from_range(source, loc..loc + 1)
+    }
+
+    pub fn from_range(source: Source, range: Range<usize>) -> Self {
+        Self { source, range: (range.start, range.end) }
     }
 
     pub fn src(&self) -> Source { self.source.clone() }
 
-    pub fn range(&self) -> Range<usize> { self.start()..self.end() }
+    pub fn range(&self) -> Range<usize> { self.range.0..self.range.1 }
 
     pub fn merge(self, other: Self) -> Self {
         assert_eq!(self.source, other.source, "cannot merge spans with different sources");
 
         Self {
             source: self.source,
-            range: (self.start().min(other.start()), self.end().max(other.end())),
+            range: (self.range.0.min(other.range.0), self.range.1.max(other.range.1)),
         }
     }
+
+    pub fn start(&self) -> usize { self.range.0 }
+
+    pub fn end(&self) -> usize { self.range.1 }
 }
 
 impl Default for Span {
     fn default() -> Self {
-        Self::new(Source::default(), 0..0)
+        Self::from_range(Source::default(), 0..0)
     }
 }
 
@@ -107,7 +115,7 @@ impl ChumskySpan for Span {
         Self { source, range: (range.start, range.end) }
     }
 
-    fn context(&self) -> Self::Context { self.source }
+    fn context(&self) -> Self::Context { self.source.clone() }
 
     fn start(&self) -> Self::Offset { self.range.0 }
 
@@ -126,9 +134,9 @@ impl AriadneSpan for Span {
     fn end(&self) -> usize { self.range.1 }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Spanned<T> {
-    inner: Box<T>,
+    pub(crate) inner: Box<T>,
     span: Span,
 }
 
@@ -149,13 +157,13 @@ impl<T> Spanned<T> {
         *self.inner
     }
 
-    pub fn span(&self) -> Span { self.span }
+    pub fn span(&self) -> Span { self.span.clone() }
 
-    pub fn map<U, F>(self, f: F) -> Self<U>
+    pub fn map<U, F>(self, f: F) -> Spanned<U>
     where
         F: FnOnce(T) -> U,
     {
-        Self::new(f(*self.inner), self.span)
+        Spanned::new(f(*self.inner), self.span)
     }
 
     pub fn map_span<F: FnOnce(Span) -> Span>(self, f: F) -> Self {
@@ -192,6 +200,10 @@ impl<T: PartialEq> PartialEq for Spanned<T> {
 
 impl<T: Debug> Debug for Spanned<T> {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
-        write!(f, "{:?} @ {:?}", self.inner, self.span)
+        if f.alternate() {
+            write!(f, "{:#?} @ {:?}", self.inner, self.span)
+        } else {
+            write!(f, "{:?} @ {:?}", self.inner, self.span)
+        }
     }
 }

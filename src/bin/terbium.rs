@@ -1,8 +1,11 @@
-use std::io::Write;
+use std::io::{stderr, Write};
 use std::path::PathBuf;
-use terbium::{AstBody, AstError, AstNode, AstParseInterface, BcTransformer};
+use std::process::exit;
 
+use ariadne::sources;
 use clap::{Parser, Subcommand};
+use terbium::{AstNode, BcTransformer};
+use terbium_grammar::{ParseInterface, Source};
 use terbium_interpreter::DefaultInterpreter;
 
 #[derive(Debug, Parser)]
@@ -66,52 +69,43 @@ enum Command {
     },
 }
 
+fn run_ast<N>(file: Option<PathBuf>, code: Option<String>) -> Result<N, Box<dyn std::error::Error>>
+where
+    N: ParseInterface,
+{
+    let (code, src) = match (file, code) {
+        (Some(file), None) => (std::fs::read_to_string(file.clone())?, Source::from_path(file)),
+        (None, Some(code)) => (code, Source::default()),
+        (Some(_), Some(_)) => return Err("must provide only one of file or code".into()),
+        (None, None) => return Err("must provide one of file or code".into()),
+    };
+
+    Ok(N::from_string(src.clone(), code.clone()).unwrap_or_else(|e| {
+        for error in e {
+            let cache = sources::<Source, String, _>(vec![(src.clone(), code.clone())]);
+
+            error.write(cache, stderr());
+        }
+
+        exit(-1)
+    }))
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
     match args.command {
         Command::Ast { file, code, pretty } => {
-            let ast = match (file, code) {
-                (Some(file), None) => std::fs::read_to_string(file)?,
-                (None, Some(code)) => code,
-                (Some(_), Some(_)) => return Err("must provide only one of file or code".into()),
-                (None, None) => return Err("must provide one of file or code".into()),
-            };
+            let node = run_ast::<AstNode>(file, code)?;
 
-            let (node, errors) = match AstNode::from_string(ast) {
-                Ok(t) => t,
-                Err(e) => {
-                    e.iter().for_each(AstError::print);
-                    return Err("syntax does not match grammar".into());
-                }
-            };
             if pretty {
                 println!("{:#?}", node);
-                if !errors.is_empty() {
-                    eprintln!("Errors: {:#?}", errors);
-                }
             } else {
                 println!("{:?}", node);
-                if !errors.is_empty() {
-                    eprintln!("Errors: {:?}", errors);
-                }
             }
         }
         Command::Dis { code, file, raw } => {
-            let code = match (file, code) {
-                (Some(file), None) => std::fs::read_to_string(file)?,
-                (None, Some(code)) => code,
-                (Some(_), Some(_)) => return Err("must provide only one of file or code".into()),
-                (None, None) => return Err("must provide one of file or code".into()),
-            };
-
-            let (body, errors) = match AstBody::from_string(code) {
-                Ok(b) => b,
-                Err(e) => {
-                    e.iter().for_each(AstError::print);
-                    return Err("syntax does not match grammar".into());
-                }
-            };
+            let body = run_ast(file, code)?;
 
             let mut transformer = BcTransformer::default();
             transformer.interpret_body(None, body);
@@ -126,26 +120,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 program.dis(&mut stdout)?;
             }
-
-            if !errors.is_empty() {
-                eprintln!("Errors: {:#?}", errors);
-            }
         }
         Command::Eval { code, file } => {
-            let code = match (file, code) {
-                (Some(file), None) => std::fs::read_to_string(file)?,
-                (None, Some(code)) => code,
-                (Some(_), Some(_)) => return Err("must provide only one of file or code".into()),
-                (None, None) => return Err("must provide one of file or code".into()),
-            };
-
-            let (body, errors) = match AstBody::from_string(code) {
-                Ok(b) => b,
-                Err(e) => {
-                    e.iter().for_each(AstError::print);
-                    return Err("syntax does not match grammar".into());
-                }
-            };
+            let body = run_ast(file, code)?;
 
             let mut transformer = BcTransformer::default();
             transformer.interpret_body(None, body);
@@ -159,10 +136,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let popped = interpreter.ctx.pop_ref();
             let popped = interpreter.ctx.store.resolve(popped);
             println!("{}", interpreter.get_object_repr(popped));
-
-            if !errors.is_empty() {
-                eprintln!("Errors: {:#?}", errors);
-            }
         }
     }
 

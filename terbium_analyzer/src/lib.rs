@@ -1,9 +1,8 @@
 pub mod util;
 
-use terbium_grammar::{tokenizer, ParseInterface, Token};
+use terbium_grammar::{ParseInterface, Token, Source, Span};
 use util::to_snake_case;
 
-use chumsky::Parser;
 use std::io::Write;
 
 #[repr(u16)]
@@ -60,11 +59,11 @@ pub trait Analyzer<P, E = &'static str> {
     /// as in `// @trb:allow unused-variables`
     const ID: &'static str;
 
-    fn from_raw_tokens(tokens: impl IntoIterator<Item = Token>) -> P
+    fn from_raw_tokens(tokens: impl IntoIterator<Item = (Token, Span)>) -> P
     where
         P: ParseInterface,
     {
-        P::from_tokens(tokens.into_iter().collect()).0
+        P::parse(tokens.into_iter().collect()).unwrap_or_else(|_| todo!())
     }
 
     #[allow(clippy::missing_errors_doc)]
@@ -77,14 +76,14 @@ pub trait Analyzer<P, E = &'static str> {
 // TODO: (cont.) however, these are currently independent and the Vec of tokens will
 // TODO: (cont.) have to be cloned in order to perform analysis.
 pub struct NonSnakeCaseAnalyzer;
-impl Analyzer<Vec<Token>> for NonSnakeCaseAnalyzer {
+impl Analyzer<Vec<(Token, Span)>> for NonSnakeCaseAnalyzer {
     const ID: &'static str = "non-snake-case";
 
     fn analyze(
-        input: &Vec<Token>,
+        input: &Vec<(Token, Span)>,
         messages: &mut Vec<AnalyzerMessage>,
     ) -> Result<(), &'static str> {
-        for tk in input {
+        for (tk, _span) in input {
             if let Token::Identifier(ref i) = tk {
                 let snake = to_snake_case(i.as_str());
                 // TODO: account for constants, which should be SCREAMING_SNAKE_CASE
@@ -104,14 +103,14 @@ impl Analyzer<Vec<Token>> for NonSnakeCaseAnalyzer {
 }
 
 pub struct NonAsciiAnalyzer;
-impl Analyzer<Vec<Token>> for NonAsciiAnalyzer {
+impl Analyzer<Vec<(Token, Span)>> for NonAsciiAnalyzer {
     const ID: &'static str = "non-ascii";
 
     fn analyze(
-        input: &Vec<Token>,
+        input: &Vec<(Token, Span)>,
         messages: &mut Vec<AnalyzerMessage>,
     ) -> Result<(), &'static str> {
-        for tk in input {
+        for (tk, _span) in input {
             if let Token::Identifier(ref i) = tk {
                 if i.is_ascii() {
                     continue;
@@ -132,7 +131,7 @@ impl Analyzer<Vec<Token>> for NonAsciiAnalyzer {
 #[allow(clippy::ptr_arg)]
 pub(crate) fn run_analyzer(
     id: &str,
-    tokens: &Vec<Token>,
+    tokens: &Vec<(Token, Span)>,
     messages: &mut Vec<AnalyzerMessage>,
 ) -> Result<(), String> {
     match id {
@@ -167,15 +166,15 @@ impl BulkAnalyzer {
     }
 
     #[allow(clippy::needless_pass_by_value, clippy::missing_panics_doc)]
-    pub fn analyze_tokens(&mut self, tokens: Vec<Token>) {
+    pub fn analyze_tokens(&mut self, tokens: Vec<(Token, Span)>) {
         for a in &self.analyzers {
             run_analyzer(a.as_str(), &tokens, &mut self.messages).expect("error trying to analyze");
         }
     }
 
     #[allow(clippy::needless_pass_by_value, clippy::missing_panics_doc)]
-    pub fn analyze_string(&mut self, s: String) {
-        let tokens = tokenizer().parse(s.as_str()).unwrap_or_else(|_| todo!());
+    pub fn analyze_string(&mut self, source: Source, s: String) {
+        let tokens = Vec::<(Token, Span)>::from_string(source, s).unwrap_or_else(|_| todo!());
 
         self.analyze_tokens(tokens);
     }
@@ -196,6 +195,7 @@ impl Default for BulkAnalyzer {
 #[cfg(test)]
 mod tests {
     use super::BulkAnalyzer;
+    use terbium_grammar::Source;
 
     #[test]
     fn test_analysis() {
@@ -206,7 +206,7 @@ mod tests {
                 .collect(),
         );
 
-        a.analyze_string(String::from(
+        a.analyze_string(Source::default(), String::from(
             "
             func camelCase() {
                 let notSnakeCase = 5;

@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::mem::size_of;
 use std::path::PathBuf;
+use std::str::FromStr;
 
 use terbium_grammar::{Source, Span};
 pub use interpreter::Interpreter;
@@ -206,7 +207,7 @@ impl RichInstruction {
     }
 
     pub fn span(&self) -> Option<Span> {
-        self.span
+        self.span.clone()
     }
 
     pub fn name(&self) -> &Option<String> {
@@ -328,7 +329,7 @@ impl Program {
 
     /// Resolves all procedures to their absolute address
     pub fn resolve(&mut self) -> &Self {
-        if self.inner.last() != Some(&Instruction::Halt) {
+        if self.inner.last().map(RichInstruction::instr) != Some(&Instruction::Halt) {
             self.inner.push(Instruction::Halt.into());
         }
 
@@ -344,8 +345,8 @@ impl Program {
         self.inner = self
             .inner
             .iter()
-            .map(|RichInstruction { inner: instr, .. }| {
-                match instr {
+            .map(|RichInstruction { inner: instr, span, name }| RichInstruction {
+                inner: match instr {
                     Instruction::Jump(addr) => {
                         Instruction::Jump(Self::resolve_addr(&lookup, *addr))
                     }
@@ -357,7 +358,9 @@ impl Program {
                         Self::resolve_addr(&lookup, *b),
                     ),
                     o => o.clone(), // TODO: don't clone
-                }
+                },
+                span: span.clone(),
+                name: name.clone(),
             })
             .collect();
 
@@ -401,28 +404,31 @@ impl Program {
                 _ => (),
             }
 
-            let span_bytes = span.map(
+            let span_bytes = span.clone().map(
                 |s| {
-                    let src_bytes = &*s.src().to_path().to_raw_bytes();
+                    let path = s.src().to_path();
+                    let lossy = path.to_string_lossy();
+                    let src_bytes = &*lossy.as_bytes();
 
-                    &[
-                        [1_u8],
-                        s.start().to_ne_bytes(),
-                        s.end().to_ne_bytes(),
-                        src_bytes.len().to_ne_bytes(),
+                    [
+                        [1_u8].as_slice(),
+                        s.start().to_ne_bytes().as_slice(),
+                        s.end().to_ne_bytes().as_slice(),
+                        src_bytes.len().to_ne_bytes().as_slice(),
                         src_bytes,
                     ].concat()
                 }
             );
-            bytes.extend_from_slice(span_bytes.unwrap_or(&vec![0_u8]));
+            bytes.extend_from_slice(&*span_bytes.unwrap_or(vec![0_u8]));
 
-            let name_bytes = name.map(String::as_bytes);
+            let name_bytes = name.clone().map(|s| s.as_bytes().to_vec());
             bytes.extend_from_slice(&name_bytes
+                .clone()
                 .map(|n| n.len())
                 .unwrap_or(0)
                 .to_ne_bytes()
             );
-            bytes.extend_from_slice(name_bytes.unwrap_or(&vec![]));
+            bytes.extend_from_slice(&*name_bytes.unwrap_or(vec![]));
         }
 
         bytes
@@ -603,13 +609,14 @@ impl Program {
                 let src_len = read_ne_usize(&mut &bytes[(ptr - size)..ptr]);
 
                 ptr += 1 + src_len;
-                let src = PathBuf::from_raw_vec(Vec::from(&bytes[(ptr - src_len)..ptr]))
-                    .unwrap()
-                    .as_path();
+                let path = PathBuf::from_str(&String::from_utf8_lossy(
+                    &bytes[(ptr - src_len)..ptr]
+                )).unwrap();
 
+                let src = path.as_path();
                 let src = Source::from_path(src);
 
-                Some(Span::new(src, start..end))
+                Some(Span::from_range(src, start..end))
             } else {
                 None
             };
@@ -638,8 +645,8 @@ impl Program {
     }
 }
 
-impl FromIterator<Instruction> for Program {
-    fn from_iter<I: IntoIterator<Item = Instruction>>(iter: I) -> Self {
+impl FromIterator<RichInstruction> for Program {
+    fn from_iter<I: IntoIterator<Item = RichInstruction>>(iter: I) -> Self {
         Self {
             inner: iter.into_iter().collect(),
             procedures: Vec::new(),

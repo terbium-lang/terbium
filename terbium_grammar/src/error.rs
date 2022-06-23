@@ -3,7 +3,6 @@ use super::{Token, Source, Span};
 use std::collections::HashSet;
 use std::fmt::{Display, Formatter, Result as FmtResult};
 use std::io::Write;
-use std::ops::Range;
 use std::string::ToString;
 
 use ariadne;
@@ -54,7 +53,7 @@ pub enum ErrorKind {
     },
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum HintAction {
     Replace(String),
     Insert(String),
@@ -62,7 +61,7 @@ pub enum HintAction {
     None,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Hint {
     pub message: String,
     pub action: HintAction,
@@ -134,16 +133,16 @@ impl Error {
     where
         C: ariadne::Cache<Source>,
     {
-        use ariadne::{Report, ReportKind, Label, ColorGenerator, Fmt};
+        use ariadne::{Report, ReportKind, Label, ColorGenerator};
 
         let mut colors = ColorGenerator::new();
         let primary = colors.next();
 
-        let report = Report::build(ReportKind::Error, self.span.source, self.span.range.start())
+        let report = Report::build(ReportKind::Error, self.span.src(), self.span.start())
             .with_code(0)
-            .with_message(self.message)
+            .with_message("invalid syntax")
             .with_label(Label::new(self.span.clone())
-                .with_message("error occurred here")
+                .with_message(self.message)
                 .with_color(primary)
             );
 
@@ -221,7 +220,7 @@ impl<T: Into<TargetKind> + Clone> chumsky::Error<T> for Error {
             expected: std::iter::once(expected.clone().into()).collect(),
             label: None,
             message: format!("unclosed delimiter: expected {}", {
-                expected.into().to_string()
+                expected.clone().into().to_string()
             }),
             hint: Some(Hint {
                 message: "add the missing delimiter".to_string(),

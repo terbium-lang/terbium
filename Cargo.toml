@@ -21,6 +21,7 @@ members = ["terbium_analyzer", "terbium_bytecode", "terbium_grammar", "terbium_i
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+ariadne = "^0.1.5"
 clap = { version = "3.1", features = ["derive"] }
 terbium_analyzer = { version = "0", path = "terbium_analyzer" }
 terbium_bytecode = { version = "0", path = "terbium_bytecode" }

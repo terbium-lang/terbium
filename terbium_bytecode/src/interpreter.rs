@@ -215,10 +215,12 @@ impl Interpreter {
                 let mut last_else = self.program.create_procedure();
 
                 for (cond, body) in else_if_bodies {
+                    let Body(body, return_last) = body.into_node();
+
                     self.interpret_expr(last_parent, cond);
 
                     let then_proc = self.program.create_procedure();
-                    self.interpret_body_scoped(then_proc, body.into_node());
+                    self.interpret_body_scoped(then_proc, Body(body, return_last));
 
                     self.push_spanned(
                         last_parent,
@@ -226,7 +228,7 @@ impl Interpreter {
                             Addr::Procedure(then_proc),
                             Addr::Procedure(last_else),
                         ),
-                        span,
+                        span.clone(),
                     );
                     // If last_parent is None, Halt instruction should be inserted automatically.
                     if let Some(p) = last_parent {
@@ -287,7 +289,7 @@ impl Interpreter {
                 // TODO: currently we assume only one target
                 let target = targets.first().unwrap();
 
-                if let Target::Ident(s) = target {
+                if let Target::Ident(s) = target.node() {
                     let key = self.lookup.get(s.clone());
 
                     self.push_rich(
@@ -312,7 +314,7 @@ impl Interpreter {
                 // TODO: currently we assume only one target
                 let target = targets.first().unwrap();
 
-                if let Target::Ident(s) = target {
+                if let Target::Ident(s) = target.node() {
                     let key = self.lookup.get(s.clone());
 
                     self.push_rich(proc, RichInstruction {

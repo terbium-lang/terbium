@@ -1,9 +1,6 @@
 use super::{Error, Span};
 
-use chumsky::{
-    prelude::*,
-    text::character,
-};
+use chumsky::prelude::*;
 
 use std::{fmt::Display, hash::Hash};
 
@@ -222,7 +219,7 @@ impl Keyword {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Bracket {
     Paren,   // ()
     Bracket, // []
@@ -321,7 +318,7 @@ pub fn get_lexer() -> impl Parser<char, Vec<(Token, Span)>, Error = Error> {
         .labelled("integer literal");
 
     let float = text::int::<_, Error>(10)
-        .chain::<char, _, _>(just('.').chain(text::digits(10)).or_not().flatten())
+        .chain::<char, _, _>(just('.').chain(filter(move |c: &char| c.is_digit(10)).repeated()))
         .or(just('.').chain::<char, _, _>(text::digits(10)))
         .collect::<String>()
         .map(Literal::Float)
@@ -387,7 +384,7 @@ pub fn get_lexer() -> impl Parser<char, Vec<(Token, Span)>, Error = Error> {
     });
 
     let single_line = just::<_, _, Error>("//")
-        .then(take_until(text::newline()))
+        .then(take_until(text::newline().or(end())))
         .ignored();
 
     let multi_line = just::<_, _, Error>("/*")
@@ -443,7 +440,7 @@ pub fn get_lexer() -> impl Parser<char, Vec<(Token, Span)>, Error = Error> {
         just('}').map(|_| Token::EndBracket(Bracket::Brace)),
     ));
 
-    choice::<_, Error>((symbol, brackets, ident_or_keyword, string, float, integer))
+    choice::<_, Error>((string, float, symbol, brackets, ident_or_keyword, integer))
         .or(any().map(Token::Invalid).validate(|token, span, emit| {
             emit(Error::unexpected_token(span, &token));
             token
@@ -451,7 +448,7 @@ pub fn get_lexer() -> impl Parser<char, Vec<(Token, Span)>, Error = Error> {
         .map_with_span(move |token, span| (token, span))
         .padded()
         .recover_with(skip_then_retry_until([]))
-        .padded_by(comment)
+        .padded_by(comment.padded())
         .repeated()
         .padded()
         .then_ignore(end())

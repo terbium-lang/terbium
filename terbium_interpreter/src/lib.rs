@@ -488,6 +488,9 @@ impl<const STACK_SIZE: usize> Interpreter<STACK_SIZE> {
         loop {
             let instr = instructions[pos as usize];
 
+            // let span = instr.span();
+            let instr = instr.instr();
+
             match instr.clone() {
                 Instruction::LoadInt(i) => push!(self.ctx, load_int!(self.ctx, i as i128)),
                 Instruction::LoadString(s) => push!(

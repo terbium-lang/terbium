@@ -53,6 +53,6 @@ impl Default for EqComparableFloat {
 
 impl Display for EqComparableFloat {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-        self.0.fmt(f)
+         std::fmt::Display::fmt(&self.0, f)
     }
 }

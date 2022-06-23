@@ -4,7 +4,6 @@ use super::{Error, Source, Span, Spanned};
 use std::path::Path;
 
 use chumsky::prelude::*;
-use chumsky::primitive::FilterMap;
 use chumsky::Stream;
 
 pub type SpannedExpr = Spanned<Expr>;
@@ -48,6 +47,7 @@ pub enum Expr {
         condition: SpannedExpr,
         body: Vec<SpannedNode>,
     },
+    Invalid,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -122,12 +122,12 @@ pub trait ParseInterface {
     {
         let tokens = get_lexer().parse(
             Stream::<_, Span, _>::from_iter(
-                Span::single(source, s.chars().count()),
-                s.chars().enumerate().map(|(i, c)| (c, Span::single(source, i))),
+                Span::single(source.clone(), s.chars().count()),
+                s.chars().enumerate().map(|(i, c)| (c, Span::single(source.clone(), i))),
             ),
         )?;
 
-        Ok(Self::parse(tokens))
+        Ok(Self::parse(tokens)?)
     }
 
     fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Vec<Error>>
@@ -183,28 +183,40 @@ pub enum Node {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Body(pub Vec<SpannedNode>, pub bool); // body, return_last
 
+impl ParseInterface for Vec<(Token, Span)> {
+    fn parse(tokens: Vec<(Token, Span)>) -> Result<Self, Vec<Error>>
+    where
+        Self: Sized,
+    {
+        Ok(tokens)
+    }
+}
+
 impl ParseInterface for Expr {
     fn parse(mut tokens: Vec<(Token, Span)>) -> Result<Self, Vec<Error>>
     where
         Self: Sized,
     {
-        let last = tokens.last().unwrap();
+        let (last, span) = tokens.last().unwrap();
+        let span = span.clone();
 
         if last != &Token::Semicolon {
-            tokens.push((Token::Semicolon, Span::single(last.1.source, last.1.end())));
+            tokens.push((Token::Semicolon, Span::single(span.src(), span.end())));
         }
 
         get_body_parser()
-            .map(|Body(body, _)| {
+            .map(|b| {
+                let Body(body, _) = b.into_node();
+
                 if let Node::Expr(e) = body.get(0).unwrap().node() {
-                    e.clone()
+                    e.clone().into_node()
                 } else {
                     unreachable!();
                 }
             })
             .parse(Stream::<_, Span, _>::from_iter(
-                Span::single(last.1.source, last.1.end() + 1),
-                tokens,
+                Span::single(span.src(), span.end() + 1),
+                tokens.into_iter(),
             ))
     }
 }
@@ -217,10 +229,10 @@ impl ParseInterface for Node {
         let (_, span) = tokens.last().unwrap();
 
         get_body_parser()
-            .map(|Body(b, _)| Self::Module(b))
+            .map(|body| Self::Module(body.into_node().0))
             .parse(Stream::<_, Span, _>::from_iter(
-                Span::single(span.source, span.end()),
-                tokens,
+                Span::single(span.src(), span.end()),
+                tokens.into_iter(),
             ))
     }
 }
@@ -230,15 +242,36 @@ impl ParseInterface for Body {
     where
         Self: Sized,
     {
+        let (_, span) = tokens.last().unwrap();
+
         get_body_parser().parse(Stream::<_, Span, _>::from_iter(
-            Span::single(span.source, span.end()),
-            tokens,
+            Span::single(span.src(), span.end()),
+            tokens.into_iter(),
         )).map(|b| b.into_node())
     }
 }
 
 pub trait CommonParser<T> = Parser<Token, T, Error = Error> + Clone;
 pub type RecursiveParser<'a, T> = Recursive<'a, Token, T, Error>;
+
+pub fn nested_parser<'a, T: 'a>(
+    parser: impl CommonParser<T> + 'a,
+    delimiter: Bracket,
+    f: impl Fn(Span) -> T + Clone + 'a,
+) -> impl CommonParser<T> + 'a {
+    parser
+        .delimited_by(just(Token::StartBracket(delimiter)), just(Token::EndBracket(delimiter)))
+        .recover_with(nested_delimiters(
+            Token::StartBracket(delimiter), Token::EndBracket(delimiter),
+            [
+                (Token::StartBracket(Bracket::Paren), Token::EndBracket(Bracket::Paren)),
+                (Token::StartBracket(Bracket::Bracket), Token::EndBracket(Bracket::Bracket)),
+                (Token::StartBracket(Bracket::Brace), Token::EndBracket(Bracket::Brace)),
+            ],
+            f,
+        ))
+        .boxed()
+}
 
 #[must_use]
 #[allow(clippy::too_many_lines, clippy::missing_panics_doc)]
@@ -255,7 +288,8 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
                     },
                 }
             }
-                .map_with_span(|e, span| SpannedExpr::new(e, span));
+                .map_with_span(|e, span| SpannedExpr::new(e, span))
+                .labelled("literal");
 
             let ident = select! {
                 Token::Identifier(s) => match s.as_str() {
@@ -264,17 +298,22 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
                     _ => Expr::Ident(s),
                 }
             }
-                .map_with_span(|e, span| SpannedExpr::new(e, span));
+                .map_with_span(|e, span| SpannedExpr::new(e, span))
+                .labelled("identifier");
 
-            let array = e
-                .clone()
-                .separated_by(just::<_, Token, _>(Token::Comma))
-                .allow_trailing()
-                .delimited_by(
-                    just(Token::StartBracket(Bracket::Bracket)),
-                    just(Token::EndBracket(Bracket::Bracket)),
-                )
-                .map_with_span(|a, span| SpannedExpr::new(Expr::Array(a), span));
+            let array = nested_parser(
+                e
+                    .clone()
+                    .separated_by(just::<_, Token, _>(Token::Comma))
+                    .allow_trailing()
+                    .map(Some),
+                Bracket::Bracket,
+                |_| None,
+            )
+                .map_with_span(|a, span| Spanned::new(match a {
+                    Some(a) => Expr::Array(a),
+                    None => Expr::Invalid,
+                }, span));
 
             let if_stmt = just::<_, Token, _>(Token::Keyword(Keyword::If))
                 .ignore_then(e.clone())
@@ -318,10 +357,10 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
                     just(Token::StartBracket(Bracket::Brace)),
                     just(Token::EndBracket(Bracket::Brace)),
                 ))
-                .map_with_span(|(condition, Body(body, _)), span| SpannedExpr::new(
+                .map_with_span(|(condition, body), span| SpannedExpr::new(
                     Expr::While {
                         condition,
-                        body,
+                        body: body.into_node().0,
                     },
                     span,
                 ));
@@ -348,17 +387,21 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
                         .ignore_then(ident)
                         .repeated(),
                 )
-                .foldl(|expr, ident| SpannedExpr::new(
-                    Expr::Attr(
-                        expr,
-                        match ident.node() {
-                            Expr::Ident(s) => s.to_string(),
-                            Expr::Bool(b) => b.to_string(),
-                            _ => unreachable!(),
-                        },
-                    ),
-                    expr.span().merge(ident.span()),
-                ))
+                .foldl(|expr, ident| {
+                    let span = expr.span();
+
+                    SpannedExpr::new(
+                        Expr::Attr(
+                            expr,
+                            match ident.node() {
+                                Expr::Ident(s) => s.to_string(),
+                                Expr::Bool(b) => b.to_string(),
+                                _ => unreachable!(),
+                            },
+                        ),
+                        span.merge(ident.span()),
+                    )
+                })
                 .boxed();
 
             let call = attr
@@ -383,7 +426,7 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
                 })
                 .boxed();
 
-            let spanned_op = |o: Operator, span: Span| -> SpannedOperator {
+            let spanned_op = |o: Token, span: Span| -> SpannedOperator {
                 match o {
                     Token::Operator(op) => SpannedOperator::new(op, span),
                     _ => unreachable!(),
@@ -397,22 +440,30 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
                 .map_with_span(spanned_op)
                 .repeated()
                 .then(call.clone())
-                .foldr(|operator, expr| SpannedExpr::new(
-                    Expr::UnaryExpr {
-                        operator,
-                        value: expr,
-                    },
-                    operator.span().merge(expr.span()),
-                ))
+                .foldr(|operator, expr| {
+                    let span = operator.span().merge(expr.span());
+
+                    SpannedExpr::new(
+                        Expr::UnaryExpr {
+                            operator,
+                            value: expr,
+                        },
+                        span,
+                    )
+                })
                 .boxed();
 
             let binary_cast = unary
                 .clone()
                 .then(just(Token::Cast).ignore_then(unary).repeated())
-                .foldl(|subject, ty| SpannedExpr::new(
-                    Expr::Cast(subject, ty),
-                    subject.span().merge(ty.span()),
-                ))
+                .foldl(|subject, ty| {
+                    let span = subject.span().merge(ty.span());
+
+                    SpannedExpr::new(
+                        Expr::Cast(subject, ty),
+                        span,
+                    )
+                })
                 .boxed();
 
             let binary_pow = binary_cast
@@ -420,14 +471,18 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
                 .then(just(Token::Operator(Operator::Pow)).map_with_span(spanned_op))
                 .repeated()
                 .then(binary_cast)
-                .foldr(|(lhs, operator), rhs| SpannedExpr::new(
-                    Expr::BinaryExpr {
-                        operator,
-                        lhs,
-                        rhs,
-                    },
-                    lhs.span().merge(rhs.span()),
-                ))
+                .foldr(|(lhs, operator), rhs| {
+                    let span = lhs.span().merge(rhs.span());
+
+                    SpannedExpr::new(
+                        Expr::BinaryExpr {
+                            operator,
+                            lhs,
+                            rhs,
+                        },
+                        span,
+                    )
+                })
                 .boxed();
 
             let op = just(Token::Operator(Operator::Mul))
@@ -437,14 +492,18 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
             let binary_product = binary_pow
                 .clone()
                 .then(op.then(binary_pow).repeated())
-                .foldl(|lhs, (operator, rhs)| Spanned::new(
-                    Expr::BinaryExpr {
-                        operator,
-                        lhs,
-                        rhs,
-                    },
-                    lhs.span().merge(rhs.span()),
-                ))
+                .foldl(|lhs, (operator, rhs)| {
+                    let span = lhs.span().merge(rhs.span());
+
+                    Spanned::new(
+                        Expr::BinaryExpr {
+                            operator,
+                            lhs,
+                            rhs,
+                        },
+                        span,
+                    )
+                })
                 .boxed();
 
             let op = just(Token::Operator(Operator::Add))
@@ -453,14 +512,18 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
             let binary_sum = binary_product
                 .clone()
                 .then(op.then(binary_product).repeated())
-                .foldl(|lhs, (operator, rhs)| Spanned::new(
-                    Expr::BinaryExpr {
-                        operator,
-                        lhs,
-                        rhs,
-                    },
-                    lhs.span().merge(rhs.span()),
-                ))
+                .foldl(|lhs, (operator, rhs)| {
+                    let span = lhs.span().merge(rhs.span());
+
+                    Spanned::new(
+                        Expr::BinaryExpr {
+                            operator,
+                            lhs,
+                            rhs,
+                        },
+                        span,
+                    )
+                })
                 .boxed();
 
             let op = just(Token::Operator(Operator::Eq))
@@ -473,14 +536,18 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
             let binary_cmp = binary_sum
                 .clone()
                 .then(op.then(binary_sum).repeated())
-                .foldl(|lhs, (operator, rhs)| Spanned::new(
-                    Expr::BinaryExpr {
-                        operator,
-                        lhs,
-                        rhs,
-                    },
-                    lhs.span().merge(rhs.span()),
-                ))
+                .foldl(|lhs, (operator, rhs)| {
+                    let span = lhs.span().merge(rhs.span());
+
+                    Spanned::new(
+                        Expr::BinaryExpr {
+                            operator,
+                            lhs,
+                            rhs,
+                        },
+                        span,
+                    )
+                })
                 .boxed();
 
             let binary_logical_and = binary_cmp
@@ -491,14 +558,18 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
                         .then(binary_cmp)
                         .repeated(),
                 )
-                .foldl(|lhs, (operator, rhs)| Spanned::new(
-                    Expr::BinaryExpr {
-                        operator,
-                        lhs,
-                        rhs,
-                    },
-                    lhs.span().merge(rhs.span()),
-                ))
+                .foldl(|lhs, (operator, rhs)| {
+                    let span = lhs.span().merge(rhs.span());
+
+                    Spanned::new(
+                        Expr::BinaryExpr {
+                            operator,
+                            lhs,
+                            rhs,
+                        },
+                        span,
+                    )
+                })
                 .boxed();
 
             let binary_logical_or = binary_logical_and
@@ -509,14 +580,18 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
                         .then(binary_logical_and)
                         .repeated(),
                 )
-                .foldl(|lhs, (operator, rhs)| Spanned::new(
-                    Expr::BinaryExpr {
-                        operator,
-                        lhs,
-                        rhs,
-                    },
-                    lhs.span().merge(rhs.span()),
-                ))
+                .foldl(|lhs, (operator, rhs)| {
+                    let span = lhs.span().merge(rhs.span());
+
+                    Spanned::new(
+                        Expr::BinaryExpr {
+                            operator,
+                            lhs,
+                            rhs,
+                        },
+                        span,
+                    )
+                })
                 .boxed();
 
             let op = just(Token::Operator(Operator::BitAnd))
@@ -526,14 +601,18 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
             binary_logical_or
                 .clone()
                 .then(op.then(binary_logical_or).repeated())
-                .foldl(|lhs, (operator, rhs)| Spanned::new(
-                    Expr::BinaryExpr {
-                        operator,
-                        lhs,
-                        rhs,
-                    },
-                    lhs.span().merge(rhs.span()),
-                ))
+                .foldl(|lhs, (operator, rhs)| {
+                    let span = lhs.span().merge(rhs.span());
+
+                    Spanned::new(
+                        Expr::BinaryExpr {
+                            operator,
+                            lhs,
+                            rhs,
+                        },
+                        span,
+                    )
+                })
                 .boxed()
         });
 
@@ -599,6 +678,7 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
             });
 
         let assign = target
+            .clone()
             .then_ignore(just::<_, Token, _>(Token::Assign))
             .repeated()
             .at_least(1)
@@ -641,15 +721,19 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
                 just(Token::StartBracket(Bracket::Brace)),
                 just(Token::EndBracket(Bracket::Brace)),
             ))
-            .map_with_span(|((name, params), Body(body, return_last)), span| Spanned::new(
-                Node::Func {
-                    name,
-                    params,
-                    body,
-                    return_last,
-                },
-                span,
-            ));
+            .map_with_span(|((name, params), body), span| {
+                let Body(body, return_last) = body.into_node();
+
+                Spanned::new(
+                    Node::Func {
+                        name,
+                        params,
+                        body,
+                        return_last,
+                    },
+                    span,
+                )
+            });
 
         let r#return = just::<_, Token, _>(Token::Keyword(Keyword::Return))
             .ignore_then(e.clone().or_not())
@@ -661,7 +745,7 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
             .then_ignore(just::<_, Token, _>(Token::Semicolon))
             .or(e
                 .clone()
-                .try_map(|e, _| match e {
+                .try_map(|e, _| match e.node() {
                     Expr::If { .. } | Expr::While { .. } => Ok(e),
                     _ => Err(Error::placeholder()),
                 })
@@ -670,7 +754,10 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
 
         choice((func, declare, assign, r#return, require, expr))
             .repeated()
-            .then(e.clone().or_not().map_with_span(|o, span| o.map(|o| Spanned::new(Node::Expr(o), span))))
+            .then(e.clone().or_not().map_with_span(|o, span| o
+                .map(|o| Spanned::new(Node::Expr(o), span)))
+            )
+            .recover_with(skip_then_retry_until([]))
             .map_with_span(|(mut nodes, last), span| Spanned::new({
                 let return_last = last.is_some();
                 if let Some(last) = last {
