@@ -108,6 +108,10 @@ pub enum TypeExpr {
 }
 
 pub trait ParseInterface {
+    // Parse the tokens using this parser.
+    ///
+    /// # Errors
+    /// * The tokens does not match Terbium grammar.
     fn parse(tokens: Vec<(Token, Span)>) -> Result<Self, Vec<Error>>
     where
         Self: Sized;
@@ -120,16 +124,20 @@ pub trait ParseInterface {
     where
         Self: Sized,
     {
-        let tokens = get_lexer().parse(
-            Stream::<_, Span, _>::from_iter(
-                Span::single(source.clone(), s.chars().count()),
-                s.chars().enumerate().map(|(i, c)| (c, Span::single(source.clone(), i))),
-            ),
-        )?;
+        let tokens = get_lexer().parse(Stream::<_, Span, _>::from_iter(
+            Span::single(source.clone(), s.chars().count()),
+            s.chars()
+                .enumerate()
+                .map(|(i, c)| (c, Span::single(source.clone(), i))),
+        ))?;
 
-        Ok(Self::parse(tokens)?)
+        Self::parse(tokens)
     }
 
+    /// Read and tokenizes the specified source file.
+    ///
+    /// # Errors
+    /// * The source file's content does not match Terbium grammar.
     fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Vec<Error>>
     where
         Self: Sized,
@@ -244,10 +252,12 @@ impl ParseInterface for Body {
     {
         let (_, span) = tokens.last().unwrap();
 
-        get_body_parser().parse(Stream::<_, Span, _>::from_iter(
-            Span::single(span.src(), span.end()),
-            tokens.into_iter(),
-        )).map(|b| b.into_node())
+        get_body_parser()
+            .parse(Stream::<_, Span, _>::from_iter(
+                Span::single(span.src(), span.end()),
+                tokens.into_iter(),
+            ))
+            .map(Spanned::into_node)
     }
 }
 
@@ -260,13 +270,26 @@ pub fn nested_parser<'a, T: 'a>(
     f: impl Fn(Span) -> T + Clone + 'a,
 ) -> impl CommonParser<T> + 'a {
     parser
-        .delimited_by(just(Token::StartBracket(delimiter)), just(Token::EndBracket(delimiter)))
+        .delimited_by(
+            just(Token::StartBracket(delimiter)),
+            just(Token::EndBracket(delimiter)),
+        )
         .recover_with(nested_delimiters(
-            Token::StartBracket(delimiter), Token::EndBracket(delimiter),
+            Token::StartBracket(delimiter),
+            Token::EndBracket(delimiter),
             [
-                (Token::StartBracket(Bracket::Paren), Token::EndBracket(Bracket::Paren)),
-                (Token::StartBracket(Bracket::Bracket), Token::EndBracket(Bracket::Bracket)),
-                (Token::StartBracket(Bracket::Brace), Token::EndBracket(Bracket::Brace)),
+                (
+                    Token::StartBracket(Bracket::Paren),
+                    Token::EndBracket(Bracket::Paren),
+                ),
+                (
+                    Token::StartBracket(Bracket::Bracket),
+                    Token::EndBracket(Bracket::Bracket),
+                ),
+                (
+                    Token::StartBracket(Bracket::Brace),
+                    Token::EndBracket(Bracket::Brace),
+                ),
             ],
             f,
         ))
@@ -288,8 +311,8 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
                     },
                 }
             }
-                .map_with_span(|e, span| SpannedExpr::new(e, span))
-                .labelled("literal");
+            .map_with_span(SpannedExpr::new)
+            .labelled("literal");
 
             let ident = select! {
                 Token::Identifier(s) => match s.as_str() {
@@ -298,22 +321,26 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
                     _ => Expr::Ident(s),
                 }
             }
-                .map_with_span(|e, span| SpannedExpr::new(e, span))
-                .labelled("identifier");
+            .map_with_span(SpannedExpr::new)
+            .labelled("identifier");
 
             let array = nested_parser(
-                e
-                    .clone()
+                e.clone()
                     .separated_by(just::<_, Token, _>(Token::Comma))
                     .allow_trailing()
                     .map(Some),
                 Bracket::Bracket,
                 |_| None,
             )
-                .map_with_span(|a, span| Spanned::new(match a {
-                    Some(a) => Expr::Array(a),
-                    None => Expr::Invalid,
-                }, span));
+            .map_with_span(|a, span| {
+                Spanned::new(
+                    match a {
+                        Some(a) => Expr::Array(a),
+                        None => Expr::Invalid,
+                    },
+                    span,
+                )
+            });
 
             let if_stmt = just::<_, Token, _>(Token::Keyword(Keyword::If))
                 .ignore_then(e.clone())
@@ -339,8 +366,8 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
                         ))
                         .or_not(),
                 )
-                .map_with_span(
-                    |(((condition, body), else_if), else_body), span| SpannedExpr::new(
+                .map_with_span(|(((condition, body), else_if), else_body), span| {
+                    SpannedExpr::new(
                         Expr::If {
                             condition,
                             body,
@@ -348,8 +375,8 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
                             else_body,
                         },
                         span,
-                    ),
-                );
+                    )
+                });
 
             let while_stmt = just::<_, Token, _>(Token::Keyword(Keyword::While))
                 .ignore_then(e.clone())
@@ -357,13 +384,15 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
                     just(Token::StartBracket(Bracket::Brace)),
                     just(Token::EndBracket(Bracket::Brace)),
                 ))
-                .map_with_span(|(condition, body), span| SpannedExpr::new(
-                    Expr::While {
-                        condition,
-                        body: body.into_node().0,
-                    },
-                    span,
-                ));
+                .map_with_span(|(condition, body), span| {
+                    SpannedExpr::new(
+                        Expr::While {
+                            condition,
+                            body: body.into_node().0,
+                        },
+                        span,
+                    )
+                });
 
             let atom = choice((
                 literal,
@@ -417,11 +446,14 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
                         .or_not(),
                 )
                 .map_with_span(|(expr, args), span| match args {
-                    Some(args) => SpannedExpr::new(Expr::Call {
-                        value: expr,
-                        args,
-                        kwargs: vec![],
-                    }, span),
+                    Some(args) => SpannedExpr::new(
+                        Expr::Call {
+                            value: expr,
+                            args,
+                            kwargs: vec![],
+                        },
+                        span,
+                    ),
                     None => expr,
                 })
                 .boxed();
@@ -459,10 +491,7 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
                 .foldl(|subject, ty| {
                     let span = subject.span().merge(ty.span());
 
-                    SpannedExpr::new(
-                        Expr::Cast(subject, ty),
-                        span,
-                    )
+                    SpannedExpr::new(Expr::Cast(subject, ty), span)
                 })
                 .boxed();
 
@@ -474,14 +503,7 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
                 .foldr(|(lhs, operator), rhs| {
                     let span = lhs.span().merge(rhs.span());
 
-                    SpannedExpr::new(
-                        Expr::BinaryExpr {
-                            operator,
-                            lhs,
-                            rhs,
-                        },
-                        span,
-                    )
+                    SpannedExpr::new(Expr::BinaryExpr { operator, lhs, rhs }, span)
                 })
                 .boxed();
 
@@ -495,14 +517,7 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
                 .foldl(|lhs, (operator, rhs)| {
                     let span = lhs.span().merge(rhs.span());
 
-                    Spanned::new(
-                        Expr::BinaryExpr {
-                            operator,
-                            lhs,
-                            rhs,
-                        },
-                        span,
-                    )
+                    Spanned::new(Expr::BinaryExpr { operator, lhs, rhs }, span)
                 })
                 .boxed();
 
@@ -515,14 +530,7 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
                 .foldl(|lhs, (operator, rhs)| {
                     let span = lhs.span().merge(rhs.span());
 
-                    Spanned::new(
-                        Expr::BinaryExpr {
-                            operator,
-                            lhs,
-                            rhs,
-                        },
-                        span,
-                    )
+                    Spanned::new(Expr::BinaryExpr { operator, lhs, rhs }, span)
                 })
                 .boxed();
 
@@ -539,14 +547,7 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
                 .foldl(|lhs, (operator, rhs)| {
                     let span = lhs.span().merge(rhs.span());
 
-                    Spanned::new(
-                        Expr::BinaryExpr {
-                            operator,
-                            lhs,
-                            rhs,
-                        },
-                        span,
-                    )
+                    Spanned::new(Expr::BinaryExpr { operator, lhs, rhs }, span)
                 })
                 .boxed();
 
@@ -561,14 +562,7 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
                 .foldl(|lhs, (operator, rhs)| {
                     let span = lhs.span().merge(rhs.span());
 
-                    Spanned::new(
-                        Expr::BinaryExpr {
-                            operator,
-                            lhs,
-                            rhs,
-                        },
-                        span,
-                    )
+                    Spanned::new(Expr::BinaryExpr { operator, lhs, rhs }, span)
                 })
                 .boxed();
 
@@ -583,14 +577,7 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
                 .foldl(|lhs, (operator, rhs)| {
                     let span = lhs.span().merge(rhs.span());
 
-                    Spanned::new(
-                        Expr::BinaryExpr {
-                            operator,
-                            lhs,
-                            rhs,
-                        },
-                        span,
-                    )
+                    Spanned::new(Expr::BinaryExpr { operator, lhs, rhs }, span)
                 })
                 .boxed();
 
@@ -604,14 +591,7 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
                 .foldl(|lhs, (operator, rhs)| {
                     let span = lhs.span().merge(rhs.span());
 
-                    Spanned::new(
-                        Expr::BinaryExpr {
-                            operator,
-                            lhs,
-                            rhs,
-                        },
-                        span,
-                    )
+                    Spanned::new(Expr::BinaryExpr { operator, lhs, rhs }, span)
                 })
                 .boxed()
         });
@@ -649,10 +629,12 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
             .or(just(Token::Keyword(Keyword::Const)))
             .then(just(Token::Keyword(Keyword::Mut)).or_not())
             .map_with_span(Spanned::<(Token, Option<Token>)>::new)
-            .then(target.clone()
-                .then_ignore(just::<_, Token, _>(Token::Assign))
-                .repeated()
-                .at_least(1),
+            .then(
+                target
+                    .clone()
+                    .then_ignore(just::<_, Token, _>(Token::Assign))
+                    .repeated()
+                    .at_least(1),
             )
             .then(e.clone())
             .then_ignore(just::<_, Token, _>(Token::Semicolon))
@@ -684,13 +666,15 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
             .at_least(1)
             .then(e.clone())
             .then_ignore(just::<_, Token, _>(Token::Semicolon))
-            .map_with_span(|(targets, expr), span| Spanned::new(
-                Node::Assign {
-                    targets,
-                    value: expr,
-                },
-                span,
-            ));
+            .map_with_span(|(targets, expr), span| {
+                Spanned::new(
+                    Node::Assign {
+                        targets,
+                        value: expr,
+                    },
+                    span,
+                )
+            });
 
         let param = target
             .clone()
@@ -699,10 +683,7 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
                     .ignore_then(e.clone())
                     .or_not(),
             )
-            .map_with_span(|(target, default), span| Spanned::new(
-                Param { target, default },
-                span,
-            ));
+            .map_with_span(|(target, default), span| Spanned::new(Param { target, default }, span));
 
         let func = just::<_, Token, _>(Token::Keyword(Keyword::Func))
             .ignore_then(select! {
@@ -754,17 +735,24 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
 
         choice((func, declare, assign, r#return, require, expr))
             .repeated()
-            .then(e.clone().or_not().map_with_span(|o, span| o
-                .map(|o| Spanned::new(Node::Expr(o), span)))
+            .then(
+                e.clone()
+                    .or_not()
+                    .map_with_span(|o, span| o.map(|o| Spanned::new(Node::Expr(o), span))),
             )
             .recover_with(skip_then_retry_until([]))
-            .map_with_span(|(mut nodes, last), span| Spanned::new({
-                let return_last = last.is_some();
-                if let Some(last) = last {
-                    nodes.push(last);
-                }
-                Body(nodes, return_last)
-            }, span))
+            .map_with_span(|(mut nodes, last), span| {
+                Spanned::new(
+                    {
+                        let return_last = last.is_some();
+                        if let Some(last) = last {
+                            nodes.push(last);
+                        }
+                        Body(nodes, return_last)
+                    },
+                    span,
+                )
+            })
     })
 }
 

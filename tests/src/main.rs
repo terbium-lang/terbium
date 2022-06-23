@@ -1,9 +1,10 @@
 #[cfg(test)]
-mod interpreter;
-#[cfg(test)]
-mod grammar;
+mod analyzer;
 #[cfg(test)]
 mod bytecode;
 #[cfg(test)]
-mod analyzer;
+mod grammar;
+#[cfg(test)]
+mod interpreter;
 
+fn main() {}

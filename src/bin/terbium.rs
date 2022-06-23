@@ -74,21 +74,26 @@ where
     N: ParseInterface,
 {
     let (code, src) = match (file, code) {
-        (Some(file), None) => (std::fs::read_to_string(file.clone())?, Source::from_path(file)),
+        (Some(file), None) => (
+            std::fs::read_to_string(file.clone())?,
+            Source::from_path(file),
+        ),
         (None, Some(code)) => (code, Source::default()),
         (Some(_), Some(_)) => return Err("must provide only one of file or code".into()),
         (None, None) => return Err("must provide one of file or code".into()),
     };
 
-    Ok(N::from_string(src.clone(), code.clone()).unwrap_or_else(|e| {
-        for error in e {
-            let cache = sources::<Source, String, _>(vec![(src.clone(), code.clone())]);
+    Ok(
+        N::from_string(src.clone(), code.clone()).unwrap_or_else(|e| {
+            for error in e {
+                let cache = sources::<Source, String, _>(vec![(src.clone(), code.clone())]);
 
-            error.write(cache, stderr());
-        }
+                error.write(cache, stderr());
+            }
 
-        exit(-1)
-    }))
+            exit(-1)
+        }),
+    )
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

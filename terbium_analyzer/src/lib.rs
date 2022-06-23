@@ -1,6 +1,6 @@
 pub mod util;
 
-use terbium_grammar::{ParseInterface, Token, Source, Span};
+use terbium_grammar::{ParseInterface, Source, Span, Token};
 use util::to_snake_case;
 
 use std::io::Write;
@@ -206,13 +206,16 @@ mod tests {
                 .collect(),
         );
 
-        a.analyze_string(Source::default(), String::from(
-            "
+        a.analyze_string(
+            Source::default(),
+            String::from(
+                "
             func camelCase() {
                 let notSnakeCase = 5;
             }
         ",
-        ));
+            ),
+        );
 
         a.write(std::io::stdout());
     }

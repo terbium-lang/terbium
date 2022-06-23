@@ -1,5 +1,5 @@
-use terbium::bytecode::EqComparableFloat;
 use std::collections::HashMap;
+use terbium::bytecode::EqComparableFloat;
 
 #[test]
 pub fn test_float_eq() {

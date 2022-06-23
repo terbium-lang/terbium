@@ -1,5 +1,5 @@
 use terbium::grammar::token::*;
-use terbium::grammar::{Span, Source};
+use terbium::grammar::{ChumskyParser as _, ChumskyStream as Stream, Source, Span};
 
 #[test]
 fn test_lexer() {
@@ -12,19 +12,15 @@ fn test_lexer() {
         }
     "#;
 
-    let (tokens, errors) = get_lexer().parse_recovery(
-        Stream::<_, Span, _>::from_iter(
-            Span::single(Source::default(), raw.chars().count()),
-            raw.chars().enumerate().map(|(i, c)| (c, Span::single(Source::default(), i))),
-        ),
-    );
+    let (tokens, errors) = get_lexer().parse_recovery(Stream::<_, Span, _>::from_iter(
+        Span::single(Source::default(), raw.chars().count()),
+        raw.chars()
+            .enumerate()
+            .map(|(i, c)| (c, Span::single(Source::default(), i))),
+    ));
 
     assert_eq!(
-        tokens.map(|t| t
-            .into_iter()
-            .map(|t| t.0)
-            .collect::<Vec<_>>()
-        ),
+        tokens.map(|t| t.into_iter().map(|t| t.0).collect::<Vec<_>>()),
         Some(vec![
             Token::Keyword(Keyword::Func),
             Token::Identifier("main".to_string()),

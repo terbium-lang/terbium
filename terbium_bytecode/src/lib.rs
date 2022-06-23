@@ -15,8 +15,8 @@ use std::mem::size_of;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use terbium_grammar::{Source, Span};
 pub use interpreter::Interpreter;
+use terbium_grammar::{Source, Span};
 pub use util::EqComparableFloat;
 
 pub type AddrRepr = usize;
@@ -105,24 +105,25 @@ impl Instruction {
 
     #[must_use]
     pub fn size(&self) -> usize {
-        1_usize + match self {
-            Self::LoadInt(_) => size_of::<u128>(),
-            Self::LoadFloat(_) => size_of::<f64>(),
-            Self::LoadString(s) => s.len(), // FIXME: String might exceeds 255
-            Self::LoadBool(_) => 1,
-            Self::LoadVar(_)
-            | Self::StoreVar(_)
-            | Self::StoreMutVar(_)
-            | Self::StoreConstVar(_)
-            | Self::MakeFunc(_)
-            | Self::Load(_)
-            | Self::Store(_)
-            | Self::LoadFrame(_)
-            | Self::AssignVar(_) => size_of::<usize>(),
-            Self::Jump(_) | Self::JumpIf(_) => size_of::<AddrRepr>(),
-            Self::JumpIfElse(_, _) => size_of::<AddrRepr>() * 2,
-            _ => 0,
-        }
+        1_usize
+            + match self {
+                Self::LoadInt(_) => size_of::<u128>(),
+                Self::LoadFloat(_) => size_of::<f64>(),
+                Self::LoadString(s) => s.len(), // FIXME: String might exceeds 255
+                Self::LoadBool(_) => 1,
+                Self::LoadVar(_)
+                | Self::StoreVar(_)
+                | Self::StoreMutVar(_)
+                | Self::StoreConstVar(_)
+                | Self::MakeFunc(_)
+                | Self::Load(_)
+                | Self::Store(_)
+                | Self::LoadFrame(_)
+                | Self::AssignVar(_) => size_of::<usize>(),
+                Self::Jump(_) | Self::JumpIf(_) => size_of::<AddrRepr>(),
+                Self::JumpIfElse(_, _) => size_of::<AddrRepr>() * 2,
+                _ => 0,
+            }
     }
 
     #[must_use]
@@ -194,23 +195,33 @@ impl From<Instruction> for RichInstruction {
 }
 
 impl RichInstruction {
-    pub fn spanned(instr: Instruction, span: Span) -> Self {
-        Self { inner: instr, span: Some(span), name: None }
+    #[must_use]
+    pub const fn spanned(instr: Instruction, span: Span) -> Self {
+        Self {
+            inner: instr,
+            span: Some(span),
+            name: None,
+        }
     }
 
-    pub fn instr(&self) -> &Instruction {
+    #[must_use]
+    pub const fn instr(&self) -> &Instruction {
         &self.inner
     }
 
+    #[must_use]
+    #[allow(clippy::missing_const_for_fn)] // Destructor cannot be evaluated at compile-time
     pub fn into_instr(self) -> Instruction {
         self.inner
     }
 
+    #[must_use]
     pub fn span(&self) -> Option<Span> {
         self.span.clone()
     }
 
-    pub fn name(&self) -> &Option<String> {
+    #[must_use]
+    pub const fn name(&self) -> &Option<String> {
         &self.name
     }
 }
@@ -345,23 +356,29 @@ impl Program {
         self.inner = self
             .inner
             .iter()
-            .map(|RichInstruction { inner: instr, span, name }| RichInstruction {
-                inner: match instr {
-                    Instruction::Jump(addr) => {
-                        Instruction::Jump(Self::resolve_addr(&lookup, *addr))
-                    }
-                    Instruction::JumpIf(addr) => {
-                        Instruction::JumpIf(Self::resolve_addr(&lookup, *addr))
-                    }
-                    Instruction::JumpIfElse(a, b) => Instruction::JumpIfElse(
-                        Self::resolve_addr(&lookup, *a),
-                        Self::resolve_addr(&lookup, *b),
-                    ),
-                    o => o.clone(), // TODO: don't clone
+            .map(
+                |RichInstruction {
+                     inner: instr,
+                     span,
+                     name,
+                 }| RichInstruction {
+                    inner: match instr {
+                        Instruction::Jump(addr) => {
+                            Instruction::Jump(Self::resolve_addr(&lookup, *addr))
+                        }
+                        Instruction::JumpIf(addr) => {
+                            Instruction::JumpIf(Self::resolve_addr(&lookup, *addr))
+                        }
+                        Instruction::JumpIfElse(a, b) => Instruction::JumpIfElse(
+                            Self::resolve_addr(&lookup, *a),
+                            Self::resolve_addr(&lookup, *b),
+                        ),
+                        o => o.clone(), // TODO: don't clone
+                    },
+                    span: span.clone(),
+                    name: name.clone(),
                 },
-                span: span.clone(),
-                name: name.clone(),
-            })
+            )
             .collect();
 
         self
@@ -372,7 +389,12 @@ impl Program {
         type I = Instruction;
         let mut bytes = Vec::new();
 
-        for RichInstruction { inner: instr, span, name } in self.inner() {
+        for RichInstruction {
+            inner: instr,
+            span,
+            name,
+        } in self.inner()
+        {
             bytes.push(instr.to_instr_id());
 
             match instr {
@@ -404,31 +426,25 @@ impl Program {
                 _ => (),
             }
 
-            let span_bytes = span.clone().map(
-                |s| {
-                    let path = s.src().to_path();
-                    let lossy = path.to_string_lossy();
-                    let src_bytes = &*lossy.as_bytes();
+            let span_bytes = span.clone().map(|s| {
+                let path = s.src().to_path();
+                let lossy = path.to_string_lossy();
+                let src_bytes = &*lossy.as_bytes();
 
-                    [
-                        [1_u8].as_slice(),
-                        s.start().to_ne_bytes().as_slice(),
-                        s.end().to_ne_bytes().as_slice(),
-                        src_bytes.len().to_ne_bytes().as_slice(),
-                        src_bytes,
-                    ].concat()
-                }
-            );
-            bytes.extend_from_slice(&*span_bytes.unwrap_or(vec![0_u8]));
+                [
+                    [1_u8].as_slice(),
+                    s.start().to_ne_bytes().as_slice(),
+                    s.end().to_ne_bytes().as_slice(),
+                    src_bytes.len().to_ne_bytes().as_slice(),
+                    src_bytes,
+                ]
+                .concat()
+            });
+            bytes.extend_from_slice(&*span_bytes.unwrap_or_else(|| vec![0_u8]));
 
             let name_bytes = name.clone().map(|s| s.as_bytes().to_vec());
-            bytes.extend_from_slice(&name_bytes
-                .clone()
-                .map(|n| n.len())
-                .unwrap_or(0)
-                .to_ne_bytes()
-            );
-            bytes.extend_from_slice(&*name_bytes.unwrap_or(vec![]));
+            bytes.extend_from_slice(&name_bytes.clone().map_or(0, |n| n.len()).to_ne_bytes());
+            bytes.extend_from_slice(&*name_bytes.unwrap_or_default());
         }
 
         bytes
@@ -438,7 +454,13 @@ impl Program {
         type I = Instruction;
         let pad_length = self.inner.len().saturating_sub(1).to_string().len();
 
-        for (j, RichInstruction{ inner: instr, name, .. }) in self.inner().enumerate() {
+        for (
+            j,
+            RichInstruction {
+                inner: instr, name, ..
+            },
+        ) in self.inner().enumerate()
+        {
             write!(w, "{:01$} | ", j, pad_length)?;
             match instr {
                 I::LoadInt(i) => write!(w, "load_int {}", i)?,
@@ -497,103 +519,99 @@ impl Program {
 
     #[must_use]
     #[allow(clippy::match_same_arms)] // Remove when unimplemented!() are all implemented
+    #[allow(clippy::too_many_lines)] // Should refactor later
     pub fn from_bytes(bytes: &[u8]) -> Self {
         type I = Instruction;
 
         let mut ptr = 0;
         let mut instructions = Vec::<RichInstruction>::new();
 
-        loop {
-            let instr = match bytes.get(ptr) {
-                Some(b) => match b {
-                    0 => {
-                        ptr += 1 + size_of::<u128>();
-                        I::LoadInt(read_ne_u128(&mut &bytes[(ptr - 16)..ptr]))
-                    }
-                    1 => {
-                        ptr += 1 + size_of::<f64>();
-                        I::LoadFloat(read_ne_f64(&mut &bytes[(ptr - 8)..ptr]).into())
-                    }
-                    2 => {
-                        let size = size_of::<usize>();
-                        ptr += 1 + size;
-                        let len = read_ne_usize(&mut &bytes[(ptr - size)..ptr]);
+        while let Some(b) = bytes.get(ptr) {
+            let instr = match b {
+                0 => {
+                    ptr += 1 + size_of::<u128>();
+                    I::LoadInt(read_ne_u128(&mut &bytes[(ptr - 16)..ptr]))
+                }
+                1 => {
+                    ptr += 1 + size_of::<f64>();
+                    I::LoadFloat(read_ne_f64(&mut &bytes[(ptr - 8)..ptr]).into())
+                }
+                2 => {
+                    let size = size_of::<usize>();
+                    ptr += 1 + size;
+                    let len = read_ne_usize(&mut &bytes[(ptr - size)..ptr]);
 
-                        ptr += 1 + len;
-                        I::LoadString(
-                            String::from_utf8(Vec::from(&bytes[(ptr - len)..ptr])).unwrap(),
-                        )
-                    }
-                    3 => {
-                        ptr += 1 + size_of::<bool>();
-                        I::LoadBool(bytes[ptr - 1] == 0)
-                    }
-                    4 => parse_usize!(ptr, bytes, Load),
-                    5 => progress!(ptr, I::UnOpPos),
-                    6 => progress!(ptr, I::UnOpNeg),
-                    7 => progress!(ptr, I::BinOpAdd),
-                    8 => progress!(ptr, I::BinOpSub),
-                    9 => progress!(ptr, I::BinOpMul),
-                    10 => progress!(ptr, I::BinOpDiv),
-                    11 => progress!(ptr, I::BinOpTrueDiv),
-                    12 => progress!(ptr, I::BinOpPow),
-                    13 => progress!(ptr, I::BinOpBitOr),
-                    14 => progress!(ptr, I::BinOpBitXor),
-                    15 => progress!(ptr, I::BinOpBitAnd),
-                    16 => progress!(ptr, I::UnOpBitNot),
-                    17 => progress!(ptr, I::OpEq),
-                    18 => progress!(ptr, I::OpNe),
-                    19 => progress!(ptr, I::OpLt),
-                    20 => progress!(ptr, I::OpLe),
-                    21 => progress!(ptr, I::OpGt),
-                    22 => progress!(ptr, I::OpGe),
-                    23 => progress!(ptr, I::OpLogicalOr),
-                    24 => progress!(ptr, I::OpLogicalAnd),
-                    25 => progress!(ptr, I::OpLogicalNot),
-                    26 => parse_usize!(ptr, bytes, LoadVar),
-                    27 => parse_usize!(ptr, bytes, StoreVar),
-                    28 => parse_usize!(ptr, bytes, StoreMutVar),
-                    29 => parse_usize!(ptr, bytes, StoreConstVar),
-                    30 => unimplemented!(),
-                    31 => unimplemented!(),
-                    32 => {
-                        ptr += 1 + size_of::<AddrRepr>();
-                        I::Jump(Addr::Absolute(read_ne_usize(
-                            &mut &bytes[(ptr - size_of::<AddrRepr>())..ptr],
-                        )))
-                    }
-                    33 => {
-                        ptr += 1 + size_of::<AddrRepr>();
-                        I::JumpIf(Addr::Absolute(read_ne_usize(
-                            &mut &bytes[(ptr - size_of::<AddrRepr>())..ptr],
-                        )))
-                    }
-                    34 => {
-                        ptr += 1 + size_of::<AddrRepr>();
-                        let first = Addr::Absolute(read_ne_usize(
-                            &mut &bytes[(ptr - size_of::<AddrRepr>())..ptr],
-                        ));
+                    ptr += 1 + len;
+                    I::LoadString(String::from_utf8(Vec::from(&bytes[(ptr - len)..ptr])).unwrap())
+                }
+                3 => {
+                    ptr += 1 + size_of::<bool>();
+                    I::LoadBool(bytes[ptr - 1] == 0)
+                }
+                4 => parse_usize!(ptr, bytes, Load),
+                5 => progress!(ptr, I::UnOpPos),
+                6 => progress!(ptr, I::UnOpNeg),
+                7 => progress!(ptr, I::BinOpAdd),
+                8 => progress!(ptr, I::BinOpSub),
+                9 => progress!(ptr, I::BinOpMul),
+                10 => progress!(ptr, I::BinOpDiv),
+                11 => progress!(ptr, I::BinOpTrueDiv),
+                12 => progress!(ptr, I::BinOpPow),
+                13 => progress!(ptr, I::BinOpBitOr),
+                14 => progress!(ptr, I::BinOpBitXor),
+                15 => progress!(ptr, I::BinOpBitAnd),
+                16 => progress!(ptr, I::UnOpBitNot),
+                17 => progress!(ptr, I::OpEq),
+                18 => progress!(ptr, I::OpNe),
+                19 => progress!(ptr, I::OpLt),
+                20 => progress!(ptr, I::OpLe),
+                21 => progress!(ptr, I::OpGt),
+                22 => progress!(ptr, I::OpGe),
+                23 => progress!(ptr, I::OpLogicalOr),
+                24 => progress!(ptr, I::OpLogicalAnd),
+                25 => progress!(ptr, I::OpLogicalNot),
+                26 => parse_usize!(ptr, bytes, LoadVar),
+                27 => parse_usize!(ptr, bytes, StoreVar),
+                28 => parse_usize!(ptr, bytes, StoreMutVar),
+                29 => parse_usize!(ptr, bytes, StoreConstVar),
+                30 => unimplemented!(),
+                31 => unimplemented!(),
+                32 => {
+                    ptr += 1 + size_of::<AddrRepr>();
+                    I::Jump(Addr::Absolute(read_ne_usize(
+                        &mut &bytes[(ptr - size_of::<AddrRepr>())..ptr],
+                    )))
+                }
+                33 => {
+                    ptr += 1 + size_of::<AddrRepr>();
+                    I::JumpIf(Addr::Absolute(read_ne_usize(
+                        &mut &bytes[(ptr - size_of::<AddrRepr>())..ptr],
+                    )))
+                }
+                34 => {
+                    ptr += 1 + size_of::<AddrRepr>();
+                    let first = Addr::Absolute(read_ne_usize(
+                        &mut &bytes[(ptr - size_of::<AddrRepr>())..ptr],
+                    ));
 
-                        ptr += size_of::<AddrRepr>();
-                        I::JumpIfElse(
-                            first,
-                            Addr::Absolute(read_ne_usize(
-                                &mut &bytes[(ptr - size_of::<AddrRepr>())..ptr],
-                            )),
-                        )
-                    }
-                    35 => progress!(ptr, I::Pop),
-                    36 => progress!(ptr, I::Ret),
-                    37 => progress!(ptr, I::RetNull),
-                    38 => progress!(ptr, I::Halt),
-                    39 => unimplemented!(),
-                    40 => parse_usize!(ptr, bytes, Store),
-                    41 => progress!(ptr, I::EnterScope),
-                    42 => progress!(ptr, I::ExitScope),
-                    43 => parse_usize!(ptr, bytes, AssignVar),
-                    b => panic!("invalid byte 0x{:0x} at position {}", b, ptr),
-                },
-                None => break,
+                    ptr += size_of::<AddrRepr>();
+                    I::JumpIfElse(
+                        first,
+                        Addr::Absolute(read_ne_usize(
+                            &mut &bytes[(ptr - size_of::<AddrRepr>())..ptr],
+                        )),
+                    )
+                }
+                35 => progress!(ptr, I::Pop),
+                36 => progress!(ptr, I::Ret),
+                37 => progress!(ptr, I::RetNull),
+                38 => progress!(ptr, I::Halt),
+                39 => unimplemented!(),
+                40 => parse_usize!(ptr, bytes, Store),
+                41 => progress!(ptr, I::EnterScope),
+                42 => progress!(ptr, I::ExitScope),
+                43 => parse_usize!(ptr, bytes, AssignVar),
+                b => panic!("invalid byte 0x{:0x} at position {}", b, ptr),
             };
 
             let size = size_of::<usize>();
@@ -609,9 +627,9 @@ impl Program {
                 let src_len = read_ne_usize(&mut &bytes[(ptr - size)..ptr]);
 
                 ptr += 1 + src_len;
-                let path = PathBuf::from_str(&String::from_utf8_lossy(
-                    &bytes[(ptr - src_len)..ptr]
-                )).unwrap();
+                let path =
+                    PathBuf::from_str(&String::from_utf8_lossy(&bytes[(ptr - src_len)..ptr]))
+                        .unwrap();
 
                 let src = path.as_path();
                 let src = Source::from_path(src);
@@ -635,7 +653,7 @@ impl Program {
                 inner: instr,
                 span,
                 name,
-            })
+            });
         }
 
         Self {

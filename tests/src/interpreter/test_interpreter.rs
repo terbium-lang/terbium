@@ -1,14 +1,13 @@
-use terbium::interpreter::{DefaultInterpreter, TerbiumObject};
 use terbium::bytecode::{Instruction, Program};
-use terbium::grammar::Body;
+use terbium::interpreter::{DefaultInterpreter, TerbiumObject};
 
 #[test]
 fn test_interpreter() {
     let program = Program::from_iter([
-        Instruction::LoadInt(1),
-        Instruction::LoadInt(1),
-        Instruction::BinOpAdd,
-        Instruction::Halt,
+        Instruction::LoadInt(1).into(),
+        Instruction::LoadInt(1).into(),
+        Instruction::BinOpAdd.into(),
+        Instruction::Halt.into(),
     ]);
     let mut interpreter = DefaultInterpreter::default();
     interpreter.run_bytecode(&program);

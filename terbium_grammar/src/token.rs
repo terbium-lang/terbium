@@ -310,7 +310,7 @@ macro_rules! escape_hex {
 #[allow(clippy::cast_sign_loss)] // text::int does not handle signed
 pub fn get_lexer() -> impl Parser<char, Vec<(Token, Span)>, Error = Error> {
     let integer = text::int::<_, Error>(10)
-        .from_str::<i128>() 
+        .from_str::<i128>()
         // This is done to ensure that the interger won't overflow i128
         .unwrapped()
         .map(|int| Literal::Integer(int as u128))
@@ -318,7 +318,7 @@ pub fn get_lexer() -> impl Parser<char, Vec<(Token, Span)>, Error = Error> {
         .labelled("integer literal");
 
     let float = text::int::<_, Error>(10)
-        .chain::<char, _, _>(just('.').chain(filter(move |c: &char| c.is_digit(10)).repeated()))
+        .chain::<char, _, _>(just('.').chain(filter(char::is_ascii_digit).repeated()))
         .or(just('.').chain::<char, _, _>(text::digits(10)))
         .collect::<String>()
         .map(Literal::Float)
@@ -393,8 +393,7 @@ pub fn get_lexer() -> impl Parser<char, Vec<(Token, Span)>, Error = Error> {
 
     let comment = single_line.or(multi_line).or_not();
 
-    let right_shift = just(">>")
-        .then_ignore(none_of(")<>]},;").rewind());
+    let right_shift = just(">>").then_ignore(none_of(")<>]},;").rewind());
 
     let symbol = choice::<_, Error>((
         just(',').to(Token::Comma),
@@ -416,7 +415,7 @@ pub fn get_lexer() -> impl Parser<char, Vec<(Token, Span)>, Error = Error> {
         just("==").map(|_| Token::Operator(Operator::Eq)),
         just("!=").map(|_| Token::Operator(Operator::Ne)),
         just('!').map(|_| Token::Operator(Operator::Not)), // Conflicts with !=
-        just('=').to(Token::Assign),                    // Conflicts with ==
+        just('=').to(Token::Assign),                       // Conflicts with ==
         just("<=").map(|_| Token::Operator(Operator::Le)),
         just(">=").map(|_| Token::Operator(Operator::Ge)),
         just("<<").to(Token::Operator(Operator::BitLShift)),

@@ -480,6 +480,16 @@ impl<const STACK_SIZE: usize> Interpreter<STACK_SIZE> {
     #[allow(clippy::too_many_lines)]
     #[allow(clippy::missing_panics_doc)] // Remove when todo is done
     #[allow(clippy::cast_possible_wrap)] // Wrap is not possible because is parsed as i128
+    #[allow(clippy::cast_precision_loss)]
+    /// Integer exceeding mantissa of 52 bits wide will be wrapped to
+    /// 340282366920938500000000000000000000000
+    /// This will cause unexpected behavior because if one compare such with for example
+    /// 340282366920938463463374607431768211455 (`u128::MAX`)
+    /// It will return true
+    /// But if one compare it with 340282366920938463463374607431768211454 (`u128::MAX` - 1)
+    /// It will also return true
+    /// So it is unexpected behavior
+    /// The current solution is to let `terbium_analyzer` catches this and warn the user
     pub fn run_bytecode(&mut self, code: &Program) {
         let mut pos: AddrRepr = 0;
         let mut jump_history: Vec<AddrRepr> = Vec::new();
@@ -555,6 +565,7 @@ impl<const STACK_SIZE: usize> Interpreter<STACK_SIZE> {
                     (TerbiumObject::Integer(rhs), TerbiumObject::String(lhs)) => {
                         let loc = store_auto!(self.ctx, TerbiumObject::String(
                             self.string_interner.intern(
+                                #[allow(clippy::cast_sign_loss)] // Act as a safety barrior to prevent overflow
                                 self.string_interner.lookup(*lhs).repeat(*rhs as usize).as_str(),
                             )
                         ));

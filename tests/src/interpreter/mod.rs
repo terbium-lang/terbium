@@ -1,12 +1,12 @@
+pub mod test_float;
 pub mod test_interpreter;
 pub mod test_intrepreter_from_string;
-pub mod test_float;
 
-use terbium::interpreter::{DefaultInterpreter, TerbiumObject};
 use terbium::bytecode::Interpreter as Transformer;
 use terbium::grammar::{Body, ParseInterface, Source};
+use terbium::interpreter::{DefaultInterpreter, TerbiumObject};
 
-pub fn interpret(code: &str) -> &TerbiumObject {
+pub fn interpret(code: &str) -> TerbiumObject {
     let body = Body::from_string(Source::default(), code.to_string()).unwrap_or_else(|e| {
         panic!("tokenization error: {:?}", e);
     });
@@ -19,5 +19,5 @@ pub fn interpret(code: &str) -> &TerbiumObject {
     let mut interpreter = DefaultInterpreter::default();
     interpreter.run_bytecode(&program);
 
-    interpreter.ctx.pop()
+    interpreter.ctx.pop().clone()
 }

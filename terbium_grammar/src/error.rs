@@ -1,4 +1,4 @@
-use super::{Token, Source, Span};
+use super::{Source, Span, Token};
 
 use std::collections::HashSet;
 use std::fmt::{Display, Formatter, Result as FmtResult};
@@ -121,7 +121,7 @@ impl Error {
             span,
             expected: HashSet::new(),
             label: None,
-            message: format!("cannot declare as 'const mut'"),
+            message: "cannot declare as 'const mut'".to_string(),
             hint: Some(Hint {
                 message: "consider using 'let mut' instead".to_string(),
                 action: HintAction::Replace("let mut".to_string()),
@@ -129,11 +129,15 @@ impl Error {
         }
     }
 
+    /// Write the error to the specified writer.
+    ///
+    /// # Panics
+    /// * Panic when writing to writer failed.
     pub fn write<C>(self, cache: C, writer: impl Write)
     where
         C: ariadne::Cache<Source>,
     {
-        use ariadne::{Report, ReportKind, Label, ColorGenerator};
+        use ariadne::{ColorGenerator, Label, Report, ReportKind};
 
         let mut colors = ColorGenerator::new();
         let primary = colors.next();
@@ -141,9 +145,10 @@ impl Error {
         let report = Report::build(ReportKind::Error, self.span.src(), self.span.start())
             .with_code(0)
             .with_message("invalid syntax")
-            .with_label(Label::new(self.span.clone())
-                .with_message(self.message)
-                .with_color(primary)
+            .with_label(
+                Label::new(self.span.clone())
+                    .with_message(self.message)
+                    .with_color(primary),
             );
 
         let report = if let Some(hint) = self.hint {
@@ -152,10 +157,7 @@ impl Error {
             report
         };
 
-        report
-            .finish()
-            .write(cache, writer)
-            .unwrap();
+        report.finish().write(cache, writer).unwrap();
     }
 }
 

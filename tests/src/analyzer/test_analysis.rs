@@ -1,4 +1,5 @@
 use terbium::analyzer::BulkAnalyzer;
+use terbium::grammar::Source;
 
 #[test]
 fn test_analysis() {
@@ -9,13 +10,16 @@ fn test_analysis() {
             .collect(),
     );
 
-    a.analyze_string(String::from(
-        "
+    a.analyze_string(
+        Source::default(),
+        String::from(
+            "
         func camelCase() {
             let notSnakeCase = 5;
         }
     ",
-    ));
+        ),
+    );
 
     a.write(std::io::stdout());
 }

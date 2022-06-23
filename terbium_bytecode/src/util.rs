@@ -1,6 +1,8 @@
-use std::{hash::{Hash, Hasher}, fmt::Debug};
 use std::fmt::{Display, Formatter, Result as FmtResult};
-
+use std::{
+    fmt::Debug,
+    hash::{Hash, Hasher},
+};
 
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug)]
@@ -53,6 +55,6 @@ impl Default for EqComparableFloat {
 
 impl Display for EqComparableFloat {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
-         std::fmt::Display::fmt(&self.0, f)
+        std::fmt::Display::fmt(&self.0, f)
     }
 }

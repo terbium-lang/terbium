@@ -68,11 +68,14 @@ impl Interpreter {
     }
 
     pub fn push(&mut self, procedure: MaybeProc, instr: Instruction) {
-        self.program.push(procedure, RichInstruction {
-            inner: instr,
-            span: None,
-            name: None,
-        });
+        self.program.push(
+            procedure,
+            RichInstruction {
+                inner: instr,
+                span: None,
+                name: None,
+            },
+        );
     }
 
     pub fn push_rich(&mut self, procedure: MaybeProc, instr: RichInstruction) {
@@ -317,11 +320,14 @@ impl Interpreter {
                 if let Target::Ident(s) = target.node() {
                     let key = self.lookup.get(s.clone());
 
-                    self.push_rich(proc, RichInstruction {
-                        inner: Instruction::AssignVar(key),
-                        span: Some(span),
-                        name: Some(s.clone()),
-                    });
+                    self.push_rich(
+                        proc,
+                        RichInstruction {
+                            inner: Instruction::AssignVar(key),
+                            span: Some(span),
+                            name: Some(s.clone()),
+                        },
+                    );
                 }
             }
             _ => todo!(),
