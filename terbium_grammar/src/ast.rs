@@ -40,10 +40,9 @@ pub enum Expr {
     },
     If {
         condition: SpannedExpr,
-        body: Vec<SpannedNode>,
+        body: SpannedBody,
         else_if_bodies: Vec<(SpannedExpr, SpannedBody)>,
         else_body: Option<SpannedBody>,
-        return_last: bool,
     },
     While {
         condition: SpannedExpr,
@@ -302,13 +301,12 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
                         .or_not(),
                 )
                 .map_with_span(
-                    |(((condition, Body(body, return_last)), else_if), else_body), span| SpannedExpr::new(
+                    |(((condition, body), else_if), else_body), span| SpannedExpr::new(
                         Expr::If {
                             condition,
                             body,
                             else_if_bodies: else_if,
                             else_body,
-                            return_last,
                         },
                         span,
                     ),

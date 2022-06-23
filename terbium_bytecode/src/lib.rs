@@ -12,7 +12,9 @@ mod util;
 use std::collections::HashMap;
 use std::io::Write;
 use std::mem::size_of;
+use std::path::PathBuf;
 
+use terbium_grammar::{Source, Span};
 pub use interpreter::Interpreter;
 pub use util::EqComparableFloat;
 
@@ -173,10 +175,49 @@ impl Instruction {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct RichInstruction {
+    inner: Instruction,
+    span: Option<Span>,
+    name: Option<String>,
+}
+
+impl From<Instruction> for RichInstruction {
+    fn from(instr: Instruction) -> Self {
+        Self {
+            inner: instr,
+            span: None,
+            name: None,
+        }
+    }
+}
+
+impl RichInstruction {
+    pub fn spanned(instr: Instruction, span: Span) -> Self {
+        Self { inner: instr, span: Some(span), name: None }
+    }
+
+    pub fn instr(&self) -> &Instruction {
+        &self.inner
+    }
+
+    pub fn into_instr(self) -> Instruction {
+        self.inner
+    }
+
+    pub fn span(&self) -> Option<Span> {
+        self.span
+    }
+
+    pub fn name(&self) -> &Option<String> {
+        &self.name
+    }
+}
+
 #[derive(Debug)]
 pub struct Program {
-    inner: Vec<Instruction>,
-    procedures: Vec<Vec<Instruction>>,
+    inner: Vec<RichInstruction>,
+    procedures: Vec<Vec<RichInstruction>>,
 }
 
 pub(crate) fn read_ne_u128(input: &mut &[u8]) -> u128 {
@@ -223,7 +264,7 @@ impl Program {
         }
     }
 
-    pub fn inner(&self) -> impl Iterator<Item = &Instruction> {
+    pub fn inner(&self) -> impl Iterator<Item = &RichInstruction> {
         self.inner.iter()
     }
 
@@ -237,7 +278,7 @@ impl Program {
         std::mem::drop(self.procedures.pop());
     }
 
-    pub fn push(&mut self, procedure: Option<AddrRepr>, instr: Instruction) {
+    pub fn push(&mut self, procedure: Option<AddrRepr>, instr: RichInstruction) {
         if let Some(procedure) = procedure {
             return self
                 .procedures
@@ -288,7 +329,7 @@ impl Program {
     /// Resolves all procedures to their absolute address
     pub fn resolve(&mut self) -> &Self {
         if self.inner.last() != Some(&Instruction::Halt) {
-            self.inner.push(Instruction::Halt);
+            self.inner.push(Instruction::Halt.into());
         }
 
         // Lookup of proc -> absolute
@@ -303,7 +344,7 @@ impl Program {
         self.inner = self
             .inner
             .iter()
-            .map(|instr| {
+            .map(|RichInstruction { inner: instr, .. }| {
                 match instr {
                     Instruction::Jump(addr) => {
                         Instruction::Jump(Self::resolve_addr(&lookup, *addr))
@@ -328,7 +369,7 @@ impl Program {
         type I = Instruction;
         let mut bytes = Vec::new();
 
-        for instr in self.inner() {
+        for RichInstruction { inner: instr, span, name } in self.inner() {
             bytes.push(instr.to_instr_id());
 
             match instr {
@@ -359,6 +400,29 @@ impl Program {
                 },
                 _ => (),
             }
+
+            let span_bytes = span.map(
+                |s| {
+                    let src_bytes = &*s.src().to_path().to_raw_bytes();
+
+                    &[
+                        [1_u8],
+                        s.start().to_ne_bytes(),
+                        s.end().to_ne_bytes(),
+                        src_bytes.len().to_ne_bytes(),
+                        src_bytes,
+                    ].concat()
+                }
+            );
+            bytes.extend_from_slice(span_bytes.unwrap_or(&vec![0_u8]));
+
+            let name_bytes = name.map(String::as_bytes);
+            bytes.extend_from_slice(&name_bytes
+                .map(|n| n.len())
+                .unwrap_or(0)
+                .to_ne_bytes()
+            );
+            bytes.extend_from_slice(name_bytes.unwrap_or(&vec![]));
         }
 
         bytes
@@ -368,52 +432,58 @@ impl Program {
         type I = Instruction;
         let pad_length = self.inner.len().saturating_sub(1).to_string().len();
 
-        for (j, instr) in self.inner().enumerate() {
+        for (j, RichInstruction{ inner: instr, name, .. }) in self.inner().enumerate() {
             write!(w, "{:01$} | ", j, pad_length)?;
             match instr {
-                I::LoadInt(i) => writeln!(w, "load_int {}", i)?,
-                I::LoadFloat(f) => writeln!(w, "load_float {}", f.0)?,
-                I::LoadString(s) => writeln!(w, "load_string {:?}", s)?,
-                I::LoadBool(b) => writeln!(w, "load_bool {:?}", b)?,
-                I::Load(i) => writeln!(w, "load {}", i)?,
-                I::LoadVar(i) => writeln!(w, "load_var {}", i)?,
-                I::Store(i) => writeln!(w, "store {}", i)?,
-                I::StoreVar(i) => writeln!(w, "store_var {}", i)?,
-                I::StoreMutVar(i) => writeln!(w, "store_mut_var {}", i)?,
-                I::StoreConstVar(i) => writeln!(w, "store_const_var {}", i)?,
-                I::AssignVar(i) => writeln!(w, "assign_var {}", i)?,
-                I::Jump(Addr::Absolute(addr)) => writeln!(w, "jump {}", addr)?,
-                I::JumpIf(Addr::Absolute(addr)) => writeln!(w, "jump_if {}", addr)?,
+                I::LoadInt(i) => write!(w, "load_int {}", i)?,
+                I::LoadFloat(f) => write!(w, "load_float {}", f.0)?,
+                I::LoadString(s) => write!(w, "load_string {:?}", s)?,
+                I::LoadBool(b) => write!(w, "load_bool {:?}", b)?,
+                I::Load(i) => write!(w, "load {}", i)?,
+                I::LoadVar(i) => write!(w, "load_var {}", i)?,
+                I::Store(i) => write!(w, "store {}", i)?,
+                I::StoreVar(i) => write!(w, "store_var {}", i)?,
+                I::StoreMutVar(i) => write!(w, "store_mut_var {}", i)?,
+                I::StoreConstVar(i) => write!(w, "store_const_var {}", i)?,
+                I::AssignVar(i) => write!(w, "assign_var {}", i)?,
+                I::Jump(Addr::Absolute(addr)) => write!(w, "jump {}", addr)?,
+                I::JumpIf(Addr::Absolute(addr)) => write!(w, "jump_if {}", addr)?,
                 I::JumpIfElse(Addr::Absolute(a), Addr::Absolute(b)) => {
-                    writeln!(w, "jump_if_else {} {}", a, b)?;
+                    write!(w, "jump_if_else {} {}", a, b)?;
                 }
-                I::BinOpAdd => writeln!(w, "bin_add")?,
-                I::BinOpSub => writeln!(w, "bin_sub")?,
-                I::BinOpMul => writeln!(w, "bin_mul")?,
-                I::BinOpDiv => writeln!(w, "bin_div")?,
-                I::BinOpTrueDiv => writeln!(w, "bin_truediv")?,
-                I::BinOpPow => writeln!(w, "bin_pow")?,
-                I::BinOpBitOr => writeln!(w, "bin_bit_or")?,
-                I::BinOpBitXor => writeln!(w, "bin_bit_xor")?,
-                I::UnOpBitNot => writeln!(w, "bin_bit_not")?,
-                I::BinOpBitAnd => writeln!(w, "bin_bit_and")?,
-                I::OpEq => writeln!(w, "bin_eq")?,
-                I::OpNe => writeln!(w, "bin_ne")?,
-                I::OpLt => writeln!(w, "bin_lt")?,
-                I::OpLe => writeln!(w, "bin_le")?,
-                I::OpGt => writeln!(w, "bin_gt")?,
-                I::OpGe => writeln!(w, "bin_ge")?,
-                I::OpLogicalOr => writeln!(w, "log_or")?,
-                I::OpLogicalAnd => writeln!(w, "log_and")?,
-                I::OpLogicalNot => writeln!(w, "log_not")?,
-                I::Pop => writeln!(w, "pop")?,
-                I::Ret => writeln!(w, "ret")?,
-                I::RetNull => writeln!(w, "ret_null")?,
-                I::Halt => writeln!(w, "halt")?,
-                I::EnterScope => writeln!(w, "enter_scope")?,
-                I::ExitScope => writeln!(w, "exit_scope")?,
+                I::BinOpAdd => write!(w, "bin_add")?,
+                I::BinOpSub => write!(w, "bin_sub")?,
+                I::BinOpMul => write!(w, "bin_mul")?,
+                I::BinOpDiv => write!(w, "bin_div")?,
+                I::BinOpTrueDiv => write!(w, "bin_truediv")?,
+                I::BinOpPow => write!(w, "bin_pow")?,
+                I::BinOpBitOr => write!(w, "bin_bit_or")?,
+                I::BinOpBitXor => write!(w, "bin_bit_xor")?,
+                I::UnOpBitNot => write!(w, "bin_bit_not")?,
+                I::BinOpBitAnd => write!(w, "bin_bit_and")?,
+                I::OpEq => write!(w, "bin_eq")?,
+                I::OpNe => write!(w, "bin_ne")?,
+                I::OpLt => write!(w, "bin_lt")?,
+                I::OpLe => write!(w, "bin_le")?,
+                I::OpGt => write!(w, "bin_gt")?,
+                I::OpGe => write!(w, "bin_ge")?,
+                I::OpLogicalOr => write!(w, "log_or")?,
+                I::OpLogicalAnd => write!(w, "log_and")?,
+                I::OpLogicalNot => write!(w, "log_not")?,
+                I::Pop => write!(w, "pop")?,
+                I::Ret => write!(w, "ret")?,
+                I::RetNull => write!(w, "ret_null")?,
+                I::Halt => write!(w, "halt")?,
+                I::EnterScope => write!(w, "enter_scope")?,
+                I::ExitScope => write!(w, "exit_scope")?,
                 _ => unimplemented!(),
             }
+
+            if let Some(name) = name {
+                write!(w, " ({})", name)?;
+            }
+
+            writeln!(w)?;
         }
 
         Ok(())
@@ -425,10 +495,10 @@ impl Program {
         type I = Instruction;
 
         let mut ptr = 0;
-        let mut instructions = Vec::<Instruction>::new();
+        let mut instructions = Vec::<RichInstruction>::new();
 
         loop {
-            instructions.push(match bytes.get(ptr) {
+            let instr = match bytes.get(ptr) {
                 Some(b) => match b {
                     0 => {
                         ptr += 1 + size_of::<u128>();
@@ -518,7 +588,47 @@ impl Program {
                     b => panic!("invalid byte 0x{:0x} at position {}", b, ptr),
                 },
                 None => break,
-            });
+            };
+
+            let size = size_of::<usize>();
+
+            let span = if bytes[ptr] == 1 {
+                ptr += 1 + size;
+                let start = read_ne_usize(&mut &bytes[(ptr - size)..ptr]);
+
+                ptr += 1 + size;
+                let end = read_ne_usize(&mut &bytes[(ptr - size)..ptr]);
+
+                ptr += 1 + size;
+                let src_len = read_ne_usize(&mut &bytes[(ptr - size)..ptr]);
+
+                ptr += 1 + src_len;
+                let src = PathBuf::from_raw_vec(Vec::from(&bytes[(ptr - src_len)..ptr]))
+                    .unwrap()
+                    .as_path();
+
+                let src = Source::from_path(src);
+
+                Some(Span::new(src, start..end))
+            } else {
+                None
+            };
+
+            ptr += 1 + size;
+            let string_len = read_ne_usize(&mut &bytes[(ptr - size)..ptr]);
+
+            ptr += 1 + string_len;
+            let name = if string_len > 0 {
+                Some(String::from_utf8(Vec::from(&bytes[(ptr - string_len)..ptr])).unwrap())
+            } else {
+                None
+            };
+
+            instructions.push(RichInstruction {
+                inner: instr,
+                span,
+                name,
+            })
         }
 
         Self {
