@@ -47,7 +47,6 @@ pub enum Expr {
         condition: SpannedExpr,
         body: Vec<SpannedNode>,
     },
-    Invalid,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -205,6 +204,7 @@ impl ParseInterface for Expr {
         }
 
         get_body_parser()
+            .then_ignore(end())
             .map(|b| {
                 let Body(body, _) = b.into_node();
 
@@ -229,6 +229,7 @@ impl ParseInterface for Node {
         let (_, span) = tokens.last().unwrap();
 
         get_body_parser()
+            .then_ignore(end())
             .map(|body| Self::Module(body.into_node().0))
             .parse(Stream::<_, Span, _>::from_iter(
                 Span::single(span.src(), span.end()),
@@ -244,10 +245,12 @@ impl ParseInterface for Body {
     {
         let (_, span) = tokens.last().unwrap();
 
-        get_body_parser().parse(Stream::<_, Span, _>::from_iter(
-            Span::single(span.src(), span.end()),
-            tokens.into_iter(),
-        )).map(|b| b.into_node())
+        get_body_parser()
+            .then_ignore(end())
+            .parse(Stream::<_, Span, _>::from_iter(
+                Span::single(span.src(), span.end()),
+                tokens.into_iter(),
+            )).map(|b| b.into_node())
     }
 }
 
@@ -301,19 +304,15 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
                 .map_with_span(|e, span| SpannedExpr::new(e, span))
                 .labelled("identifier");
 
-            let array = nested_parser(
-                e
-                    .clone()
-                    .separated_by(just::<_, Token, _>(Token::Comma))
-                    .allow_trailing()
-                    .map(Some),
-                Bracket::Bracket,
-                |_| None,
-            )
-                .map_with_span(|a, span| Spanned::new(match a {
-                    Some(a) => Expr::Array(a),
-                    None => Expr::Invalid,
-                }, span));
+            let array = e
+                .clone()
+                .separated_by(just::<_, Token, _>(Token::Comma))
+                .allow_trailing()
+                .delimited_by(
+                    just(Token::StartBracket(Bracket::Bracket)),
+                    just(Token::EndBracket(Bracket::Bracket)),
+                )
+                .map_with_span(|a, span| Spanned::new(Expr::Array(a), span));
 
             let if_stmt = just::<_, Token, _>(Token::Keyword(Keyword::If))
                 .ignore_then(e.clone())
