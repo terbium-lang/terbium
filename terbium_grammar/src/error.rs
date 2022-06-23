@@ -158,10 +158,6 @@ impl Error {
             .write(cache, writer)
             .unwrap();
     }
-
-    pub fn print(self) {
-        self.write()
-    }
 }
 
 impl<T: Into<TargetKind> + Clone> chumsky::Error<T> for Error {

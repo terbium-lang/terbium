@@ -3,9 +3,9 @@
 
 use std::collections::HashMap;
 
-use super::{Addr, AddrRepr, Instruction, Program};
+use super::{Addr, AddrRepr, Instruction, Program, RichInstruction};
 use terbium_grammar::ast::Target;
-use terbium_grammar::{Body, Expr, Node, Operator};
+use terbium_grammar::{Body, Expr, Node, Operator, Spanned};
 
 // Contrary to assumption, this does not take into account scope and in reality
 // it's just a super basic string-interner, in a way.
@@ -68,6 +68,14 @@ impl Interpreter {
     }
 
     pub fn push(&mut self, procedure: MaybeProc, instr: Instruction) {
+        self.program.push(procedure, RichInstruction {
+            inner: instr,
+            span: None,
+            name: None,
+        });
+    }
+
+    pub fn push_rich(&mut self, procedure: MaybeProc, instr: RichInstruction) {
         self.program.push(procedure, instr);
     }
 
@@ -91,7 +99,10 @@ impl Interpreter {
     }
 
     #[allow(clippy::too_many_lines)] // Should probably refactor it later
-    pub fn interpret_expr(&mut self, proc: MaybeProc, expr: Expr) {
+    pub fn interpret_expr(&mut self, proc: MaybeProc, expr: Spanned<Expr>) {
+        let span = expr.span();
+        let expr = expr.into_node();
+
         match expr {
             Expr::Integer(i) => self.push(proc, Instruction::LoadInt(i)),
             Expr::Bool(b) => self.push(proc, Instruction::LoadBool(b)),
@@ -109,11 +120,11 @@ impl Interpreter {
                 ),
             ),
             Expr::UnaryExpr { operator, value } => {
-                self.interpret_expr(proc, *value);
+                self.interpret_expr(proc, value);
 
                 self.push(
                     proc,
-                    match operator {
+                    match operator.into_node() {
                         Operator::Add => Instruction::UnOpPos,
                         Operator::Sub => Instruction::UnOpNeg,
                         Operator::Not => Instruction::OpLogicalNot,
@@ -123,12 +134,12 @@ impl Interpreter {
                 );
             }
             Expr::BinaryExpr { operator, lhs, rhs } => {
-                self.interpret_expr(proc, *lhs);
-                self.interpret_expr(proc, *rhs);
+                self.interpret_expr(proc, lhs);
+                self.interpret_expr(proc, rhs);
 
                 self.push(
                     proc,
-                    match operator {
+                    match operator.node() {
                         Operator::Add => Instruction::BinOpAdd,
                         Operator::Sub => Instruction::BinOpSub,
                         Operator::Mul => Instruction::BinOpMul,
@@ -158,17 +169,16 @@ impl Interpreter {
                 body,
                 mut else_if_bodies,
                 else_body,
-                return_last,
             } => {
                 if else_if_bodies.is_empty() {
-                    self.interpret_expr(proc, *condition);
+                    self.interpret_expr(proc, condition);
 
                     let then_proc = self.program.create_procedure();
-                    self.interpret_body_scoped(then_proc, Body(body, return_last));
+                    self.interpret_body_scoped(then_proc, body.into_node());
 
                     if let Some(else_body) = else_body {
                         let else_proc = self.program.create_procedure();
-                        self.interpret_body_scoped(else_proc, Body(else_body.0, return_last));
+                        self.interpret_body_scoped(else_proc, else_body.into_node());
 
                         self.push(
                             proc,
@@ -184,7 +194,7 @@ impl Interpreter {
                     return;
                 }
 
-                else_if_bodies.insert(0, (*condition, Body(body, return_last)));
+                else_if_bodies.insert(0, (condition, body));
 
                 let mut last_parent = proc;
                 let mut last_else = self.program.create_procedure();
@@ -193,7 +203,7 @@ impl Interpreter {
                     self.interpret_expr(last_parent, cond);
 
                     let then_proc = self.program.create_procedure();
-                    self.interpret_body_scoped(then_proc, body);
+                    self.interpret_body_scoped(then_proc, body.into_node());
 
                     self.push(
                         last_parent,
@@ -215,14 +225,14 @@ impl Interpreter {
                 if let Some(else_body) = else_body {
                     self.interpret_body_scoped(last_parent.unwrap_or_else(
                         || unreachable!("last_parent is always an if or else if block and never the top level")
-                    ), else_body);
+                    ), else_body.into_node());
                 } else {
                     self.push(last_parent, Instruction::RetNull);
                 }
             }
             Expr::While { condition, body } => {
                 let loc = self.program.next_addr(proc);
-                self.interpret_expr(proc, *condition);
+                self.interpret_expr(proc, condition);
 
                 let body_proc = self.program.create_procedure();
                 self.interpret_body_scoped_no_return(body_proc, body);
@@ -234,7 +244,10 @@ impl Interpreter {
         }
     }
 
-    pub fn interpret_node(&mut self, proc: MaybeProc, node: Node) {
+    pub fn interpret_node(&mut self, proc: MaybeProc, node: Spanned<Node>) {
+        let span = node.span();
+        let node = node.into_node();
+
         match node {
             Node::Expr(e) => self.interpret_expr(proc, e),
             Node::Module(m) => self.interpret_body(proc, Body(m, false)),
@@ -289,7 +302,7 @@ impl Interpreter {
         }
     }
 
-    pub fn interpret_body_no_return(&mut self, proc: MaybeProc, body: Vec<Node>) {
+    pub fn interpret_body_no_return(&mut self, proc: MaybeProc, body: Vec<Spanned<Node>>) {
         for node in body {
             self.interpret_node(proc, node);
         }
@@ -305,7 +318,7 @@ impl Interpreter {
         }
     }
 
-    pub fn interpret_body_scoped_no_return(&mut self, proc: AddrRepr, body: Vec<Node>) {
+    pub fn interpret_body_scoped_no_return(&mut self, proc: AddrRepr, body: Vec<Spanned<Node>>) {
         self.push_enter_scope(proc);
         self.interpret_body_no_return(Some(proc), body);
         self.push_exit_scope(proc);
