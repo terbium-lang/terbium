@@ -665,6 +665,24 @@
 <span id="659">659</span>
 <span id="660">660</span>
 <span id="661">661</span>
+<span id="662">662</span>
+<span id="663">663</span>
+<span id="664">664</span>
+<span id="665">665</span>
+<span id="666">666</span>
+<span id="667">667</span>
+<span id="668">668</span>
+<span id="669">669</span>
+<span id="670">670</span>
+<span id="671">671</span>
+<span id="672">672</span>
+<span id="673">673</span>
+<span id="674">674</span>
+<span id="675">675</span>
+<span id="676">676</span>
+<span id="677">677</span>
+<span id="678">678</span>
+<span id="679">679</span>
 </pre><pre class="rust"><code><span class="doccomment">//! Crate for Terbium byte-code/intermediate represenation.</span>
 <span class="doccomment">//!</span>
 <span class="doccomment">//! Because Terbium can be directly interpreted or be compiled into LLVM IR,</span>
@@ -682,8 +700,8 @@
 <span class="kw">use</span> <span class="ident">std::path::PathBuf</span>;
 <span class="kw">use</span> <span class="ident">std::str::FromStr</span>;
 
-<span class="kw">use</span> <span class="ident">terbium_grammar</span>::{<span class="ident">Source</span>, <span class="ident">Span</span>};
 <span class="kw">pub</span> <span class="kw">use</span> <span class="ident">interpreter::Interpreter</span>;
+<span class="kw">use</span> <span class="ident">terbium_grammar</span>::{<span class="ident">Source</span>, <span class="ident">Span</span>};
 <span class="kw">pub</span> <span class="kw">use</span> <span class="ident">util::EqComparableFloat</span>;
 
 <span class="kw">pub</span> <span class="kw">type</span> <span class="ident">AddrRepr</span> <span class="op">=</span> <span class="ident">usize</span>;
@@ -772,24 +790,25 @@
 
     <span class="attribute">#[<span class="ident">must_use</span>]</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">size</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident">usize</span> {
-        <span class="number">1_usize</span> <span class="op">+</span> <span class="kw">match</span> <span class="self">self</span> {
-            <span class="ident"><span class="self">Self</span>::LoadInt</span>(<span class="kw">_</span>) =&gt; <span class="ident">size_of</span>::<span class="op">&lt;</span><span class="ident">u128</span><span class="op">&gt;</span>(),
-            <span class="ident"><span class="self">Self</span>::LoadFloat</span>(<span class="kw">_</span>) =&gt; <span class="ident">size_of</span>::<span class="op">&lt;</span><span class="ident">f64</span><span class="op">&gt;</span>(),
-            <span class="ident"><span class="self">Self</span>::LoadString</span>(<span class="ident">s</span>) =&gt; <span class="ident">s</span>.<span class="ident">len</span>(), <span class="comment">// FIXME: String might exceeds 255</span>
-            <span class="ident"><span class="self">Self</span>::LoadBool</span>(<span class="kw">_</span>) =&gt; <span class="number">1</span>,
-            <span class="ident"><span class="self">Self</span>::LoadVar</span>(<span class="kw">_</span>)
-            <span class="op">|</span> <span class="ident"><span class="self">Self</span>::StoreVar</span>(<span class="kw">_</span>)
-            <span class="op">|</span> <span class="ident"><span class="self">Self</span>::StoreMutVar</span>(<span class="kw">_</span>)
-            <span class="op">|</span> <span class="ident"><span class="self">Self</span>::StoreConstVar</span>(<span class="kw">_</span>)
-            <span class="op">|</span> <span class="ident"><span class="self">Self</span>::MakeFunc</span>(<span class="kw">_</span>)
-            <span class="op">|</span> <span class="ident"><span class="self">Self</span>::Load</span>(<span class="kw">_</span>)
-            <span class="op">|</span> <span class="ident"><span class="self">Self</span>::Store</span>(<span class="kw">_</span>)
-            <span class="op">|</span> <span class="ident"><span class="self">Self</span>::LoadFrame</span>(<span class="kw">_</span>)
-            <span class="op">|</span> <span class="ident"><span class="self">Self</span>::AssignVar</span>(<span class="kw">_</span>) =&gt; <span class="ident">size_of</span>::<span class="op">&lt;</span><span class="ident">usize</span><span class="op">&gt;</span>(),
-            <span class="ident"><span class="self">Self</span>::Jump</span>(<span class="kw">_</span>) <span class="op">|</span> <span class="ident"><span class="self">Self</span>::JumpIf</span>(<span class="kw">_</span>) =&gt; <span class="ident">size_of</span>::<span class="op">&lt;</span><span class="ident">AddrRepr</span><span class="op">&gt;</span>(),
-            <span class="ident"><span class="self">Self</span>::JumpIfElse</span>(<span class="kw">_</span>, <span class="kw">_</span>) =&gt; <span class="ident">size_of</span>::<span class="op">&lt;</span><span class="ident">AddrRepr</span><span class="op">&gt;</span>() <span class="op">*</span> <span class="number">2</span>,
-            <span class="kw">_</span> =&gt; <span class="number">0</span>,
-        }
+        <span class="number">1_usize</span>
+            <span class="op">+</span> <span class="kw">match</span> <span class="self">self</span> {
+                <span class="ident"><span class="self">Self</span>::LoadInt</span>(<span class="kw">_</span>) =&gt; <span class="ident">size_of</span>::<span class="op">&lt;</span><span class="ident">u128</span><span class="op">&gt;</span>(),
+                <span class="ident"><span class="self">Self</span>::LoadFloat</span>(<span class="kw">_</span>) =&gt; <span class="ident">size_of</span>::<span class="op">&lt;</span><span class="ident">f64</span><span class="op">&gt;</span>(),
+                <span class="ident"><span class="self">Self</span>::LoadString</span>(<span class="ident">s</span>) =&gt; <span class="ident">s</span>.<span class="ident">len</span>(), <span class="comment">// FIXME: String might exceeds 255</span>
+                <span class="ident"><span class="self">Self</span>::LoadBool</span>(<span class="kw">_</span>) =&gt; <span class="number">1</span>,
+                <span class="ident"><span class="self">Self</span>::LoadVar</span>(<span class="kw">_</span>)
+                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::StoreVar</span>(<span class="kw">_</span>)
+                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::StoreMutVar</span>(<span class="kw">_</span>)
+                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::StoreConstVar</span>(<span class="kw">_</span>)
+                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::MakeFunc</span>(<span class="kw">_</span>)
+                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::Load</span>(<span class="kw">_</span>)
+                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::Store</span>(<span class="kw">_</span>)
+                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::LoadFrame</span>(<span class="kw">_</span>)
+                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::AssignVar</span>(<span class="kw">_</span>) =&gt; <span class="ident">size_of</span>::<span class="op">&lt;</span><span class="ident">usize</span><span class="op">&gt;</span>(),
+                <span class="ident"><span class="self">Self</span>::Jump</span>(<span class="kw">_</span>) <span class="op">|</span> <span class="ident"><span class="self">Self</span>::JumpIf</span>(<span class="kw">_</span>) =&gt; <span class="ident">size_of</span>::<span class="op">&lt;</span><span class="ident">AddrRepr</span><span class="op">&gt;</span>(),
+                <span class="ident"><span class="self">Self</span>::JumpIfElse</span>(<span class="kw">_</span>, <span class="kw">_</span>) =&gt; <span class="ident">size_of</span>::<span class="op">&lt;</span><span class="ident">AddrRepr</span><span class="op">&gt;</span>() <span class="op">*</span> <span class="number">2</span>,
+                <span class="kw">_</span> =&gt; <span class="number">0</span>,
+            }
     }
 
     <span class="attribute">#[<span class="ident">must_use</span>]</span>
@@ -861,23 +880,33 @@
 }
 
 <span class="kw">impl</span> <span class="ident">RichInstruction</span> {
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">spanned</span>(<span class="ident">instr</span>: <span class="ident">Instruction</span>, <span class="ident">span</span>: <span class="ident">Span</span>) -&gt; <span class="self">Self</span> {
-        <span class="self">Self</span> { <span class="ident">inner</span>: <span class="ident">instr</span>, <span class="ident">span</span>: <span class="prelude-val">Some</span>(<span class="ident">span</span>), <span class="ident">name</span>: <span class="prelude-val">None</span> }
+    <span class="attribute">#[<span class="ident">must_use</span>]</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="kw">fn</span> <span class="ident">spanned</span>(<span class="ident">instr</span>: <span class="ident">Instruction</span>, <span class="ident">span</span>: <span class="ident">Span</span>) -&gt; <span class="self">Self</span> {
+        <span class="self">Self</span> {
+            <span class="ident">inner</span>: <span class="ident">instr</span>,
+            <span class="ident">span</span>: <span class="prelude-val">Some</span>(<span class="ident">span</span>),
+            <span class="ident">name</span>: <span class="prelude-val">None</span>,
+        }
     }
 
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">instr</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span><span class="ident">Instruction</span> {
+    <span class="attribute">#[<span class="ident">must_use</span>]</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="kw">fn</span> <span class="ident">instr</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span><span class="ident">Instruction</span> {
         <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">inner</span>
     }
 
+    <span class="attribute">#[<span class="ident">must_use</span>]</span>
+    <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">clippy::missing_const_for_fn</span>)]</span> <span class="comment">// Destructor cannot be evaluated at compile-time</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">into_instr</span>(<span class="self">self</span>) -&gt; <span class="ident">Instruction</span> {
         <span class="self">self</span>.<span class="ident">inner</span>
     }
 
+    <span class="attribute">#[<span class="ident">must_use</span>]</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">span</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Span</span><span class="op">&gt;</span> {
         <span class="self">self</span>.<span class="ident">span</span>.<span class="ident">clone</span>()
     }
 
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">name</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span><span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span> {
+    <span class="attribute">#[<span class="ident">must_use</span>]</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="kw">fn</span> <span class="ident">name</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span><span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span> {
         <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">name</span>
     }
 }
@@ -1012,23 +1041,29 @@
         <span class="self">self</span>.<span class="ident">inner</span> <span class="op">=</span> <span class="self">self</span>
             .<span class="ident">inner</span>
             .<span class="ident">iter</span>()
-            .<span class="ident">map</span>(<span class="op">|</span><span class="ident">RichInstruction</span> { <span class="ident">inner</span>: <span class="ident">instr</span>, <span class="ident">span</span>, <span class="ident">name</span> }<span class="op">|</span> <span class="ident">RichInstruction</span> {
-                <span class="ident">inner</span>: <span class="kw">match</span> <span class="ident">instr</span> {
-                    <span class="ident">Instruction::Jump</span>(<span class="ident">addr</span>) =&gt; {
-                        <span class="ident">Instruction::Jump</span>(<span class="ident"><span class="self">Self</span>::resolve_addr</span>(<span class="kw-2">&amp;</span><span class="ident">lookup</span>, <span class="kw-2">*</span><span class="ident">addr</span>))
-                    }
-                    <span class="ident">Instruction::JumpIf</span>(<span class="ident">addr</span>) =&gt; {
-                        <span class="ident">Instruction::JumpIf</span>(<span class="ident"><span class="self">Self</span>::resolve_addr</span>(<span class="kw-2">&amp;</span><span class="ident">lookup</span>, <span class="kw-2">*</span><span class="ident">addr</span>))
-                    }
-                    <span class="ident">Instruction::JumpIfElse</span>(<span class="ident">a</span>, <span class="ident">b</span>) =&gt; <span class="ident">Instruction::JumpIfElse</span>(
-                        <span class="ident"><span class="self">Self</span>::resolve_addr</span>(<span class="kw-2">&amp;</span><span class="ident">lookup</span>, <span class="kw-2">*</span><span class="ident">a</span>),
-                        <span class="ident"><span class="self">Self</span>::resolve_addr</span>(<span class="kw-2">&amp;</span><span class="ident">lookup</span>, <span class="kw-2">*</span><span class="ident">b</span>),
-                    ),
-                    <span class="ident">o</span> =&gt; <span class="ident">o</span>.<span class="ident">clone</span>(), <span class="comment">// TODO: don&#39;t clone</span>
+            .<span class="ident">map</span>(
+                <span class="op">|</span><span class="ident">RichInstruction</span> {
+                     <span class="ident">inner</span>: <span class="ident">instr</span>,
+                     <span class="ident">span</span>,
+                     <span class="ident">name</span>,
+                 }<span class="op">|</span> <span class="ident">RichInstruction</span> {
+                    <span class="ident">inner</span>: <span class="kw">match</span> <span class="ident">instr</span> {
+                        <span class="ident">Instruction::Jump</span>(<span class="ident">addr</span>) =&gt; {
+                            <span class="ident">Instruction::Jump</span>(<span class="ident"><span class="self">Self</span>::resolve_addr</span>(<span class="kw-2">&amp;</span><span class="ident">lookup</span>, <span class="kw-2">*</span><span class="ident">addr</span>))
+                        }
+                        <span class="ident">Instruction::JumpIf</span>(<span class="ident">addr</span>) =&gt; {
+                            <span class="ident">Instruction::JumpIf</span>(<span class="ident"><span class="self">Self</span>::resolve_addr</span>(<span class="kw-2">&amp;</span><span class="ident">lookup</span>, <span class="kw-2">*</span><span class="ident">addr</span>))
+                        }
+                        <span class="ident">Instruction::JumpIfElse</span>(<span class="ident">a</span>, <span class="ident">b</span>) =&gt; <span class="ident">Instruction::JumpIfElse</span>(
+                            <span class="ident"><span class="self">Self</span>::resolve_addr</span>(<span class="kw-2">&amp;</span><span class="ident">lookup</span>, <span class="kw-2">*</span><span class="ident">a</span>),
+                            <span class="ident"><span class="self">Self</span>::resolve_addr</span>(<span class="kw-2">&amp;</span><span class="ident">lookup</span>, <span class="kw-2">*</span><span class="ident">b</span>),
+                        ),
+                        <span class="ident">o</span> =&gt; <span class="ident">o</span>.<span class="ident">clone</span>(), <span class="comment">// TODO: don&#39;t clone</span>
+                    },
+                    <span class="ident">span</span>: <span class="ident">span</span>.<span class="ident">clone</span>(),
+                    <span class="ident">name</span>: <span class="ident">name</span>.<span class="ident">clone</span>(),
                 },
-                <span class="ident">span</span>: <span class="ident">span</span>.<span class="ident">clone</span>(),
-                <span class="ident">name</span>: <span class="ident">name</span>.<span class="ident">clone</span>(),
-            })
+            )
             .<span class="ident">collect</span>();
 
         <span class="self">self</span>
@@ -1039,7 +1074,12 @@
         <span class="kw">type</span> <span class="ident">I</span> <span class="op">=</span> <span class="ident">Instruction</span>;
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">bytes</span> <span class="op">=</span> <span class="ident">Vec::new</span>();
 
-        <span class="kw">for</span> <span class="ident">RichInstruction</span> { <span class="ident">inner</span>: <span class="ident">instr</span>, <span class="ident">span</span>, <span class="ident">name</span> } <span class="kw">in</span> <span class="self">self</span>.<span class="ident">inner</span>() {
+        <span class="kw">for</span> <span class="ident">RichInstruction</span> {
+            <span class="ident">inner</span>: <span class="ident">instr</span>,
+            <span class="ident">span</span>,
+            <span class="ident">name</span>,
+        } <span class="kw">in</span> <span class="self">self</span>.<span class="ident">inner</span>()
+        {
             <span class="ident">bytes</span>.<span class="ident">push</span>(<span class="ident">instr</span>.<span class="ident">to_instr_id</span>());
 
             <span class="kw">match</span> <span class="ident">instr</span> {
@@ -1071,31 +1111,25 @@
                 <span class="kw">_</span> =&gt; (),
             }
 
-            <span class="kw">let</span> <span class="ident">span_bytes</span> <span class="op">=</span> <span class="ident">span</span>.<span class="ident">clone</span>().<span class="ident">map</span>(
-                <span class="op">|</span><span class="ident">s</span><span class="op">|</span> {
-                    <span class="kw">let</span> <span class="ident">path</span> <span class="op">=</span> <span class="ident">s</span>.<span class="ident">src</span>().<span class="ident">to_path</span>();
-                    <span class="kw">let</span> <span class="ident">lossy</span> <span class="op">=</span> <span class="ident">path</span>.<span class="ident">to_string_lossy</span>();
-                    <span class="kw">let</span> <span class="ident">src_bytes</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="ident">lossy</span>.<span class="ident">as_bytes</span>();
+            <span class="kw">let</span> <span class="ident">span_bytes</span> <span class="op">=</span> <span class="ident">span</span>.<span class="ident">clone</span>().<span class="ident">map</span>(<span class="op">|</span><span class="ident">s</span><span class="op">|</span> {
+                <span class="kw">let</span> <span class="ident">path</span> <span class="op">=</span> <span class="ident">s</span>.<span class="ident">src</span>().<span class="ident">to_path</span>();
+                <span class="kw">let</span> <span class="ident">lossy</span> <span class="op">=</span> <span class="ident">path</span>.<span class="ident">to_string_lossy</span>();
+                <span class="kw">let</span> <span class="ident">src_bytes</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="ident">lossy</span>.<span class="ident">as_bytes</span>();
 
-                    [
-                        [<span class="number">1_u8</span>].<span class="ident">as_slice</span>(),
-                        <span class="ident">s</span>.<span class="ident">start</span>().<span class="ident">to_ne_bytes</span>().<span class="ident">as_slice</span>(),
-                        <span class="ident">s</span>.<span class="ident">end</span>().<span class="ident">to_ne_bytes</span>().<span class="ident">as_slice</span>(),
-                        <span class="ident">src_bytes</span>.<span class="ident">len</span>().<span class="ident">to_ne_bytes</span>().<span class="ident">as_slice</span>(),
-                        <span class="ident">src_bytes</span>,
-                    ].<span class="ident">concat</span>()
-                }
-            );
-            <span class="ident">bytes</span>.<span class="ident">extend_from_slice</span>(<span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="ident">span_bytes</span>.<span class="ident">unwrap_or</span>(<span class="macro">vec!</span>[<span class="number">0_u8</span>]));
+                [
+                    [<span class="number">1_u8</span>].<span class="ident">as_slice</span>(),
+                    <span class="ident">s</span>.<span class="ident">start</span>().<span class="ident">to_ne_bytes</span>().<span class="ident">as_slice</span>(),
+                    <span class="ident">s</span>.<span class="ident">end</span>().<span class="ident">to_ne_bytes</span>().<span class="ident">as_slice</span>(),
+                    <span class="ident">src_bytes</span>.<span class="ident">len</span>().<span class="ident">to_ne_bytes</span>().<span class="ident">as_slice</span>(),
+                    <span class="ident">src_bytes</span>,
+                ]
+                .<span class="ident">concat</span>()
+            });
+            <span class="ident">bytes</span>.<span class="ident">extend_from_slice</span>(<span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="ident">span_bytes</span>.<span class="ident">unwrap_or_else</span>(<span class="op">|</span><span class="op">|</span> <span class="macro">vec!</span>[<span class="number">0_u8</span>]));
 
             <span class="kw">let</span> <span class="ident">name_bytes</span> <span class="op">=</span> <span class="ident">name</span>.<span class="ident">clone</span>().<span class="ident">map</span>(<span class="op">|</span><span class="ident">s</span><span class="op">|</span> <span class="ident">s</span>.<span class="ident">as_bytes</span>().<span class="ident">to_vec</span>());
-            <span class="ident">bytes</span>.<span class="ident">extend_from_slice</span>(<span class="kw-2">&amp;</span><span class="ident">name_bytes</span>
-                .<span class="ident">clone</span>()
-                .<span class="ident">map</span>(<span class="op">|</span><span class="ident">n</span><span class="op">|</span> <span class="ident">n</span>.<span class="ident">len</span>())
-                .<span class="ident">unwrap_or</span>(<span class="number">0</span>)
-                .<span class="ident">to_ne_bytes</span>()
-            );
-            <span class="ident">bytes</span>.<span class="ident">extend_from_slice</span>(<span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="ident">name_bytes</span>.<span class="ident">unwrap_or</span>(<span class="macro">vec!</span>[]));
+            <span class="ident">bytes</span>.<span class="ident">extend_from_slice</span>(<span class="kw-2">&amp;</span><span class="ident">name_bytes</span>.<span class="ident">clone</span>().<span class="ident">map_or</span>(<span class="number">0</span>, <span class="op">|</span><span class="ident">n</span><span class="op">|</span> <span class="ident">n</span>.<span class="ident">len</span>()).<span class="ident">to_ne_bytes</span>());
+            <span class="ident">bytes</span>.<span class="ident">extend_from_slice</span>(<span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="ident">name_bytes</span>.<span class="ident">unwrap_or_default</span>());
         }
 
         <span class="ident">bytes</span>
@@ -1105,7 +1139,13 @@
         <span class="kw">type</span> <span class="ident">I</span> <span class="op">=</span> <span class="ident">Instruction</span>;
         <span class="kw">let</span> <span class="ident">pad_length</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">inner</span>.<span class="ident">len</span>().<span class="ident">saturating_sub</span>(<span class="number">1</span>).<span class="ident">to_string</span>().<span class="ident">len</span>();
 
-        <span class="kw">for</span> (<span class="ident">j</span>, <span class="ident">RichInstruction</span>{ <span class="ident">inner</span>: <span class="ident">instr</span>, <span class="ident">name</span>, .. }) <span class="kw">in</span> <span class="self">self</span>.<span class="ident">inner</span>().<span class="ident">enumerate</span>() {
+        <span class="kw">for</span> (
+            <span class="ident">j</span>,
+            <span class="ident">RichInstruction</span> {
+                <span class="ident">inner</span>: <span class="ident">instr</span>, <span class="ident">name</span>, ..
+            },
+        ) <span class="kw">in</span> <span class="self">self</span>.<span class="ident">inner</span>().<span class="ident">enumerate</span>()
+        {
             <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;{:01$} | &quot;</span>, <span class="ident">j</span>, <span class="ident">pad_length</span>)<span class="question-mark">?</span>;
             <span class="kw">match</span> <span class="ident">instr</span> {
                 <span class="ident">I::LoadInt</span>(<span class="ident">i</span>) =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;load_int {}&quot;</span>, <span class="ident">i</span>)<span class="question-mark">?</span>,
@@ -1164,103 +1204,99 @@
 
     <span class="attribute">#[<span class="ident">must_use</span>]</span>
     <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">clippy::match_same_arms</span>)]</span> <span class="comment">// Remove when unimplemented!() are all implemented</span>
+    <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">clippy::too_many_lines</span>)]</span> <span class="comment">// Should refactor later</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">from_bytes</span>(<span class="ident">bytes</span>: <span class="kw-2">&amp;</span>[<span class="ident">u8</span>]) -&gt; <span class="self">Self</span> {
         <span class="kw">type</span> <span class="ident">I</span> <span class="op">=</span> <span class="ident">Instruction</span>;
 
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">ptr</span> <span class="op">=</span> <span class="number">0</span>;
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">instructions</span> <span class="op">=</span> <span class="ident">Vec</span>::<span class="op">&lt;</span><span class="ident">RichInstruction</span><span class="op">&gt;</span><span class="ident">::new</span>();
 
-        <span class="kw">loop</span> {
-            <span class="kw">let</span> <span class="ident">instr</span> <span class="op">=</span> <span class="kw">match</span> <span class="ident">bytes</span>.<span class="ident">get</span>(<span class="ident">ptr</span>) {
-                <span class="prelude-val">Some</span>(<span class="ident">b</span>) =&gt; <span class="kw">match</span> <span class="ident">b</span> {
-                    <span class="number">0</span> =&gt; {
-                        <span class="ident">ptr</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span> <span class="op">+</span> <span class="ident">size_of</span>::<span class="op">&lt;</span><span class="ident">u128</span><span class="op">&gt;</span>();
-                        <span class="ident">I::LoadInt</span>(<span class="ident">read_ne_u128</span>(<span class="kw-2">&amp;mut</span> <span class="kw-2">&amp;</span><span class="ident">bytes</span>[(<span class="ident">ptr</span> <span class="op">-</span> <span class="number">16</span>)..<span class="ident">ptr</span>]))
-                    }
-                    <span class="number">1</span> =&gt; {
-                        <span class="ident">ptr</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span> <span class="op">+</span> <span class="ident">size_of</span>::<span class="op">&lt;</span><span class="ident">f64</span><span class="op">&gt;</span>();
-                        <span class="ident">I::LoadFloat</span>(<span class="ident">read_ne_f64</span>(<span class="kw-2">&amp;mut</span> <span class="kw-2">&amp;</span><span class="ident">bytes</span>[(<span class="ident">ptr</span> <span class="op">-</span> <span class="number">8</span>)..<span class="ident">ptr</span>]).<span class="ident">into</span>())
-                    }
-                    <span class="number">2</span> =&gt; {
-                        <span class="kw">let</span> <span class="ident">size</span> <span class="op">=</span> <span class="ident">size_of</span>::<span class="op">&lt;</span><span class="ident">usize</span><span class="op">&gt;</span>();
-                        <span class="ident">ptr</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span> <span class="op">+</span> <span class="ident">size</span>;
-                        <span class="kw">let</span> <span class="ident">len</span> <span class="op">=</span> <span class="ident">read_ne_usize</span>(<span class="kw-2">&amp;mut</span> <span class="kw-2">&amp;</span><span class="ident">bytes</span>[(<span class="ident">ptr</span> <span class="op">-</span> <span class="ident">size</span>)..<span class="ident">ptr</span>]);
+        <span class="kw">while</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">b</span>) <span class="op">=</span> <span class="ident">bytes</span>.<span class="ident">get</span>(<span class="ident">ptr</span>) {
+            <span class="kw">let</span> <span class="ident">instr</span> <span class="op">=</span> <span class="kw">match</span> <span class="ident">b</span> {
+                <span class="number">0</span> =&gt; {
+                    <span class="ident">ptr</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span> <span class="op">+</span> <span class="ident">size_of</span>::<span class="op">&lt;</span><span class="ident">u128</span><span class="op">&gt;</span>();
+                    <span class="ident">I::LoadInt</span>(<span class="ident">read_ne_u128</span>(<span class="kw-2">&amp;mut</span> <span class="kw-2">&amp;</span><span class="ident">bytes</span>[(<span class="ident">ptr</span> <span class="op">-</span> <span class="number">16</span>)..<span class="ident">ptr</span>]))
+                }
+                <span class="number">1</span> =&gt; {
+                    <span class="ident">ptr</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span> <span class="op">+</span> <span class="ident">size_of</span>::<span class="op">&lt;</span><span class="ident">f64</span><span class="op">&gt;</span>();
+                    <span class="ident">I::LoadFloat</span>(<span class="ident">read_ne_f64</span>(<span class="kw-2">&amp;mut</span> <span class="kw-2">&amp;</span><span class="ident">bytes</span>[(<span class="ident">ptr</span> <span class="op">-</span> <span class="number">8</span>)..<span class="ident">ptr</span>]).<span class="ident">into</span>())
+                }
+                <span class="number">2</span> =&gt; {
+                    <span class="kw">let</span> <span class="ident">size</span> <span class="op">=</span> <span class="ident">size_of</span>::<span class="op">&lt;</span><span class="ident">usize</span><span class="op">&gt;</span>();
+                    <span class="ident">ptr</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span> <span class="op">+</span> <span class="ident">size</span>;
+                    <span class="kw">let</span> <span class="ident">len</span> <span class="op">=</span> <span class="ident">read_ne_usize</span>(<span class="kw-2">&amp;mut</span> <span class="kw-2">&amp;</span><span class="ident">bytes</span>[(<span class="ident">ptr</span> <span class="op">-</span> <span class="ident">size</span>)..<span class="ident">ptr</span>]);
 
-                        <span class="ident">ptr</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span> <span class="op">+</span> <span class="ident">len</span>;
-                        <span class="ident">I::LoadString</span>(
-                            <span class="ident">String::from_utf8</span>(<span class="ident">Vec::from</span>(<span class="kw-2">&amp;</span><span class="ident">bytes</span>[(<span class="ident">ptr</span> <span class="op">-</span> <span class="ident">len</span>)..<span class="ident">ptr</span>])).<span class="ident">unwrap</span>(),
-                        )
-                    }
-                    <span class="number">3</span> =&gt; {
-                        <span class="ident">ptr</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span> <span class="op">+</span> <span class="ident">size_of</span>::<span class="op">&lt;</span><span class="ident">bool</span><span class="op">&gt;</span>();
-                        <span class="ident">I::LoadBool</span>(<span class="ident">bytes</span>[<span class="ident">ptr</span> <span class="op">-</span> <span class="number">1</span>] <span class="op">==</span> <span class="number">0</span>)
-                    }
-                    <span class="number">4</span> =&gt; <span class="macro">parse_usize!</span>(<span class="ident">ptr</span>, <span class="ident">bytes</span>, <span class="ident">Load</span>),
-                    <span class="number">5</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::UnOpPos</span>),
-                    <span class="number">6</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::UnOpNeg</span>),
-                    <span class="number">7</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::BinOpAdd</span>),
-                    <span class="number">8</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::BinOpSub</span>),
-                    <span class="number">9</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::BinOpMul</span>),
-                    <span class="number">10</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::BinOpDiv</span>),
-                    <span class="number">11</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::BinOpTrueDiv</span>),
-                    <span class="number">12</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::BinOpPow</span>),
-                    <span class="number">13</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::BinOpBitOr</span>),
-                    <span class="number">14</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::BinOpBitXor</span>),
-                    <span class="number">15</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::BinOpBitAnd</span>),
-                    <span class="number">16</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::UnOpBitNot</span>),
-                    <span class="number">17</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::OpEq</span>),
-                    <span class="number">18</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::OpNe</span>),
-                    <span class="number">19</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::OpLt</span>),
-                    <span class="number">20</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::OpLe</span>),
-                    <span class="number">21</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::OpGt</span>),
-                    <span class="number">22</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::OpGe</span>),
-                    <span class="number">23</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::OpLogicalOr</span>),
-                    <span class="number">24</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::OpLogicalAnd</span>),
-                    <span class="number">25</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::OpLogicalNot</span>),
-                    <span class="number">26</span> =&gt; <span class="macro">parse_usize!</span>(<span class="ident">ptr</span>, <span class="ident">bytes</span>, <span class="ident">LoadVar</span>),
-                    <span class="number">27</span> =&gt; <span class="macro">parse_usize!</span>(<span class="ident">ptr</span>, <span class="ident">bytes</span>, <span class="ident">StoreVar</span>),
-                    <span class="number">28</span> =&gt; <span class="macro">parse_usize!</span>(<span class="ident">ptr</span>, <span class="ident">bytes</span>, <span class="ident">StoreMutVar</span>),
-                    <span class="number">29</span> =&gt; <span class="macro">parse_usize!</span>(<span class="ident">ptr</span>, <span class="ident">bytes</span>, <span class="ident">StoreConstVar</span>),
-                    <span class="number">30</span> =&gt; <span class="macro">unimplemented!</span>(),
-                    <span class="number">31</span> =&gt; <span class="macro">unimplemented!</span>(),
-                    <span class="number">32</span> =&gt; {
-                        <span class="ident">ptr</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span> <span class="op">+</span> <span class="ident">size_of</span>::<span class="op">&lt;</span><span class="ident">AddrRepr</span><span class="op">&gt;</span>();
-                        <span class="ident">I::Jump</span>(<span class="ident">Addr::Absolute</span>(<span class="ident">read_ne_usize</span>(
-                            <span class="kw-2">&amp;mut</span> <span class="kw-2">&amp;</span><span class="ident">bytes</span>[(<span class="ident">ptr</span> <span class="op">-</span> <span class="ident">size_of</span>::<span class="op">&lt;</span><span class="ident">AddrRepr</span><span class="op">&gt;</span>())..<span class="ident">ptr</span>],
-                        )))
-                    }
-                    <span class="number">33</span> =&gt; {
-                        <span class="ident">ptr</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span> <span class="op">+</span> <span class="ident">size_of</span>::<span class="op">&lt;</span><span class="ident">AddrRepr</span><span class="op">&gt;</span>();
-                        <span class="ident">I::JumpIf</span>(<span class="ident">Addr::Absolute</span>(<span class="ident">read_ne_usize</span>(
-                            <span class="kw-2">&amp;mut</span> <span class="kw-2">&amp;</span><span class="ident">bytes</span>[(<span class="ident">ptr</span> <span class="op">-</span> <span class="ident">size_of</span>::<span class="op">&lt;</span><span class="ident">AddrRepr</span><span class="op">&gt;</span>())..<span class="ident">ptr</span>],
-                        )))
-                    }
-                    <span class="number">34</span> =&gt; {
-                        <span class="ident">ptr</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span> <span class="op">+</span> <span class="ident">size_of</span>::<span class="op">&lt;</span><span class="ident">AddrRepr</span><span class="op">&gt;</span>();
-                        <span class="kw">let</span> <span class="ident">first</span> <span class="op">=</span> <span class="ident">Addr::Absolute</span>(<span class="ident">read_ne_usize</span>(
-                            <span class="kw-2">&amp;mut</span> <span class="kw-2">&amp;</span><span class="ident">bytes</span>[(<span class="ident">ptr</span> <span class="op">-</span> <span class="ident">size_of</span>::<span class="op">&lt;</span><span class="ident">AddrRepr</span><span class="op">&gt;</span>())..<span class="ident">ptr</span>],
-                        ));
+                    <span class="ident">ptr</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span> <span class="op">+</span> <span class="ident">len</span>;
+                    <span class="ident">I::LoadString</span>(<span class="ident">String::from_utf8</span>(<span class="ident">Vec::from</span>(<span class="kw-2">&amp;</span><span class="ident">bytes</span>[(<span class="ident">ptr</span> <span class="op">-</span> <span class="ident">len</span>)..<span class="ident">ptr</span>])).<span class="ident">unwrap</span>())
+                }
+                <span class="number">3</span> =&gt; {
+                    <span class="ident">ptr</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span> <span class="op">+</span> <span class="ident">size_of</span>::<span class="op">&lt;</span><span class="ident">bool</span><span class="op">&gt;</span>();
+                    <span class="ident">I::LoadBool</span>(<span class="ident">bytes</span>[<span class="ident">ptr</span> <span class="op">-</span> <span class="number">1</span>] <span class="op">==</span> <span class="number">0</span>)
+                }
+                <span class="number">4</span> =&gt; <span class="macro">parse_usize!</span>(<span class="ident">ptr</span>, <span class="ident">bytes</span>, <span class="ident">Load</span>),
+                <span class="number">5</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::UnOpPos</span>),
+                <span class="number">6</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::UnOpNeg</span>),
+                <span class="number">7</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::BinOpAdd</span>),
+                <span class="number">8</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::BinOpSub</span>),
+                <span class="number">9</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::BinOpMul</span>),
+                <span class="number">10</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::BinOpDiv</span>),
+                <span class="number">11</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::BinOpTrueDiv</span>),
+                <span class="number">12</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::BinOpPow</span>),
+                <span class="number">13</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::BinOpBitOr</span>),
+                <span class="number">14</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::BinOpBitXor</span>),
+                <span class="number">15</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::BinOpBitAnd</span>),
+                <span class="number">16</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::UnOpBitNot</span>),
+                <span class="number">17</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::OpEq</span>),
+                <span class="number">18</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::OpNe</span>),
+                <span class="number">19</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::OpLt</span>),
+                <span class="number">20</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::OpLe</span>),
+                <span class="number">21</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::OpGt</span>),
+                <span class="number">22</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::OpGe</span>),
+                <span class="number">23</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::OpLogicalOr</span>),
+                <span class="number">24</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::OpLogicalAnd</span>),
+                <span class="number">25</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::OpLogicalNot</span>),
+                <span class="number">26</span> =&gt; <span class="macro">parse_usize!</span>(<span class="ident">ptr</span>, <span class="ident">bytes</span>, <span class="ident">LoadVar</span>),
+                <span class="number">27</span> =&gt; <span class="macro">parse_usize!</span>(<span class="ident">ptr</span>, <span class="ident">bytes</span>, <span class="ident">StoreVar</span>),
+                <span class="number">28</span> =&gt; <span class="macro">parse_usize!</span>(<span class="ident">ptr</span>, <span class="ident">bytes</span>, <span class="ident">StoreMutVar</span>),
+                <span class="number">29</span> =&gt; <span class="macro">parse_usize!</span>(<span class="ident">ptr</span>, <span class="ident">bytes</span>, <span class="ident">StoreConstVar</span>),
+                <span class="number">30</span> =&gt; <span class="macro">unimplemented!</span>(),
+                <span class="number">31</span> =&gt; <span class="macro">unimplemented!</span>(),
+                <span class="number">32</span> =&gt; {
+                    <span class="ident">ptr</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span> <span class="op">+</span> <span class="ident">size_of</span>::<span class="op">&lt;</span><span class="ident">AddrRepr</span><span class="op">&gt;</span>();
+                    <span class="ident">I::Jump</span>(<span class="ident">Addr::Absolute</span>(<span class="ident">read_ne_usize</span>(
+                        <span class="kw-2">&amp;mut</span> <span class="kw-2">&amp;</span><span class="ident">bytes</span>[(<span class="ident">ptr</span> <span class="op">-</span> <span class="ident">size_of</span>::<span class="op">&lt;</span><span class="ident">AddrRepr</span><span class="op">&gt;</span>())..<span class="ident">ptr</span>],
+                    )))
+                }
+                <span class="number">33</span> =&gt; {
+                    <span class="ident">ptr</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span> <span class="op">+</span> <span class="ident">size_of</span>::<span class="op">&lt;</span><span class="ident">AddrRepr</span><span class="op">&gt;</span>();
+                    <span class="ident">I::JumpIf</span>(<span class="ident">Addr::Absolute</span>(<span class="ident">read_ne_usize</span>(
+                        <span class="kw-2">&amp;mut</span> <span class="kw-2">&amp;</span><span class="ident">bytes</span>[(<span class="ident">ptr</span> <span class="op">-</span> <span class="ident">size_of</span>::<span class="op">&lt;</span><span class="ident">AddrRepr</span><span class="op">&gt;</span>())..<span class="ident">ptr</span>],
+                    )))
+                }
+                <span class="number">34</span> =&gt; {
+                    <span class="ident">ptr</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span> <span class="op">+</span> <span class="ident">size_of</span>::<span class="op">&lt;</span><span class="ident">AddrRepr</span><span class="op">&gt;</span>();
+                    <span class="kw">let</span> <span class="ident">first</span> <span class="op">=</span> <span class="ident">Addr::Absolute</span>(<span class="ident">read_ne_usize</span>(
+                        <span class="kw-2">&amp;mut</span> <span class="kw-2">&amp;</span><span class="ident">bytes</span>[(<span class="ident">ptr</span> <span class="op">-</span> <span class="ident">size_of</span>::<span class="op">&lt;</span><span class="ident">AddrRepr</span><span class="op">&gt;</span>())..<span class="ident">ptr</span>],
+                    ));
 
-                        <span class="ident">ptr</span> <span class="op">+</span><span class="op">=</span> <span class="ident">size_of</span>::<span class="op">&lt;</span><span class="ident">AddrRepr</span><span class="op">&gt;</span>();
-                        <span class="ident">I::JumpIfElse</span>(
-                            <span class="ident">first</span>,
-                            <span class="ident">Addr::Absolute</span>(<span class="ident">read_ne_usize</span>(
-                                <span class="kw-2">&amp;mut</span> <span class="kw-2">&amp;</span><span class="ident">bytes</span>[(<span class="ident">ptr</span> <span class="op">-</span> <span class="ident">size_of</span>::<span class="op">&lt;</span><span class="ident">AddrRepr</span><span class="op">&gt;</span>())..<span class="ident">ptr</span>],
-                            )),
-                        )
-                    }
-                    <span class="number">35</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::Pop</span>),
-                    <span class="number">36</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::Ret</span>),
-                    <span class="number">37</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::RetNull</span>),
-                    <span class="number">38</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::Halt</span>),
-                    <span class="number">39</span> =&gt; <span class="macro">unimplemented!</span>(),
-                    <span class="number">40</span> =&gt; <span class="macro">parse_usize!</span>(<span class="ident">ptr</span>, <span class="ident">bytes</span>, <span class="ident">Store</span>),
-                    <span class="number">41</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::EnterScope</span>),
-                    <span class="number">42</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::ExitScope</span>),
-                    <span class="number">43</span> =&gt; <span class="macro">parse_usize!</span>(<span class="ident">ptr</span>, <span class="ident">bytes</span>, <span class="ident">AssignVar</span>),
-                    <span class="ident">b</span> =&gt; <span class="macro">panic!</span>(<span class="string">&quot;invalid byte 0x{:0x} at position {}&quot;</span>, <span class="ident">b</span>, <span class="ident">ptr</span>),
-                },
-                <span class="prelude-val">None</span> =&gt; <span class="kw">break</span>,
+                    <span class="ident">ptr</span> <span class="op">+</span><span class="op">=</span> <span class="ident">size_of</span>::<span class="op">&lt;</span><span class="ident">AddrRepr</span><span class="op">&gt;</span>();
+                    <span class="ident">I::JumpIfElse</span>(
+                        <span class="ident">first</span>,
+                        <span class="ident">Addr::Absolute</span>(<span class="ident">read_ne_usize</span>(
+                            <span class="kw-2">&amp;mut</span> <span class="kw-2">&amp;</span><span class="ident">bytes</span>[(<span class="ident">ptr</span> <span class="op">-</span> <span class="ident">size_of</span>::<span class="op">&lt;</span><span class="ident">AddrRepr</span><span class="op">&gt;</span>())..<span class="ident">ptr</span>],
+                        )),
+                    )
+                }
+                <span class="number">35</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::Pop</span>),
+                <span class="number">36</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::Ret</span>),
+                <span class="number">37</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::RetNull</span>),
+                <span class="number">38</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::Halt</span>),
+                <span class="number">39</span> =&gt; <span class="macro">unimplemented!</span>(),
+                <span class="number">40</span> =&gt; <span class="macro">parse_usize!</span>(<span class="ident">ptr</span>, <span class="ident">bytes</span>, <span class="ident">Store</span>),
+                <span class="number">41</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::EnterScope</span>),
+                <span class="number">42</span> =&gt; <span class="macro">progress!</span>(<span class="ident">ptr</span>, <span class="ident">I::ExitScope</span>),
+                <span class="number">43</span> =&gt; <span class="macro">parse_usize!</span>(<span class="ident">ptr</span>, <span class="ident">bytes</span>, <span class="ident">AssignVar</span>),
+                <span class="ident">b</span> =&gt; <span class="macro">panic!</span>(<span class="string">&quot;invalid byte 0x{:0x} at position {}&quot;</span>, <span class="ident">b</span>, <span class="ident">ptr</span>),
             };
 
             <span class="kw">let</span> <span class="ident">size</span> <span class="op">=</span> <span class="ident">size_of</span>::<span class="op">&lt;</span><span class="ident">usize</span><span class="op">&gt;</span>();
@@ -1276,9 +1312,9 @@
                 <span class="kw">let</span> <span class="ident">src_len</span> <span class="op">=</span> <span class="ident">read_ne_usize</span>(<span class="kw-2">&amp;mut</span> <span class="kw-2">&amp;</span><span class="ident">bytes</span>[(<span class="ident">ptr</span> <span class="op">-</span> <span class="ident">size</span>)..<span class="ident">ptr</span>]);
 
                 <span class="ident">ptr</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span> <span class="op">+</span> <span class="ident">src_len</span>;
-                <span class="kw">let</span> <span class="ident">path</span> <span class="op">=</span> <span class="ident">PathBuf::from_str</span>(<span class="kw-2">&amp;</span><span class="ident">String::from_utf8_lossy</span>(
-                    <span class="kw-2">&amp;</span><span class="ident">bytes</span>[(<span class="ident">ptr</span> <span class="op">-</span> <span class="ident">src_len</span>)..<span class="ident">ptr</span>]
-                )).<span class="ident">unwrap</span>();
+                <span class="kw">let</span> <span class="ident">path</span> <span class="op">=</span>
+                    <span class="ident">PathBuf::from_str</span>(<span class="kw-2">&amp;</span><span class="ident">String::from_utf8_lossy</span>(<span class="kw-2">&amp;</span><span class="ident">bytes</span>[(<span class="ident">ptr</span> <span class="op">-</span> <span class="ident">src_len</span>)..<span class="ident">ptr</span>]))
+                        .<span class="ident">unwrap</span>();
 
                 <span class="kw">let</span> <span class="ident">src</span> <span class="op">=</span> <span class="ident">path</span>.<span class="ident">as_path</span>();
                 <span class="kw">let</span> <span class="ident">src</span> <span class="op">=</span> <span class="ident">Source::from_path</span>(<span class="ident">src</span>);
@@ -1302,7 +1338,7 @@
                 <span class="ident">inner</span>: <span class="ident">instr</span>,
                 <span class="ident">span</span>,
                 <span class="ident">name</span>,
-            })
+            });
         }
 
         <span class="self">Self</span> {

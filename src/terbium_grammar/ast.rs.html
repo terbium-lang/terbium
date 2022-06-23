@@ -756,24 +756,6 @@
 <span id="750">750</span>
 <span id="751">751</span>
 <span id="752">752</span>
-<span id="753">753</span>
-<span id="754">754</span>
-<span id="755">755</span>
-<span id="756">756</span>
-<span id="757">757</span>
-<span id="758">758</span>
-<span id="759">759</span>
-<span id="760">760</span>
-<span id="761">761</span>
-<span id="762">762</span>
-<span id="763">763</span>
-<span id="764">764</span>
-<span id="765">765</span>
-<span id="766">766</span>
-<span id="767">767</span>
-<span id="768">768</span>
-<span id="769">769</span>
-<span id="770">770</span>
 </pre><pre class="rust"><code><span class="kw">use</span> <span class="ident"><span class="kw">super</span>::token</span>::{<span class="ident">get_lexer</span>, <span class="ident">Bracket</span>, <span class="ident">Keyword</span>, <span class="ident">Literal</span>, <span class="ident">Operator</span>, <span class="ident">StringLiteral</span>, <span class="ident">Token</span>};
 <span class="kw">use</span> <span class="kw">super</span>::{<span class="ident">Error</span>, <span class="ident">Source</span>, <span class="ident">Span</span>, <span class="ident">Spanned</span>};
 
@@ -883,6 +865,10 @@
 }
 
 <span class="kw">pub</span> <span class="kw">trait</span> <span class="ident">ParseInterface</span> {
+    <span class="comment">// Parse the tokens using this parser.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// # Errors</span>
+    <span class="doccomment">/// * The tokens does not match Terbium grammar.</span>
     <span class="kw">fn</span> <span class="ident">parse</span>(<span class="ident">tokens</span>: <span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">Token</span>, <span class="ident">Span</span>)<span class="op">&gt;</span>) -&gt; <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="self">Self</span>, <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">Error</span><span class="op">&gt;</span><span class="op">&gt;</span>
     <span class="kw">where</span>
         <span class="self">Self</span>: <span class="ident">Sized</span>;
@@ -895,16 +881,20 @@
     <span class="kw">where</span>
         <span class="self">Self</span>: <span class="ident">Sized</span>,
     {
-        <span class="kw">let</span> <span class="ident">tokens</span> <span class="op">=</span> <span class="ident">get_lexer</span>().<span class="ident">parse</span>(
-            <span class="ident">Stream</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Span</span>, <span class="kw">_</span><span class="op">&gt;</span><span class="ident">::from_iter</span>(
-                <span class="ident">Span::single</span>(<span class="ident">source</span>.<span class="ident">clone</span>(), <span class="ident">s</span>.<span class="ident">chars</span>().<span class="ident">count</span>()),
-                <span class="ident">s</span>.<span class="ident">chars</span>().<span class="ident">enumerate</span>().<span class="ident">map</span>(<span class="op">|</span>(<span class="ident">i</span>, <span class="ident">c</span>)<span class="op">|</span> (<span class="ident">c</span>, <span class="ident">Span::single</span>(<span class="ident">source</span>.<span class="ident">clone</span>(), <span class="ident">i</span>))),
-            ),
-        )<span class="question-mark">?</span>;
+        <span class="kw">let</span> <span class="ident">tokens</span> <span class="op">=</span> <span class="ident">get_lexer</span>().<span class="ident">parse</span>(<span class="ident">Stream</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Span</span>, <span class="kw">_</span><span class="op">&gt;</span><span class="ident">::from_iter</span>(
+            <span class="ident">Span::single</span>(<span class="ident">source</span>.<span class="ident">clone</span>(), <span class="ident">s</span>.<span class="ident">chars</span>().<span class="ident">count</span>()),
+            <span class="ident">s</span>.<span class="ident">chars</span>()
+                .<span class="ident">enumerate</span>()
+                .<span class="ident">map</span>(<span class="op">|</span>(<span class="ident">i</span>, <span class="ident">c</span>)<span class="op">|</span> (<span class="ident">c</span>, <span class="ident">Span::single</span>(<span class="ident">source</span>.<span class="ident">clone</span>(), <span class="ident">i</span>))),
+        ))<span class="question-mark">?</span>;
 
-        <span class="prelude-val">Ok</span>(<span class="ident"><span class="self">Self</span>::parse</span>(<span class="ident">tokens</span>)<span class="question-mark">?</span>)
+        <span class="ident"><span class="self">Self</span>::parse</span>(<span class="ident">tokens</span>)
     }
 
+    <span class="doccomment">/// Read and tokenizes the specified source file.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// # Errors</span>
+    <span class="doccomment">/// * The source file&#39;s content does not match Terbium grammar.</span>
     <span class="kw">fn</span> <span class="ident">from_file</span><span class="op">&lt;</span><span class="ident">P</span>: <span class="ident">AsRef</span><span class="op">&lt;</span><span class="ident">Path</span><span class="op">&gt;</span><span class="op">&gt;</span>(<span class="ident">path</span>: <span class="ident">P</span>) -&gt; <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="self">Self</span>, <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">Error</span><span class="op">&gt;</span><span class="op">&gt;</span>
     <span class="kw">where</span>
         <span class="self">Self</span>: <span class="ident">Sized</span>,
@@ -1026,7 +1016,7 @@
             .<span class="ident">parse</span>(<span class="ident">Stream</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Span</span>, <span class="kw">_</span><span class="op">&gt;</span><span class="ident">::from_iter</span>(
                 <span class="ident">Span::single</span>(<span class="ident">span</span>.<span class="ident">src</span>(), <span class="ident">span</span>.<span class="ident">end</span>()),
                 <span class="ident">tokens</span>.<span class="ident">into_iter</span>(),
-            )).<span class="ident">map</span>(<span class="op">|</span><span class="ident">b</span><span class="op">|</span> <span class="ident">b</span>.<span class="ident">into_node</span>())
+            )).<span class="ident">map</span>(<span class="ident">Spanned::into_node</span>)
     }
 }
 
@@ -1039,13 +1029,26 @@
     <span class="ident">f</span>: <span class="kw">impl</span> <span class="ident">Fn</span>(<span class="ident">Span</span>) -&gt; <span class="ident">T</span> <span class="op">+</span> <span class="ident">Clone</span> <span class="op">+</span> <span class="lifetime">&#39;a</span>,
 ) -&gt; <span class="kw">impl</span> <span class="ident">CommonParser</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> <span class="op">+</span> <span class="lifetime">&#39;a</span> {
     <span class="ident">parser</span>
-        .<span class="ident">delimited_by</span>(<span class="ident">just</span>(<span class="ident">Token::StartBracket</span>(<span class="ident">delimiter</span>)), <span class="ident">just</span>(<span class="ident">Token::EndBracket</span>(<span class="ident">delimiter</span>)))
+        .<span class="ident">delimited_by</span>(
+            <span class="ident">just</span>(<span class="ident">Token::StartBracket</span>(<span class="ident">delimiter</span>)),
+            <span class="ident">just</span>(<span class="ident">Token::EndBracket</span>(<span class="ident">delimiter</span>)),
+        )
         .<span class="ident">recover_with</span>(<span class="ident">nested_delimiters</span>(
-            <span class="ident">Token::StartBracket</span>(<span class="ident">delimiter</span>), <span class="ident">Token::EndBracket</span>(<span class="ident">delimiter</span>),
+            <span class="ident">Token::StartBracket</span>(<span class="ident">delimiter</span>),
+            <span class="ident">Token::EndBracket</span>(<span class="ident">delimiter</span>),
             [
-                (<span class="ident">Token::StartBracket</span>(<span class="ident">Bracket::Paren</span>), <span class="ident">Token::EndBracket</span>(<span class="ident">Bracket::Paren</span>)),
-                (<span class="ident">Token::StartBracket</span>(<span class="ident">Bracket::Bracket</span>), <span class="ident">Token::EndBracket</span>(<span class="ident">Bracket::Bracket</span>)),
-                (<span class="ident">Token::StartBracket</span>(<span class="ident">Bracket::Brace</span>), <span class="ident">Token::EndBracket</span>(<span class="ident">Bracket::Brace</span>)),
+                (
+                    <span class="ident">Token::StartBracket</span>(<span class="ident">Bracket::Paren</span>),
+                    <span class="ident">Token::EndBracket</span>(<span class="ident">Bracket::Paren</span>),
+                ),
+                (
+                    <span class="ident">Token::StartBracket</span>(<span class="ident">Bracket::Bracket</span>),
+                    <span class="ident">Token::EndBracket</span>(<span class="ident">Bracket::Bracket</span>),
+                ),
+                (
+                    <span class="ident">Token::StartBracket</span>(<span class="ident">Bracket::Brace</span>),
+                    <span class="ident">Token::EndBracket</span>(<span class="ident">Bracket::Brace</span>),
+                ),
             ],
             <span class="ident">f</span>,
         ))
@@ -1067,8 +1070,8 @@
                     },
                 }
             }
-                .<span class="ident">map_with_span</span>(<span class="op">|</span><span class="ident">e</span>, <span class="ident">span</span><span class="op">|</span> <span class="ident">SpannedExpr::new</span>(<span class="ident">e</span>, <span class="ident">span</span>))
-                .<span class="ident">labelled</span>(<span class="string">&quot;literal&quot;</span>);
+            .<span class="ident">map_with_span</span>(<span class="ident">SpannedExpr::new</span>)
+            .<span class="ident">labelled</span>(<span class="string">&quot;literal&quot;</span>);
 
             <span class="kw">let</span> <span class="ident">ident</span> <span class="op">=</span> <span class="macro">select!</span> {
                 <span class="ident">Token::Identifier</span>(<span class="ident">s</span>) =&gt; <span class="kw">match</span> <span class="ident">s</span>.<span class="ident">as_str</span>() {
@@ -1077,8 +1080,8 @@
                     <span class="kw">_</span> =&gt; <span class="ident">Expr::Ident</span>(<span class="ident">s</span>),
                 }
             }
-                .<span class="ident">map_with_span</span>(<span class="op">|</span><span class="ident">e</span>, <span class="ident">span</span><span class="op">|</span> <span class="ident">SpannedExpr::new</span>(<span class="ident">e</span>, <span class="ident">span</span>))
-                .<span class="ident">labelled</span>(<span class="string">&quot;identifier&quot;</span>);
+            .<span class="ident">map_with_span</span>(<span class="ident">SpannedExpr::new</span>)
+            .<span class="ident">labelled</span>(<span class="string">&quot;identifier&quot;</span>);
 
             <span class="kw">let</span> <span class="ident">array</span> <span class="op">=</span> <span class="ident">e</span>
                 .<span class="ident">clone</span>()
@@ -1114,8 +1117,8 @@
                         ))
                         .<span class="ident">or_not</span>(),
                 )
-                .<span class="ident">map_with_span</span>(
-                    <span class="op">|</span>(((<span class="ident">condition</span>, <span class="ident">body</span>), <span class="ident">else_if</span>), <span class="ident">else_body</span>), <span class="ident">span</span><span class="op">|</span> <span class="ident">SpannedExpr::new</span>(
+                .<span class="ident">map_with_span</span>(<span class="op">|</span>(((<span class="ident">condition</span>, <span class="ident">body</span>), <span class="ident">else_if</span>), <span class="ident">else_body</span>), <span class="ident">span</span><span class="op">|</span> {
+                    <span class="ident">SpannedExpr::new</span>(
                         <span class="ident">Expr::If</span> {
                             <span class="ident">condition</span>,
                             <span class="ident">body</span>,
@@ -1123,8 +1126,8 @@
                             <span class="ident">else_body</span>,
                         },
                         <span class="ident">span</span>,
-                    ),
-                );
+                    )
+                });
 
             <span class="kw">let</span> <span class="ident">while_stmt</span> <span class="op">=</span> <span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="ident">Token::Keyword</span>(<span class="ident">Keyword::While</span>))
                 .<span class="ident">ignore_then</span>(<span class="ident">e</span>.<span class="ident">clone</span>())
@@ -1132,13 +1135,15 @@
                     <span class="ident">just</span>(<span class="ident">Token::StartBracket</span>(<span class="ident">Bracket::Brace</span>)),
                     <span class="ident">just</span>(<span class="ident">Token::EndBracket</span>(<span class="ident">Bracket::Brace</span>)),
                 ))
-                .<span class="ident">map_with_span</span>(<span class="op">|</span>(<span class="ident">condition</span>, <span class="ident">body</span>), <span class="ident">span</span><span class="op">|</span> <span class="ident">SpannedExpr::new</span>(
-                    <span class="ident">Expr::While</span> {
-                        <span class="ident">condition</span>,
-                        <span class="ident">body</span>: <span class="ident">body</span>.<span class="ident">into_node</span>().<span class="number">0</span>,
-                    },
-                    <span class="ident">span</span>,
-                ));
+                .<span class="ident">map_with_span</span>(<span class="op">|</span>(<span class="ident">condition</span>, <span class="ident">body</span>), <span class="ident">span</span><span class="op">|</span> {
+                    <span class="ident">SpannedExpr::new</span>(
+                        <span class="ident">Expr::While</span> {
+                            <span class="ident">condition</span>,
+                            <span class="ident">body</span>: <span class="ident">body</span>.<span class="ident">into_node</span>().<span class="number">0</span>,
+                        },
+                        <span class="ident">span</span>,
+                    )
+                });
 
             <span class="kw">let</span> <span class="ident">atom</span> <span class="op">=</span> <span class="ident">choice</span>((
                 <span class="ident">literal</span>,
@@ -1192,11 +1197,14 @@
                         .<span class="ident">or_not</span>(),
                 )
                 .<span class="ident">map_with_span</span>(<span class="op">|</span>(<span class="ident">expr</span>, <span class="ident">args</span>), <span class="ident">span</span><span class="op">|</span> <span class="kw">match</span> <span class="ident">args</span> {
-                    <span class="prelude-val">Some</span>(<span class="ident">args</span>) =&gt; <span class="ident">SpannedExpr::new</span>(<span class="ident">Expr::Call</span> {
-                        <span class="ident">value</span>: <span class="ident">expr</span>,
-                        <span class="ident">args</span>,
-                        <span class="ident">kwargs</span>: <span class="macro">vec!</span>[],
-                    }, <span class="ident">span</span>),
+                    <span class="prelude-val">Some</span>(<span class="ident">args</span>) =&gt; <span class="ident">SpannedExpr::new</span>(
+                        <span class="ident">Expr::Call</span> {
+                            <span class="ident">value</span>: <span class="ident">expr</span>,
+                            <span class="ident">args</span>,
+                            <span class="ident">kwargs</span>: <span class="macro">vec!</span>[],
+                        },
+                        <span class="ident">span</span>,
+                    ),
                     <span class="prelude-val">None</span> =&gt; <span class="ident">expr</span>,
                 })
                 .<span class="ident">boxed</span>();
@@ -1234,10 +1242,7 @@
                 .<span class="ident">foldl</span>(<span class="op">|</span><span class="ident">subject</span>, <span class="ident">ty</span><span class="op">|</span> {
                     <span class="kw">let</span> <span class="ident">span</span> <span class="op">=</span> <span class="ident">subject</span>.<span class="ident">span</span>().<span class="ident">merge</span>(<span class="ident">ty</span>.<span class="ident">span</span>());
 
-                    <span class="ident">SpannedExpr::new</span>(
-                        <span class="ident">Expr::Cast</span>(<span class="ident">subject</span>, <span class="ident">ty</span>),
-                        <span class="ident">span</span>,
-                    )
+                    <span class="ident">SpannedExpr::new</span>(<span class="ident">Expr::Cast</span>(<span class="ident">subject</span>, <span class="ident">ty</span>), <span class="ident">span</span>)
                 })
                 .<span class="ident">boxed</span>();
 
@@ -1249,14 +1254,7 @@
                 .<span class="ident">foldr</span>(<span class="op">|</span>(<span class="ident">lhs</span>, <span class="ident">operator</span>), <span class="ident">rhs</span><span class="op">|</span> {
                     <span class="kw">let</span> <span class="ident">span</span> <span class="op">=</span> <span class="ident">lhs</span>.<span class="ident">span</span>().<span class="ident">merge</span>(<span class="ident">rhs</span>.<span class="ident">span</span>());
 
-                    <span class="ident">SpannedExpr::new</span>(
-                        <span class="ident">Expr::BinaryExpr</span> {
-                            <span class="ident">operator</span>,
-                            <span class="ident">lhs</span>,
-                            <span class="ident">rhs</span>,
-                        },
-                        <span class="ident">span</span>,
-                    )
+                    <span class="ident">SpannedExpr::new</span>(<span class="ident">Expr::BinaryExpr</span> { <span class="ident">operator</span>, <span class="ident">lhs</span>, <span class="ident">rhs</span> }, <span class="ident">span</span>)
                 })
                 .<span class="ident">boxed</span>();
 
@@ -1270,14 +1268,7 @@
                 .<span class="ident">foldl</span>(<span class="op">|</span><span class="ident">lhs</span>, (<span class="ident">operator</span>, <span class="ident">rhs</span>)<span class="op">|</span> {
                     <span class="kw">let</span> <span class="ident">span</span> <span class="op">=</span> <span class="ident">lhs</span>.<span class="ident">span</span>().<span class="ident">merge</span>(<span class="ident">rhs</span>.<span class="ident">span</span>());
 
-                    <span class="ident">Spanned::new</span>(
-                        <span class="ident">Expr::BinaryExpr</span> {
-                            <span class="ident">operator</span>,
-                            <span class="ident">lhs</span>,
-                            <span class="ident">rhs</span>,
-                        },
-                        <span class="ident">span</span>,
-                    )
+                    <span class="ident">Spanned::new</span>(<span class="ident">Expr::BinaryExpr</span> { <span class="ident">operator</span>, <span class="ident">lhs</span>, <span class="ident">rhs</span> }, <span class="ident">span</span>)
                 })
                 .<span class="ident">boxed</span>();
 
@@ -1290,14 +1281,7 @@
                 .<span class="ident">foldl</span>(<span class="op">|</span><span class="ident">lhs</span>, (<span class="ident">operator</span>, <span class="ident">rhs</span>)<span class="op">|</span> {
                     <span class="kw">let</span> <span class="ident">span</span> <span class="op">=</span> <span class="ident">lhs</span>.<span class="ident">span</span>().<span class="ident">merge</span>(<span class="ident">rhs</span>.<span class="ident">span</span>());
 
-                    <span class="ident">Spanned::new</span>(
-                        <span class="ident">Expr::BinaryExpr</span> {
-                            <span class="ident">operator</span>,
-                            <span class="ident">lhs</span>,
-                            <span class="ident">rhs</span>,
-                        },
-                        <span class="ident">span</span>,
-                    )
+                    <span class="ident">Spanned::new</span>(<span class="ident">Expr::BinaryExpr</span> { <span class="ident">operator</span>, <span class="ident">lhs</span>, <span class="ident">rhs</span> }, <span class="ident">span</span>)
                 })
                 .<span class="ident">boxed</span>();
 
@@ -1314,14 +1298,7 @@
                 .<span class="ident">foldl</span>(<span class="op">|</span><span class="ident">lhs</span>, (<span class="ident">operator</span>, <span class="ident">rhs</span>)<span class="op">|</span> {
                     <span class="kw">let</span> <span class="ident">span</span> <span class="op">=</span> <span class="ident">lhs</span>.<span class="ident">span</span>().<span class="ident">merge</span>(<span class="ident">rhs</span>.<span class="ident">span</span>());
 
-                    <span class="ident">Spanned::new</span>(
-                        <span class="ident">Expr::BinaryExpr</span> {
-                            <span class="ident">operator</span>,
-                            <span class="ident">lhs</span>,
-                            <span class="ident">rhs</span>,
-                        },
-                        <span class="ident">span</span>,
-                    )
+                    <span class="ident">Spanned::new</span>(<span class="ident">Expr::BinaryExpr</span> { <span class="ident">operator</span>, <span class="ident">lhs</span>, <span class="ident">rhs</span> }, <span class="ident">span</span>)
                 })
                 .<span class="ident">boxed</span>();
 
@@ -1336,14 +1313,7 @@
                 .<span class="ident">foldl</span>(<span class="op">|</span><span class="ident">lhs</span>, (<span class="ident">operator</span>, <span class="ident">rhs</span>)<span class="op">|</span> {
                     <span class="kw">let</span> <span class="ident">span</span> <span class="op">=</span> <span class="ident">lhs</span>.<span class="ident">span</span>().<span class="ident">merge</span>(<span class="ident">rhs</span>.<span class="ident">span</span>());
 
-                    <span class="ident">Spanned::new</span>(
-                        <span class="ident">Expr::BinaryExpr</span> {
-                            <span class="ident">operator</span>,
-                            <span class="ident">lhs</span>,
-                            <span class="ident">rhs</span>,
-                        },
-                        <span class="ident">span</span>,
-                    )
+                    <span class="ident">Spanned::new</span>(<span class="ident">Expr::BinaryExpr</span> { <span class="ident">operator</span>, <span class="ident">lhs</span>, <span class="ident">rhs</span> }, <span class="ident">span</span>)
                 })
                 .<span class="ident">boxed</span>();
 
@@ -1358,14 +1328,7 @@
                 .<span class="ident">foldl</span>(<span class="op">|</span><span class="ident">lhs</span>, (<span class="ident">operator</span>, <span class="ident">rhs</span>)<span class="op">|</span> {
                     <span class="kw">let</span> <span class="ident">span</span> <span class="op">=</span> <span class="ident">lhs</span>.<span class="ident">span</span>().<span class="ident">merge</span>(<span class="ident">rhs</span>.<span class="ident">span</span>());
 
-                    <span class="ident">Spanned::new</span>(
-                        <span class="ident">Expr::BinaryExpr</span> {
-                            <span class="ident">operator</span>,
-                            <span class="ident">lhs</span>,
-                            <span class="ident">rhs</span>,
-                        },
-                        <span class="ident">span</span>,
-                    )
+                    <span class="ident">Spanned::new</span>(<span class="ident">Expr::BinaryExpr</span> { <span class="ident">operator</span>, <span class="ident">lhs</span>, <span class="ident">rhs</span> }, <span class="ident">span</span>)
                 })
                 .<span class="ident">boxed</span>();
 
@@ -1379,14 +1342,7 @@
                 .<span class="ident">foldl</span>(<span class="op">|</span><span class="ident">lhs</span>, (<span class="ident">operator</span>, <span class="ident">rhs</span>)<span class="op">|</span> {
                     <span class="kw">let</span> <span class="ident">span</span> <span class="op">=</span> <span class="ident">lhs</span>.<span class="ident">span</span>().<span class="ident">merge</span>(<span class="ident">rhs</span>.<span class="ident">span</span>());
 
-                    <span class="ident">Spanned::new</span>(
-                        <span class="ident">Expr::BinaryExpr</span> {
-                            <span class="ident">operator</span>,
-                            <span class="ident">lhs</span>,
-                            <span class="ident">rhs</span>,
-                        },
-                        <span class="ident">span</span>,
-                    )
+                    <span class="ident">Spanned::new</span>(<span class="ident">Expr::BinaryExpr</span> { <span class="ident">operator</span>, <span class="ident">lhs</span>, <span class="ident">rhs</span> }, <span class="ident">span</span>)
                 })
                 .<span class="ident">boxed</span>()
         });
@@ -1424,10 +1380,12 @@
             .<span class="ident">or</span>(<span class="ident">just</span>(<span class="ident">Token::Keyword</span>(<span class="ident">Keyword::Const</span>)))
             .<span class="ident">then</span>(<span class="ident">just</span>(<span class="ident">Token::Keyword</span>(<span class="ident">Keyword::Mut</span>)).<span class="ident">or_not</span>())
             .<span class="ident">map_with_span</span>(<span class="ident">Spanned</span>::<span class="op">&lt;</span>(<span class="ident">Token</span>, <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Token</span><span class="op">&gt;</span>)<span class="op">&gt;</span><span class="ident">::new</span>)
-            .<span class="ident">then</span>(<span class="ident">target</span>.<span class="ident">clone</span>()
-                .<span class="ident">then_ignore</span>(<span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="ident">Token::Assign</span>))
-                .<span class="ident">repeated</span>()
-                .<span class="ident">at_least</span>(<span class="number">1</span>),
+            .<span class="ident">then</span>(
+                <span class="ident">target</span>
+                    .<span class="ident">clone</span>()
+                    .<span class="ident">then_ignore</span>(<span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="ident">Token::Assign</span>))
+                    .<span class="ident">repeated</span>()
+                    .<span class="ident">at_least</span>(<span class="number">1</span>),
             )
             .<span class="ident">then</span>(<span class="ident">e</span>.<span class="ident">clone</span>())
             .<span class="ident">then_ignore</span>(<span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="ident">Token::Semicolon</span>))
@@ -1459,13 +1417,15 @@
             .<span class="ident">at_least</span>(<span class="number">1</span>)
             .<span class="ident">then</span>(<span class="ident">e</span>.<span class="ident">clone</span>())
             .<span class="ident">then_ignore</span>(<span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="ident">Token::Semicolon</span>))
-            .<span class="ident">map_with_span</span>(<span class="op">|</span>(<span class="ident">targets</span>, <span class="ident">expr</span>), <span class="ident">span</span><span class="op">|</span> <span class="ident">Spanned::new</span>(
-                <span class="ident">Node::Assign</span> {
-                    <span class="ident">targets</span>,
-                    <span class="ident">value</span>: <span class="ident">expr</span>,
-                },
-                <span class="ident">span</span>,
-            ));
+            .<span class="ident">map_with_span</span>(<span class="op">|</span>(<span class="ident">targets</span>, <span class="ident">expr</span>), <span class="ident">span</span><span class="op">|</span> {
+                <span class="ident">Spanned::new</span>(
+                    <span class="ident">Node::Assign</span> {
+                        <span class="ident">targets</span>,
+                        <span class="ident">value</span>: <span class="ident">expr</span>,
+                    },
+                    <span class="ident">span</span>,
+                )
+            });
 
         <span class="kw">let</span> <span class="ident">param</span> <span class="op">=</span> <span class="ident">target</span>
             .<span class="ident">clone</span>()
@@ -1474,10 +1434,7 @@
                     .<span class="ident">ignore_then</span>(<span class="ident">e</span>.<span class="ident">clone</span>())
                     .<span class="ident">or_not</span>(),
             )
-            .<span class="ident">map_with_span</span>(<span class="op">|</span>(<span class="ident">target</span>, <span class="ident">default</span>), <span class="ident">span</span><span class="op">|</span> <span class="ident">Spanned::new</span>(
-                <span class="ident">Param</span> { <span class="ident">target</span>, <span class="ident">default</span> },
-                <span class="ident">span</span>,
-            ));
+            .<span class="ident">map_with_span</span>(<span class="op">|</span>(<span class="ident">target</span>, <span class="ident">default</span>), <span class="ident">span</span><span class="op">|</span> <span class="ident">Spanned::new</span>(<span class="ident">Param</span> { <span class="ident">target</span>, <span class="ident">default</span> }, <span class="ident">span</span>));
 
         <span class="kw">let</span> <span class="ident">func</span> <span class="op">=</span> <span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="ident">Token::Keyword</span>(<span class="ident">Keyword::Func</span>))
             .<span class="ident">ignore_then</span>(<span class="macro">select!</span> {
@@ -1529,17 +1486,24 @@
 
         <span class="ident">choice</span>((<span class="ident">func</span>, <span class="ident">declare</span>, <span class="ident">assign</span>, <span class="ident">r#return</span>, <span class="ident">require</span>, <span class="ident">expr</span>))
             .<span class="ident">repeated</span>()
-            .<span class="ident">then</span>(<span class="ident">e</span>.<span class="ident">clone</span>().<span class="ident">or_not</span>().<span class="ident">map_with_span</span>(<span class="op">|</span><span class="ident">o</span>, <span class="ident">span</span><span class="op">|</span> <span class="ident">o</span>
-                .<span class="ident">map</span>(<span class="op">|</span><span class="ident">o</span><span class="op">|</span> <span class="ident">Spanned::new</span>(<span class="ident">Node::Expr</span>(<span class="ident">o</span>), <span class="ident">span</span>)))
+            .<span class="ident">then</span>(
+                <span class="ident">e</span>.<span class="ident">clone</span>()
+                    .<span class="ident">or_not</span>()
+                    .<span class="ident">map_with_span</span>(<span class="op">|</span><span class="ident">o</span>, <span class="ident">span</span><span class="op">|</span> <span class="ident">o</span>.<span class="ident">map</span>(<span class="op">|</span><span class="ident">o</span><span class="op">|</span> <span class="ident">Spanned::new</span>(<span class="ident">Node::Expr</span>(<span class="ident">o</span>), <span class="ident">span</span>))),
             )
             .<span class="ident">recover_with</span>(<span class="ident">skip_then_retry_until</span>([]))
-            .<span class="ident">map_with_span</span>(<span class="op">|</span>(<span class="kw-2">mut</span> <span class="ident">nodes</span>, <span class="ident">last</span>), <span class="ident">span</span><span class="op">|</span> <span class="ident">Spanned::new</span>({
-                <span class="kw">let</span> <span class="ident">return_last</span> <span class="op">=</span> <span class="ident">last</span>.<span class="ident">is_some</span>();
-                <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">last</span>) <span class="op">=</span> <span class="ident">last</span> {
-                    <span class="ident">nodes</span>.<span class="ident">push</span>(<span class="ident">last</span>);
-                }
-                <span class="ident">Body</span>(<span class="ident">nodes</span>, <span class="ident">return_last</span>)
-            }, <span class="ident">span</span>))
+            .<span class="ident">map_with_span</span>(<span class="op">|</span>(<span class="kw-2">mut</span> <span class="ident">nodes</span>, <span class="ident">last</span>), <span class="ident">span</span><span class="op">|</span> {
+                <span class="ident">Spanned::new</span>(
+                    {
+                        <span class="kw">let</span> <span class="ident">return_last</span> <span class="op">=</span> <span class="ident">last</span>.<span class="ident">is_some</span>();
+                        <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">last</span>) <span class="op">=</span> <span class="ident">last</span> {
+                            <span class="ident">nodes</span>.<span class="ident">push</span>(<span class="ident">last</span>);
+                        }
+                        <span class="ident">Body</span>(<span class="ident">nodes</span>, <span class="ident">return_last</span>)
+                    },
+                    <span class="ident">span</span>,
+                )
+            })
     })
 }
 

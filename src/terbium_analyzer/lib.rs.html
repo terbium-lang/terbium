@@ -223,9 +223,12 @@
 <span id="217">217</span>
 <span id="218">218</span>
 <span id="219">219</span>
+<span id="220">220</span>
+<span id="221">221</span>
+<span id="222">222</span>
 </pre><pre class="rust"><code><span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">util</span>;
 
-<span class="kw">use</span> <span class="ident">terbium_grammar</span>::{<span class="ident">ParseInterface</span>, <span class="ident">Token</span>, <span class="ident">Source</span>, <span class="ident">Span</span>};
+<span class="kw">use</span> <span class="ident">terbium_grammar</span>::{<span class="ident">ParseInterface</span>, <span class="ident">Source</span>, <span class="ident">Span</span>, <span class="ident">Token</span>};
 <span class="kw">use</span> <span class="ident">util::to_snake_case</span>;
 
 <span class="kw">use</span> <span class="ident">std::io::Write</span>;
@@ -431,13 +434,16 @@
                 .<span class="ident">collect</span>(),
         );
 
-        <span class="ident">a</span>.<span class="ident">analyze_string</span>(<span class="ident">Source::default</span>(), <span class="ident">String::from</span>(
-            <span class="string">&quot;
+        <span class="ident">a</span>.<span class="ident">analyze_string</span>(
+            <span class="ident">Source::default</span>(),
+            <span class="ident">String::from</span>(
+                <span class="string">&quot;
             func camelCase() {
                 let notSnakeCase = 5;
             }
         &quot;</span>,
-        ));
+            ),
+        );
 
         <span class="ident">a</span>.<span class="ident">write</span>(<span class="ident">std::io::stdout</span>());
     }

@@ -747,6 +747,17 @@
 <span id="741">741</span>
 <span id="742">742</span>
 <span id="743">743</span>
+<span id="744">744</span>
+<span id="745">745</span>
+<span id="746">746</span>
+<span id="747">747</span>
+<span id="748">748</span>
+<span id="749">749</span>
+<span id="750">750</span>
+<span id="751">751</span>
+<span id="752">752</span>
+<span id="753">753</span>
+<span id="754">754</span>
 </pre><pre class="rust"><code><span class="doccomment">//! The interpreter for Terbium.</span>
 
 <span class="attribute">#![<span class="ident">feature</span>(<span class="ident">box_patterns</span>)]</span>
@@ -1229,6 +1240,16 @@
     <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">clippy::too_many_lines</span>)]</span>
     <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">clippy::missing_panics_doc</span>)]</span> <span class="comment">// Remove when todo is done</span>
     <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">clippy::cast_possible_wrap</span>)]</span> <span class="comment">// Wrap is not possible because is parsed as i128</span>
+    <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">clippy::cast_precision_loss</span>)]</span>
+    <span class="doccomment">/// Integer exceeding mantissa of 52 bits wide will be wrapped to</span>
+    <span class="doccomment">/// 340282366920938500000000000000000000000</span>
+    <span class="doccomment">/// This will cause unexpected behavior because if one compare such with for example</span>
+    <span class="doccomment">/// 340282366920938463463374607431768211455 (`u128::MAX`)</span>
+    <span class="doccomment">/// It will return true</span>
+    <span class="doccomment">/// But if one compare it with 340282366920938463463374607431768211454 (`u128::MAX` - 1)</span>
+    <span class="doccomment">/// It will also return true</span>
+    <span class="doccomment">/// So it is unexpected behavior</span>
+    <span class="doccomment">/// The current solution is to let `terbium_analyzer` catches this and warn the user</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">run_bytecode</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">code</span>: <span class="kw-2">&amp;</span><span class="ident">Program</span>) {
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">pos</span>: <span class="ident">AddrRepr</span> <span class="op">=</span> <span class="number">0</span>;
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">jump_history</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">AddrRepr</span><span class="op">&gt;</span> <span class="op">=</span> <span class="ident">Vec::new</span>();
@@ -1304,6 +1325,7 @@
                     (<span class="ident">TerbiumObject::Integer</span>(<span class="ident">rhs</span>), <span class="ident">TerbiumObject::String</span>(<span class="ident">lhs</span>)) =&gt; {
                         <span class="kw">let</span> <span class="ident">loc</span> <span class="op">=</span> <span class="macro">store_auto!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="ident">TerbiumObject::String</span>(
                             <span class="self">self</span>.<span class="ident">string_interner</span>.<span class="ident">intern</span>(
+                                <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">clippy::cast_sign_loss</span>)]</span> <span class="comment">// Act as a safety barrior to prevent overflow</span>
                                 <span class="self">self</span>.<span class="ident">string_interner</span>.<span class="ident">lookup</span>(<span class="kw-2">*</span><span class="ident">lhs</span>).<span class="ident">repeat</span>(<span class="kw-2">*</span><span class="ident">rhs</span> <span class="kw">as</span> <span class="ident">usize</span>).<span class="ident">as_str</span>(),
                             )
                         ));

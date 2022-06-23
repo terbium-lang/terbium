@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"mod":[["ast",""],["error",""],["token",""]],"struct":[["Source",""],["Span",""],["Spanned",""]]};
+window.SIDEBAR_ITEMS = {"mod":[["ast",""],["error",""],["token",""]],"struct":[["ChumskyStream","A type that represents a stream of input tokens. Unlike [`Iterator`], this type supports backtracking and a few other features required by the crate."],["Source",""],["Span",""],["Spanned",""]],"trait":[["ChumskyParser","A trait implemented by parsers."]]};
