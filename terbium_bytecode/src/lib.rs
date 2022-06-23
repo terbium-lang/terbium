@@ -109,7 +109,7 @@ impl Instruction {
             + match self {
                 Self::LoadInt(_) => size_of::<u128>(),
                 Self::LoadFloat(_) => size_of::<f64>(),
-                Self::LoadString(s) => s.len(), // FIXME: String might exceeds 255
+                Self::LoadString(s) => s.len(), // FIXME: String length might exceed 255 (`u8::MAX`)
                 Self::LoadBool(_) => 1,
                 Self::LoadVar(_)
                 | Self::StoreVar(_)
