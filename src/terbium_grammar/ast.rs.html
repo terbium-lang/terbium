@@ -865,7 +865,7 @@
 }
 
 <span class="kw">pub</span> <span class="kw">trait</span> <span class="ident">ParseInterface</span> {
-    <span class="comment">// Parse the tokens using this parser.</span>
+    <span class="comment">// Parses the given tokens using this parser.</span>
     <span class="doccomment">///</span>
     <span class="doccomment">/// # Errors</span>
     <span class="doccomment">/// * The tokens does not match Terbium grammar.</span>
@@ -891,7 +891,7 @@
         <span class="ident"><span class="self">Self</span>::parse</span>(<span class="ident">tokens</span>)
     }
 
-    <span class="doccomment">/// Read and tokenizes the specified source file.</span>
+    <span class="doccomment">/// Reads and tokenizes the specified source file.</span>
     <span class="doccomment">///</span>
     <span class="doccomment">/// # Errors</span>
     <span class="doccomment">/// * The source file&#39;s content does not match Terbium grammar.</span>
@@ -1085,7 +1085,7 @@
 
             <span class="kw">let</span> <span class="ident">array</span> <span class="op">=</span> <span class="ident">e</span>
                 .<span class="ident">clone</span>()
-                .<span class="ident">separated_by</span>(<span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="ident">Token::Comma</span>))
+                .<span class="ident">separated_by</span>(<span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="ident">Error</span><span class="op">&gt;</span>(<span class="ident">Token::Comma</span>))
                 .<span class="ident">allow_trailing</span>()
                 .<span class="ident">delimited_by</span>(
                     <span class="ident">just</span>(<span class="ident">Token::StartBracket</span>(<span class="ident">Bracket::Bracket</span>)),
@@ -1093,7 +1093,7 @@
                 )
                 .<span class="ident">map_with_span</span>(<span class="op">|</span><span class="ident">a</span>, <span class="ident">span</span><span class="op">|</span> <span class="ident">Spanned::new</span>(<span class="ident">Expr::Array</span>(<span class="ident">a</span>), <span class="ident">span</span>));
 
-            <span class="kw">let</span> <span class="ident">if_stmt</span> <span class="op">=</span> <span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="ident">Token::Keyword</span>(<span class="ident">Keyword::If</span>))
+            <span class="kw">let</span> <span class="ident">if_stmt</span> <span class="op">=</span> <span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="ident">Error</span><span class="op">&gt;</span>(<span class="ident">Token::Keyword</span>(<span class="ident">Keyword::If</span>))
                 .<span class="ident">ignore_then</span>(<span class="ident">e</span>.<span class="ident">clone</span>())
                 .<span class="ident">then</span>(<span class="ident">body</span>.<span class="ident">clone</span>().<span class="ident">delimited_by</span>(
                     <span class="ident">just</span>(<span class="ident">Token::StartBracket</span>(<span class="ident">Bracket::Brace</span>)),
@@ -1129,7 +1129,7 @@
                     )
                 });
 
-            <span class="kw">let</span> <span class="ident">while_stmt</span> <span class="op">=</span> <span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="ident">Token::Keyword</span>(<span class="ident">Keyword::While</span>))
+            <span class="kw">let</span> <span class="ident">while_stmt</span> <span class="op">=</span> <span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="ident">Error</span><span class="op">&gt;</span>(<span class="ident">Token::Keyword</span>(<span class="ident">Keyword::While</span>))
                 .<span class="ident">ignore_then</span>(<span class="ident">e</span>.<span class="ident">clone</span>())
                 .<span class="ident">then</span>(<span class="ident">body</span>.<span class="ident">clone</span>().<span class="ident">delimited_by</span>(
                     <span class="ident">just</span>(<span class="ident">Token::StartBracket</span>(<span class="ident">Bracket::Brace</span>)),
@@ -1163,7 +1163,7 @@
             <span class="kw">let</span> <span class="ident">attr</span> <span class="op">=</span> <span class="ident">atom</span>
                 .<span class="ident">clone</span>()
                 .<span class="ident">then</span>(
-                    <span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="ident">Token::Dot</span>)
+                    <span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="ident">Error</span><span class="op">&gt;</span>(<span class="ident">Token::Dot</span>)
                         .<span class="ident">ignore_then</span>(<span class="ident">ident</span>)
                         .<span class="ident">repeated</span>(),
                 )
@@ -1188,7 +1188,7 @@
                 .<span class="ident">clone</span>()
                 .<span class="ident">then</span>(
                     <span class="ident">e</span>.<span class="ident">clone</span>()
-                        .<span class="ident">separated_by</span>(<span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="ident">Token::Comma</span>))
+                        .<span class="ident">separated_by</span>(<span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="ident">Error</span><span class="op">&gt;</span>(<span class="ident">Token::Comma</span>))
                         .<span class="ident">allow_trailing</span>()
                         .<span class="ident">delimited_by</span>(
                             <span class="ident">just</span>(<span class="ident">Token::StartBracket</span>(<span class="ident">Bracket::Paren</span>)),
