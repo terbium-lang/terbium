@@ -1,0 +1,3 @@
+(function() {var implementors = {};
+implementors["terbium_grammar"] = [{"text":"impl&lt;T&gt; <a class=\"trait\" href=\"https://doc.rust-lang.org/nightly/core/ops/deref/trait.Deref.html\" title=\"trait core::ops::deref::Deref\">Deref</a> for <a class=\"struct\" href=\"terbium_grammar/struct.Spanned.html\" title=\"struct terbium_grammar::Spanned\">Spanned</a>&lt;T&gt;","synthetic":false,"types":["terbium_grammar::Spanned"]}];
+if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"mod":[["ast",""],["error",""],["token",""]]};
+window.SIDEBAR_ITEMS = {"mod":[["ast",""],["error",""],["token",""]],"struct":[["Source",""],["Span",""],["Spanned",""]]};

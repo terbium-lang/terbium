@@ -548,6 +548,123 @@
 <span id="542">542</span>
 <span id="543">543</span>
 <span id="544">544</span>
+<span id="545">545</span>
+<span id="546">546</span>
+<span id="547">547</span>
+<span id="548">548</span>
+<span id="549">549</span>
+<span id="550">550</span>
+<span id="551">551</span>
+<span id="552">552</span>
+<span id="553">553</span>
+<span id="554">554</span>
+<span id="555">555</span>
+<span id="556">556</span>
+<span id="557">557</span>
+<span id="558">558</span>
+<span id="559">559</span>
+<span id="560">560</span>
+<span id="561">561</span>
+<span id="562">562</span>
+<span id="563">563</span>
+<span id="564">564</span>
+<span id="565">565</span>
+<span id="566">566</span>
+<span id="567">567</span>
+<span id="568">568</span>
+<span id="569">569</span>
+<span id="570">570</span>
+<span id="571">571</span>
+<span id="572">572</span>
+<span id="573">573</span>
+<span id="574">574</span>
+<span id="575">575</span>
+<span id="576">576</span>
+<span id="577">577</span>
+<span id="578">578</span>
+<span id="579">579</span>
+<span id="580">580</span>
+<span id="581">581</span>
+<span id="582">582</span>
+<span id="583">583</span>
+<span id="584">584</span>
+<span id="585">585</span>
+<span id="586">586</span>
+<span id="587">587</span>
+<span id="588">588</span>
+<span id="589">589</span>
+<span id="590">590</span>
+<span id="591">591</span>
+<span id="592">592</span>
+<span id="593">593</span>
+<span id="594">594</span>
+<span id="595">595</span>
+<span id="596">596</span>
+<span id="597">597</span>
+<span id="598">598</span>
+<span id="599">599</span>
+<span id="600">600</span>
+<span id="601">601</span>
+<span id="602">602</span>
+<span id="603">603</span>
+<span id="604">604</span>
+<span id="605">605</span>
+<span id="606">606</span>
+<span id="607">607</span>
+<span id="608">608</span>
+<span id="609">609</span>
+<span id="610">610</span>
+<span id="611">611</span>
+<span id="612">612</span>
+<span id="613">613</span>
+<span id="614">614</span>
+<span id="615">615</span>
+<span id="616">616</span>
+<span id="617">617</span>
+<span id="618">618</span>
+<span id="619">619</span>
+<span id="620">620</span>
+<span id="621">621</span>
+<span id="622">622</span>
+<span id="623">623</span>
+<span id="624">624</span>
+<span id="625">625</span>
+<span id="626">626</span>
+<span id="627">627</span>
+<span id="628">628</span>
+<span id="629">629</span>
+<span id="630">630</span>
+<span id="631">631</span>
+<span id="632">632</span>
+<span id="633">633</span>
+<span id="634">634</span>
+<span id="635">635</span>
+<span id="636">636</span>
+<span id="637">637</span>
+<span id="638">638</span>
+<span id="639">639</span>
+<span id="640">640</span>
+<span id="641">641</span>
+<span id="642">642</span>
+<span id="643">643</span>
+<span id="644">644</span>
+<span id="645">645</span>
+<span id="646">646</span>
+<span id="647">647</span>
+<span id="648">648</span>
+<span id="649">649</span>
+<span id="650">650</span>
+<span id="651">651</span>
+<span id="652">652</span>
+<span id="653">653</span>
+<span id="654">654</span>
+<span id="655">655</span>
+<span id="656">656</span>
+<span id="657">657</span>
+<span id="658">658</span>
+<span id="659">659</span>
+<span id="660">660</span>
+<span id="661">661</span>
 </pre><pre class="rust"><code><span class="doccomment">//! Crate for Terbium byte-code/intermediate represenation.</span>
 <span class="doccomment">//!</span>
 <span class="doccomment">//! Because Terbium can be directly interpreted or be compiled into LLVM IR,</span>
@@ -562,7 +679,10 @@
 <span class="kw">use</span> <span class="ident">std::collections::HashMap</span>;
 <span class="kw">use</span> <span class="ident">std::io::Write</span>;
 <span class="kw">use</span> <span class="ident">std::mem::size_of</span>;
+<span class="kw">use</span> <span class="ident">std::path::PathBuf</span>;
+<span class="kw">use</span> <span class="ident">std::str::FromStr</span>;
 
+<span class="kw">use</span> <span class="ident">terbium_grammar</span>::{<span class="ident">Source</span>, <span class="ident">Span</span>};
 <span class="kw">pub</span> <span class="kw">use</span> <span class="ident">interpreter::Interpreter</span>;
 <span class="kw">pub</span> <span class="kw">use</span> <span class="ident">util::EqComparableFloat</span>;
 
@@ -723,10 +843,49 @@
     }
 }
 
+<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">PartialEq</span>)]</span>
+<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">RichInstruction</span> {
+    <span class="ident">inner</span>: <span class="ident">Instruction</span>,
+    <span class="ident">span</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Span</span><span class="op">&gt;</span>,
+    <span class="ident">name</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span>,
+}
+
+<span class="kw">impl</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident">Instruction</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">RichInstruction</span> {
+    <span class="kw">fn</span> <span class="ident">from</span>(<span class="ident">instr</span>: <span class="ident">Instruction</span>) -&gt; <span class="self">Self</span> {
+        <span class="self">Self</span> {
+            <span class="ident">inner</span>: <span class="ident">instr</span>,
+            <span class="ident">span</span>: <span class="prelude-val">None</span>,
+            <span class="ident">name</span>: <span class="prelude-val">None</span>,
+        }
+    }
+}
+
+<span class="kw">impl</span> <span class="ident">RichInstruction</span> {
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">spanned</span>(<span class="ident">instr</span>: <span class="ident">Instruction</span>, <span class="ident">span</span>: <span class="ident">Span</span>) -&gt; <span class="self">Self</span> {
+        <span class="self">Self</span> { <span class="ident">inner</span>: <span class="ident">instr</span>, <span class="ident">span</span>: <span class="prelude-val">Some</span>(<span class="ident">span</span>), <span class="ident">name</span>: <span class="prelude-val">None</span> }
+    }
+
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">instr</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span><span class="ident">Instruction</span> {
+        <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">inner</span>
+    }
+
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">into_instr</span>(<span class="self">self</span>) -&gt; <span class="ident">Instruction</span> {
+        <span class="self">self</span>.<span class="ident">inner</span>
+    }
+
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">span</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Span</span><span class="op">&gt;</span> {
+        <span class="self">self</span>.<span class="ident">span</span>.<span class="ident">clone</span>()
+    }
+
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">name</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span><span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span> {
+        <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">name</span>
+    }
+}
+
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>)]</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">Program</span> {
-    <span class="ident">inner</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">Instruction</span><span class="op">&gt;</span>,
-    <span class="ident">procedures</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">Instruction</span><span class="op">&gt;</span><span class="op">&gt;</span>,
+    <span class="ident">inner</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">RichInstruction</span><span class="op">&gt;</span>,
+    <span class="ident">procedures</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">RichInstruction</span><span class="op">&gt;</span><span class="op">&gt;</span>,
 }
 
 <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn</span> <span class="ident">read_ne_u128</span>(<span class="ident">input</span>: <span class="kw-2">&amp;mut</span> <span class="kw-2">&amp;</span>[<span class="ident">u8</span>]) -&gt; <span class="ident">u128</span> {
@@ -773,7 +932,7 @@
         }
     }
 
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">inner</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw">impl</span> <span class="ident">Iterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="ident">Instruction</span><span class="op">&gt;</span> {
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">inner</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw">impl</span> <span class="ident">Iterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="ident">RichInstruction</span><span class="op">&gt;</span> {
         <span class="self">self</span>.<span class="ident">inner</span>.<span class="ident">iter</span>()
     }
 
@@ -787,7 +946,7 @@
         <span class="ident">std::mem::drop</span>(<span class="self">self</span>.<span class="ident">procedures</span>.<span class="ident">pop</span>());
     }
 
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">push</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">procedure</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">AddrRepr</span><span class="op">&gt;</span>, <span class="ident">instr</span>: <span class="ident">Instruction</span>) {
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">push</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">procedure</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">AddrRepr</span><span class="op">&gt;</span>, <span class="ident">instr</span>: <span class="ident">RichInstruction</span>) {
         <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">procedure</span>) <span class="op">=</span> <span class="ident">procedure</span> {
             <span class="kw">return</span> <span class="self">self</span>
                 .<span class="ident">procedures</span>
@@ -837,8 +996,8 @@
 
     <span class="doccomment">/// Resolves all procedures to their absolute address</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">resolve</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span><span class="self">Self</span> {
-        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">inner</span>.<span class="ident">last</span>() <span class="op">!</span><span class="op">=</span> <span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span><span class="ident">Instruction::Halt</span>) {
-            <span class="self">self</span>.<span class="ident">inner</span>.<span class="ident">push</span>(<span class="ident">Instruction::Halt</span>);
+        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">inner</span>.<span class="ident">last</span>().<span class="ident">map</span>(<span class="ident">RichInstruction::instr</span>) <span class="op">!</span><span class="op">=</span> <span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span><span class="ident">Instruction::Halt</span>) {
+            <span class="self">self</span>.<span class="ident">inner</span>.<span class="ident">push</span>(<span class="ident">Instruction::Halt</span>.<span class="ident">into</span>());
         }
 
         <span class="comment">// Lookup of proc -&gt; absolute</span>
@@ -853,8 +1012,8 @@
         <span class="self">self</span>.<span class="ident">inner</span> <span class="op">=</span> <span class="self">self</span>
             .<span class="ident">inner</span>
             .<span class="ident">iter</span>()
-            .<span class="ident">map</span>(<span class="op">|</span><span class="ident">instr</span><span class="op">|</span> {
-                <span class="kw">match</span> <span class="ident">instr</span> {
+            .<span class="ident">map</span>(<span class="op">|</span><span class="ident">RichInstruction</span> { <span class="ident">inner</span>: <span class="ident">instr</span>, <span class="ident">span</span>, <span class="ident">name</span> }<span class="op">|</span> <span class="ident">RichInstruction</span> {
+                <span class="ident">inner</span>: <span class="kw">match</span> <span class="ident">instr</span> {
                     <span class="ident">Instruction::Jump</span>(<span class="ident">addr</span>) =&gt; {
                         <span class="ident">Instruction::Jump</span>(<span class="ident"><span class="self">Self</span>::resolve_addr</span>(<span class="kw-2">&amp;</span><span class="ident">lookup</span>, <span class="kw-2">*</span><span class="ident">addr</span>))
                     }
@@ -866,7 +1025,9 @@
                         <span class="ident"><span class="self">Self</span>::resolve_addr</span>(<span class="kw-2">&amp;</span><span class="ident">lookup</span>, <span class="kw-2">*</span><span class="ident">b</span>),
                     ),
                     <span class="ident">o</span> =&gt; <span class="ident">o</span>.<span class="ident">clone</span>(), <span class="comment">// TODO: don&#39;t clone</span>
-                }
+                },
+                <span class="ident">span</span>: <span class="ident">span</span>.<span class="ident">clone</span>(),
+                <span class="ident">name</span>: <span class="ident">name</span>.<span class="ident">clone</span>(),
             })
             .<span class="ident">collect</span>();
 
@@ -878,7 +1039,7 @@
         <span class="kw">type</span> <span class="ident">I</span> <span class="op">=</span> <span class="ident">Instruction</span>;
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">bytes</span> <span class="op">=</span> <span class="ident">Vec::new</span>();
 
-        <span class="kw">for</span> <span class="ident">instr</span> <span class="kw">in</span> <span class="self">self</span>.<span class="ident">inner</span>() {
+        <span class="kw">for</span> <span class="ident">RichInstruction</span> { <span class="ident">inner</span>: <span class="ident">instr</span>, <span class="ident">span</span>, <span class="ident">name</span> } <span class="kw">in</span> <span class="self">self</span>.<span class="ident">inner</span>() {
             <span class="ident">bytes</span>.<span class="ident">push</span>(<span class="ident">instr</span>.<span class="ident">to_instr_id</span>());
 
             <span class="kw">match</span> <span class="ident">instr</span> {
@@ -909,6 +1070,32 @@
                 },
                 <span class="kw">_</span> =&gt; (),
             }
+
+            <span class="kw">let</span> <span class="ident">span_bytes</span> <span class="op">=</span> <span class="ident">span</span>.<span class="ident">clone</span>().<span class="ident">map</span>(
+                <span class="op">|</span><span class="ident">s</span><span class="op">|</span> {
+                    <span class="kw">let</span> <span class="ident">path</span> <span class="op">=</span> <span class="ident">s</span>.<span class="ident">src</span>().<span class="ident">to_path</span>();
+                    <span class="kw">let</span> <span class="ident">lossy</span> <span class="op">=</span> <span class="ident">path</span>.<span class="ident">to_string_lossy</span>();
+                    <span class="kw">let</span> <span class="ident">src_bytes</span> <span class="op">=</span> <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="ident">lossy</span>.<span class="ident">as_bytes</span>();
+
+                    [
+                        [<span class="number">1_u8</span>].<span class="ident">as_slice</span>(),
+                        <span class="ident">s</span>.<span class="ident">start</span>().<span class="ident">to_ne_bytes</span>().<span class="ident">as_slice</span>(),
+                        <span class="ident">s</span>.<span class="ident">end</span>().<span class="ident">to_ne_bytes</span>().<span class="ident">as_slice</span>(),
+                        <span class="ident">src_bytes</span>.<span class="ident">len</span>().<span class="ident">to_ne_bytes</span>().<span class="ident">as_slice</span>(),
+                        <span class="ident">src_bytes</span>,
+                    ].<span class="ident">concat</span>()
+                }
+            );
+            <span class="ident">bytes</span>.<span class="ident">extend_from_slice</span>(<span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="ident">span_bytes</span>.<span class="ident">unwrap_or</span>(<span class="macro">vec!</span>[<span class="number">0_u8</span>]));
+
+            <span class="kw">let</span> <span class="ident">name_bytes</span> <span class="op">=</span> <span class="ident">name</span>.<span class="ident">clone</span>().<span class="ident">map</span>(<span class="op">|</span><span class="ident">s</span><span class="op">|</span> <span class="ident">s</span>.<span class="ident">as_bytes</span>().<span class="ident">to_vec</span>());
+            <span class="ident">bytes</span>.<span class="ident">extend_from_slice</span>(<span class="kw-2">&amp;</span><span class="ident">name_bytes</span>
+                .<span class="ident">clone</span>()
+                .<span class="ident">map</span>(<span class="op">|</span><span class="ident">n</span><span class="op">|</span> <span class="ident">n</span>.<span class="ident">len</span>())
+                .<span class="ident">unwrap_or</span>(<span class="number">0</span>)
+                .<span class="ident">to_ne_bytes</span>()
+            );
+            <span class="ident">bytes</span>.<span class="ident">extend_from_slice</span>(<span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="ident">name_bytes</span>.<span class="ident">unwrap_or</span>(<span class="macro">vec!</span>[]));
         }
 
         <span class="ident">bytes</span>
@@ -918,52 +1105,58 @@
         <span class="kw">type</span> <span class="ident">I</span> <span class="op">=</span> <span class="ident">Instruction</span>;
         <span class="kw">let</span> <span class="ident">pad_length</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">inner</span>.<span class="ident">len</span>().<span class="ident">saturating_sub</span>(<span class="number">1</span>).<span class="ident">to_string</span>().<span class="ident">len</span>();
 
-        <span class="kw">for</span> (<span class="ident">j</span>, <span class="ident">instr</span>) <span class="kw">in</span> <span class="self">self</span>.<span class="ident">inner</span>().<span class="ident">enumerate</span>() {
+        <span class="kw">for</span> (<span class="ident">j</span>, <span class="ident">RichInstruction</span>{ <span class="ident">inner</span>: <span class="ident">instr</span>, <span class="ident">name</span>, .. }) <span class="kw">in</span> <span class="self">self</span>.<span class="ident">inner</span>().<span class="ident">enumerate</span>() {
             <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;{:01$} | &quot;</span>, <span class="ident">j</span>, <span class="ident">pad_length</span>)<span class="question-mark">?</span>;
             <span class="kw">match</span> <span class="ident">instr</span> {
-                <span class="ident">I::LoadInt</span>(<span class="ident">i</span>) =&gt; <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;load_int {}&quot;</span>, <span class="ident">i</span>)<span class="question-mark">?</span>,
-                <span class="ident">I::LoadFloat</span>(<span class="ident">f</span>) =&gt; <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;load_float {}&quot;</span>, <span class="ident">f</span>.<span class="number">0</span>)<span class="question-mark">?</span>,
-                <span class="ident">I::LoadString</span>(<span class="ident">s</span>) =&gt; <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;load_string {:?}&quot;</span>, <span class="ident">s</span>)<span class="question-mark">?</span>,
-                <span class="ident">I::LoadBool</span>(<span class="ident">b</span>) =&gt; <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;load_bool {:?}&quot;</span>, <span class="ident">b</span>)<span class="question-mark">?</span>,
-                <span class="ident">I::Load</span>(<span class="ident">i</span>) =&gt; <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;load {}&quot;</span>, <span class="ident">i</span>)<span class="question-mark">?</span>,
-                <span class="ident">I::LoadVar</span>(<span class="ident">i</span>) =&gt; <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;load_var {}&quot;</span>, <span class="ident">i</span>)<span class="question-mark">?</span>,
-                <span class="ident">I::Store</span>(<span class="ident">i</span>) =&gt; <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;store {}&quot;</span>, <span class="ident">i</span>)<span class="question-mark">?</span>,
-                <span class="ident">I::StoreVar</span>(<span class="ident">i</span>) =&gt; <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;store_var {}&quot;</span>, <span class="ident">i</span>)<span class="question-mark">?</span>,
-                <span class="ident">I::StoreMutVar</span>(<span class="ident">i</span>) =&gt; <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;store_mut_var {}&quot;</span>, <span class="ident">i</span>)<span class="question-mark">?</span>,
-                <span class="ident">I::StoreConstVar</span>(<span class="ident">i</span>) =&gt; <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;store_const_var {}&quot;</span>, <span class="ident">i</span>)<span class="question-mark">?</span>,
-                <span class="ident">I::AssignVar</span>(<span class="ident">i</span>) =&gt; <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;assign_var {}&quot;</span>, <span class="ident">i</span>)<span class="question-mark">?</span>,
-                <span class="ident">I::Jump</span>(<span class="ident">Addr::Absolute</span>(<span class="ident">addr</span>)) =&gt; <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;jump {}&quot;</span>, <span class="ident">addr</span>)<span class="question-mark">?</span>,
-                <span class="ident">I::JumpIf</span>(<span class="ident">Addr::Absolute</span>(<span class="ident">addr</span>)) =&gt; <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;jump_if {}&quot;</span>, <span class="ident">addr</span>)<span class="question-mark">?</span>,
+                <span class="ident">I::LoadInt</span>(<span class="ident">i</span>) =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;load_int {}&quot;</span>, <span class="ident">i</span>)<span class="question-mark">?</span>,
+                <span class="ident">I::LoadFloat</span>(<span class="ident">f</span>) =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;load_float {}&quot;</span>, <span class="ident">f</span>.<span class="number">0</span>)<span class="question-mark">?</span>,
+                <span class="ident">I::LoadString</span>(<span class="ident">s</span>) =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;load_string {:?}&quot;</span>, <span class="ident">s</span>)<span class="question-mark">?</span>,
+                <span class="ident">I::LoadBool</span>(<span class="ident">b</span>) =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;load_bool {:?}&quot;</span>, <span class="ident">b</span>)<span class="question-mark">?</span>,
+                <span class="ident">I::Load</span>(<span class="ident">i</span>) =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;load {}&quot;</span>, <span class="ident">i</span>)<span class="question-mark">?</span>,
+                <span class="ident">I::LoadVar</span>(<span class="ident">i</span>) =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;load_var {}&quot;</span>, <span class="ident">i</span>)<span class="question-mark">?</span>,
+                <span class="ident">I::Store</span>(<span class="ident">i</span>) =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;store {}&quot;</span>, <span class="ident">i</span>)<span class="question-mark">?</span>,
+                <span class="ident">I::StoreVar</span>(<span class="ident">i</span>) =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;store_var {}&quot;</span>, <span class="ident">i</span>)<span class="question-mark">?</span>,
+                <span class="ident">I::StoreMutVar</span>(<span class="ident">i</span>) =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;store_mut_var {}&quot;</span>, <span class="ident">i</span>)<span class="question-mark">?</span>,
+                <span class="ident">I::StoreConstVar</span>(<span class="ident">i</span>) =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;store_const_var {}&quot;</span>, <span class="ident">i</span>)<span class="question-mark">?</span>,
+                <span class="ident">I::AssignVar</span>(<span class="ident">i</span>) =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;assign_var {}&quot;</span>, <span class="ident">i</span>)<span class="question-mark">?</span>,
+                <span class="ident">I::Jump</span>(<span class="ident">Addr::Absolute</span>(<span class="ident">addr</span>)) =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;jump {}&quot;</span>, <span class="ident">addr</span>)<span class="question-mark">?</span>,
+                <span class="ident">I::JumpIf</span>(<span class="ident">Addr::Absolute</span>(<span class="ident">addr</span>)) =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;jump_if {}&quot;</span>, <span class="ident">addr</span>)<span class="question-mark">?</span>,
                 <span class="ident">I::JumpIfElse</span>(<span class="ident">Addr::Absolute</span>(<span class="ident">a</span>), <span class="ident">Addr::Absolute</span>(<span class="ident">b</span>)) =&gt; {
-                    <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;jump_if_else {} {}&quot;</span>, <span class="ident">a</span>, <span class="ident">b</span>)<span class="question-mark">?</span>;
+                    <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;jump_if_else {} {}&quot;</span>, <span class="ident">a</span>, <span class="ident">b</span>)<span class="question-mark">?</span>;
                 }
-                <span class="ident">I::BinOpAdd</span> =&gt; <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;bin_add&quot;</span>)<span class="question-mark">?</span>,
-                <span class="ident">I::BinOpSub</span> =&gt; <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;bin_sub&quot;</span>)<span class="question-mark">?</span>,
-                <span class="ident">I::BinOpMul</span> =&gt; <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;bin_mul&quot;</span>)<span class="question-mark">?</span>,
-                <span class="ident">I::BinOpDiv</span> =&gt; <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;bin_div&quot;</span>)<span class="question-mark">?</span>,
-                <span class="ident">I::BinOpTrueDiv</span> =&gt; <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;bin_truediv&quot;</span>)<span class="question-mark">?</span>,
-                <span class="ident">I::BinOpPow</span> =&gt; <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;bin_pow&quot;</span>)<span class="question-mark">?</span>,
-                <span class="ident">I::BinOpBitOr</span> =&gt; <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;bin_bit_or&quot;</span>)<span class="question-mark">?</span>,
-                <span class="ident">I::BinOpBitXor</span> =&gt; <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;bin_bit_xor&quot;</span>)<span class="question-mark">?</span>,
-                <span class="ident">I::UnOpBitNot</span> =&gt; <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;bin_bit_not&quot;</span>)<span class="question-mark">?</span>,
-                <span class="ident">I::BinOpBitAnd</span> =&gt; <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;bin_bit_and&quot;</span>)<span class="question-mark">?</span>,
-                <span class="ident">I::OpEq</span> =&gt; <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;bin_eq&quot;</span>)<span class="question-mark">?</span>,
-                <span class="ident">I::OpNe</span> =&gt; <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;bin_ne&quot;</span>)<span class="question-mark">?</span>,
-                <span class="ident">I::OpLt</span> =&gt; <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;bin_lt&quot;</span>)<span class="question-mark">?</span>,
-                <span class="ident">I::OpLe</span> =&gt; <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;bin_le&quot;</span>)<span class="question-mark">?</span>,
-                <span class="ident">I::OpGt</span> =&gt; <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;bin_gt&quot;</span>)<span class="question-mark">?</span>,
-                <span class="ident">I::OpGe</span> =&gt; <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;bin_ge&quot;</span>)<span class="question-mark">?</span>,
-                <span class="ident">I::OpLogicalOr</span> =&gt; <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;log_or&quot;</span>)<span class="question-mark">?</span>,
-                <span class="ident">I::OpLogicalAnd</span> =&gt; <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;log_and&quot;</span>)<span class="question-mark">?</span>,
-                <span class="ident">I::OpLogicalNot</span> =&gt; <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;log_not&quot;</span>)<span class="question-mark">?</span>,
-                <span class="ident">I::Pop</span> =&gt; <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;pop&quot;</span>)<span class="question-mark">?</span>,
-                <span class="ident">I::Ret</span> =&gt; <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;ret&quot;</span>)<span class="question-mark">?</span>,
-                <span class="ident">I::RetNull</span> =&gt; <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;ret_null&quot;</span>)<span class="question-mark">?</span>,
-                <span class="ident">I::Halt</span> =&gt; <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;halt&quot;</span>)<span class="question-mark">?</span>,
-                <span class="ident">I::EnterScope</span> =&gt; <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;enter_scope&quot;</span>)<span class="question-mark">?</span>,
-                <span class="ident">I::ExitScope</span> =&gt; <span class="macro">writeln!</span>(<span class="ident">w</span>, <span class="string">&quot;exit_scope&quot;</span>)<span class="question-mark">?</span>,
+                <span class="ident">I::BinOpAdd</span> =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;bin_add&quot;</span>)<span class="question-mark">?</span>,
+                <span class="ident">I::BinOpSub</span> =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;bin_sub&quot;</span>)<span class="question-mark">?</span>,
+                <span class="ident">I::BinOpMul</span> =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;bin_mul&quot;</span>)<span class="question-mark">?</span>,
+                <span class="ident">I::BinOpDiv</span> =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;bin_div&quot;</span>)<span class="question-mark">?</span>,
+                <span class="ident">I::BinOpTrueDiv</span> =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;bin_truediv&quot;</span>)<span class="question-mark">?</span>,
+                <span class="ident">I::BinOpPow</span> =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;bin_pow&quot;</span>)<span class="question-mark">?</span>,
+                <span class="ident">I::BinOpBitOr</span> =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;bin_bit_or&quot;</span>)<span class="question-mark">?</span>,
+                <span class="ident">I::BinOpBitXor</span> =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;bin_bit_xor&quot;</span>)<span class="question-mark">?</span>,
+                <span class="ident">I::UnOpBitNot</span> =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;bin_bit_not&quot;</span>)<span class="question-mark">?</span>,
+                <span class="ident">I::BinOpBitAnd</span> =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;bin_bit_and&quot;</span>)<span class="question-mark">?</span>,
+                <span class="ident">I::OpEq</span> =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;bin_eq&quot;</span>)<span class="question-mark">?</span>,
+                <span class="ident">I::OpNe</span> =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;bin_ne&quot;</span>)<span class="question-mark">?</span>,
+                <span class="ident">I::OpLt</span> =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;bin_lt&quot;</span>)<span class="question-mark">?</span>,
+                <span class="ident">I::OpLe</span> =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;bin_le&quot;</span>)<span class="question-mark">?</span>,
+                <span class="ident">I::OpGt</span> =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;bin_gt&quot;</span>)<span class="question-mark">?</span>,
+                <span class="ident">I::OpGe</span> =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;bin_ge&quot;</span>)<span class="question-mark">?</span>,
+                <span class="ident">I::OpLogicalOr</span> =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;log_or&quot;</span>)<span class="question-mark">?</span>,
+                <span class="ident">I::OpLogicalAnd</span> =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;log_and&quot;</span>)<span class="question-mark">?</span>,
+                <span class="ident">I::OpLogicalNot</span> =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;log_not&quot;</span>)<span class="question-mark">?</span>,
+                <span class="ident">I::Pop</span> =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;pop&quot;</span>)<span class="question-mark">?</span>,
+                <span class="ident">I::Ret</span> =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;ret&quot;</span>)<span class="question-mark">?</span>,
+                <span class="ident">I::RetNull</span> =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;ret_null&quot;</span>)<span class="question-mark">?</span>,
+                <span class="ident">I::Halt</span> =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;halt&quot;</span>)<span class="question-mark">?</span>,
+                <span class="ident">I::EnterScope</span> =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;enter_scope&quot;</span>)<span class="question-mark">?</span>,
+                <span class="ident">I::ExitScope</span> =&gt; <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot;exit_scope&quot;</span>)<span class="question-mark">?</span>,
                 <span class="kw">_</span> =&gt; <span class="macro">unimplemented!</span>(),
             }
+
+            <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">name</span>) <span class="op">=</span> <span class="ident">name</span> {
+                <span class="macro">write!</span>(<span class="ident">w</span>, <span class="string">&quot; ({})&quot;</span>, <span class="ident">name</span>)<span class="question-mark">?</span>;
+            }
+
+            <span class="macro">writeln!</span>(<span class="ident">w</span>)<span class="question-mark">?</span>;
         }
 
         <span class="prelude-val">Ok</span>(())
@@ -975,10 +1168,10 @@
         <span class="kw">type</span> <span class="ident">I</span> <span class="op">=</span> <span class="ident">Instruction</span>;
 
         <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">ptr</span> <span class="op">=</span> <span class="number">0</span>;
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">instructions</span> <span class="op">=</span> <span class="ident">Vec</span>::<span class="op">&lt;</span><span class="ident">Instruction</span><span class="op">&gt;</span><span class="ident">::new</span>();
+        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">instructions</span> <span class="op">=</span> <span class="ident">Vec</span>::<span class="op">&lt;</span><span class="ident">RichInstruction</span><span class="op">&gt;</span><span class="ident">::new</span>();
 
         <span class="kw">loop</span> {
-            <span class="ident">instructions</span>.<span class="ident">push</span>(<span class="kw">match</span> <span class="ident">bytes</span>.<span class="ident">get</span>(<span class="ident">ptr</span>) {
+            <span class="kw">let</span> <span class="ident">instr</span> <span class="op">=</span> <span class="kw">match</span> <span class="ident">bytes</span>.<span class="ident">get</span>(<span class="ident">ptr</span>) {
                 <span class="prelude-val">Some</span>(<span class="ident">b</span>) =&gt; <span class="kw">match</span> <span class="ident">b</span> {
                     <span class="number">0</span> =&gt; {
                         <span class="ident">ptr</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span> <span class="op">+</span> <span class="ident">size_of</span>::<span class="op">&lt;</span><span class="ident">u128</span><span class="op">&gt;</span>();
@@ -1068,7 +1261,48 @@
                     <span class="ident">b</span> =&gt; <span class="macro">panic!</span>(<span class="string">&quot;invalid byte 0x{:0x} at position {}&quot;</span>, <span class="ident">b</span>, <span class="ident">ptr</span>),
                 },
                 <span class="prelude-val">None</span> =&gt; <span class="kw">break</span>,
-            });
+            };
+
+            <span class="kw">let</span> <span class="ident">size</span> <span class="op">=</span> <span class="ident">size_of</span>::<span class="op">&lt;</span><span class="ident">usize</span><span class="op">&gt;</span>();
+
+            <span class="kw">let</span> <span class="ident">span</span> <span class="op">=</span> <span class="kw">if</span> <span class="ident">bytes</span>[<span class="ident">ptr</span>] <span class="op">==</span> <span class="number">1</span> {
+                <span class="ident">ptr</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span> <span class="op">+</span> <span class="ident">size</span>;
+                <span class="kw">let</span> <span class="ident">start</span> <span class="op">=</span> <span class="ident">read_ne_usize</span>(<span class="kw-2">&amp;mut</span> <span class="kw-2">&amp;</span><span class="ident">bytes</span>[(<span class="ident">ptr</span> <span class="op">-</span> <span class="ident">size</span>)..<span class="ident">ptr</span>]);
+
+                <span class="ident">ptr</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span> <span class="op">+</span> <span class="ident">size</span>;
+                <span class="kw">let</span> <span class="ident">end</span> <span class="op">=</span> <span class="ident">read_ne_usize</span>(<span class="kw-2">&amp;mut</span> <span class="kw-2">&amp;</span><span class="ident">bytes</span>[(<span class="ident">ptr</span> <span class="op">-</span> <span class="ident">size</span>)..<span class="ident">ptr</span>]);
+
+                <span class="ident">ptr</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span> <span class="op">+</span> <span class="ident">size</span>;
+                <span class="kw">let</span> <span class="ident">src_len</span> <span class="op">=</span> <span class="ident">read_ne_usize</span>(<span class="kw-2">&amp;mut</span> <span class="kw-2">&amp;</span><span class="ident">bytes</span>[(<span class="ident">ptr</span> <span class="op">-</span> <span class="ident">size</span>)..<span class="ident">ptr</span>]);
+
+                <span class="ident">ptr</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span> <span class="op">+</span> <span class="ident">src_len</span>;
+                <span class="kw">let</span> <span class="ident">path</span> <span class="op">=</span> <span class="ident">PathBuf::from_str</span>(<span class="kw-2">&amp;</span><span class="ident">String::from_utf8_lossy</span>(
+                    <span class="kw-2">&amp;</span><span class="ident">bytes</span>[(<span class="ident">ptr</span> <span class="op">-</span> <span class="ident">src_len</span>)..<span class="ident">ptr</span>]
+                )).<span class="ident">unwrap</span>();
+
+                <span class="kw">let</span> <span class="ident">src</span> <span class="op">=</span> <span class="ident">path</span>.<span class="ident">as_path</span>();
+                <span class="kw">let</span> <span class="ident">src</span> <span class="op">=</span> <span class="ident">Source::from_path</span>(<span class="ident">src</span>);
+
+                <span class="prelude-val">Some</span>(<span class="ident">Span::from_range</span>(<span class="ident">src</span>, <span class="ident">start</span>..<span class="ident">end</span>))
+            } <span class="kw">else</span> {
+                <span class="prelude-val">None</span>
+            };
+
+            <span class="ident">ptr</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span> <span class="op">+</span> <span class="ident">size</span>;
+            <span class="kw">let</span> <span class="ident">string_len</span> <span class="op">=</span> <span class="ident">read_ne_usize</span>(<span class="kw-2">&amp;mut</span> <span class="kw-2">&amp;</span><span class="ident">bytes</span>[(<span class="ident">ptr</span> <span class="op">-</span> <span class="ident">size</span>)..<span class="ident">ptr</span>]);
+
+            <span class="ident">ptr</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span> <span class="op">+</span> <span class="ident">string_len</span>;
+            <span class="kw">let</span> <span class="ident">name</span> <span class="op">=</span> <span class="kw">if</span> <span class="ident">string_len</span> <span class="op">&gt;</span> <span class="number">0</span> {
+                <span class="prelude-val">Some</span>(<span class="ident">String::from_utf8</span>(<span class="ident">Vec::from</span>(<span class="kw-2">&amp;</span><span class="ident">bytes</span>[(<span class="ident">ptr</span> <span class="op">-</span> <span class="ident">string_len</span>)..<span class="ident">ptr</span>])).<span class="ident">unwrap</span>())
+            } <span class="kw">else</span> {
+                <span class="prelude-val">None</span>
+            };
+
+            <span class="ident">instructions</span>.<span class="ident">push</span>(<span class="ident">RichInstruction</span> {
+                <span class="ident">inner</span>: <span class="ident">instr</span>,
+                <span class="ident">span</span>,
+                <span class="ident">name</span>,
+            })
         }
 
         <span class="self">Self</span> {
@@ -1078,8 +1312,8 @@
     }
 }
 
-<span class="kw">impl</span> <span class="ident">FromIterator</span><span class="op">&lt;</span><span class="ident">Instruction</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">Program</span> {
-    <span class="kw">fn</span> <span class="ident">from_iter</span><span class="op">&lt;</span><span class="ident">I</span>: <span class="ident">IntoIterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> <span class="ident">Instruction</span><span class="op">&gt;</span><span class="op">&gt;</span>(<span class="ident">iter</span>: <span class="ident">I</span>) -&gt; <span class="self">Self</span> {
+<span class="kw">impl</span> <span class="ident">FromIterator</span><span class="op">&lt;</span><span class="ident">RichInstruction</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">Program</span> {
+    <span class="kw">fn</span> <span class="ident">from_iter</span><span class="op">&lt;</span><span class="ident">I</span>: <span class="ident">IntoIterator</span><span class="op">&lt;</span><span class="ident">Item</span> <span class="op">=</span> <span class="ident">RichInstruction</span><span class="op">&gt;</span><span class="op">&gt;</span>(<span class="ident">iter</span>: <span class="ident">I</span>) -&gt; <span class="self">Self</span> {
         <span class="self">Self</span> {
             <span class="ident">inner</span>: <span class="ident">iter</span>.<span class="ident">into_iter</span>().<span class="ident">collect</span>(),
             <span class="ident">procedures</span>: <span class="ident">Vec::new</span>(),
@@ -1093,5 +1327,5 @@
     }
 }
 </code></pre></div>
-</section></div></main><div id="rustdoc-vars" data-root-path="../../" data-current-crate="terbium_bytecode" data-themes="ayu,dark,light" data-resource-suffix="" data-rustdoc-version="1.63.0-nightly (dc80ca78b 2022-06-21)" ></div>
+</section></div></main><div id="rustdoc-vars" data-root-path="../../" data-current-crate="terbium_bytecode" data-themes="ayu,dark,light" data-resource-suffix="" data-rustdoc-version="1.63.0-nightly (10f4ce324 2022-06-22)" ></div>
 </body></html>

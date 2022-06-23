@@ -62,8 +62,9 @@
 <span id="56">56</span>
 <span id="57">57</span>
 <span id="58">58</span>
-<span id="59">59</span>
-</pre><pre class="rust"><code><span class="kw">use</span> <span class="ident">std::hash</span>::{<span class="ident">Hash</span>, <span class="ident">Hasher</span>};
+</pre><pre class="rust"><code><span class="kw">use</span> <span class="ident">std</span>::{<span class="ident">hash</span>::{<span class="ident">Hash</span>, <span class="ident">Hasher</span>}, <span class="ident">fmt::Debug</span>};
+<span class="kw">use</span> <span class="ident">std::fmt</span>::{<span class="ident">Display</span>, <span class="ident">Formatter</span>, <span class="prelude-ty">Result</span> <span class="kw">as</span> <span class="ident">FmtResult</span>};
+
 
 <span class="attribute">#[<span class="ident">repr</span>(<span class="ident">transparent</span>)]</span>
 <span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Copy</span>, <span class="ident">Debug</span>)]</span>
@@ -71,7 +72,7 @@
 
 <span class="kw">impl</span> <span class="ident">EqComparableFloat</span> {
     <span class="kw">fn</span> <span class="ident">key</span>(<span class="self">self</span>) -&gt; <span class="ident">u64</span> {
-        <span class="ident">u64::from_ne_bytes</span>(<span class="self">self</span>.<span class="number">0</span>.<span class="ident">to_ne_bytes</span>())
+        <span class="ident">u64::from_be_bytes</span>(<span class="self">self</span>.<span class="number">0</span>.<span class="ident">to_be_bytes</span>())
     }
 }
 
@@ -107,21 +108,18 @@
     }
 }
 
-<span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">test</span>)]</span>
-<span class="kw">mod</span> <span class="ident">tests</span> {
-    <span class="kw">use</span> <span class="ident"><span class="kw">super</span>::EqComparableFloat</span>;
-    <span class="kw">use</span> <span class="ident">std::collections::HashMap</span>;
+<span class="kw">impl</span> <span class="ident">Default</span> <span class="kw">for</span> <span class="ident">EqComparableFloat</span> {
+    <span class="doccomment">/// Returns the default value of 0.0</span>
+    <span class="kw">fn</span> <span class="ident">default</span>() -&gt; <span class="self">Self</span> {
+        <span class="self">Self</span>(<span class="number">0.0</span>)
+    }
+}
 
-    <span class="attribute">#[<span class="ident">test</span>]</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">test_float_eq</span>() {
-        <span class="macro">assert_eq!</span>(<span class="ident">EqComparableFloat</span>(<span class="number">0.1</span>), <span class="ident">EqComparableFloat</span>(<span class="number">0.1</span>));
-
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">sample</span> <span class="op">=</span> <span class="ident">HashMap</span>::<span class="op">&lt;</span><span class="ident">EqComparableFloat</span>, <span class="ident">u8</span><span class="op">&gt;</span><span class="ident">::with_capacity</span>(<span class="number">1</span>);
-        <span class="ident">sample</span>.<span class="ident">insert</span>(<span class="ident">EqComparableFloat</span>(<span class="number">0.1</span>), <span class="number">0</span>);
-
-        <span class="macro">assert_eq!</span>(<span class="ident">sample</span>.<span class="ident">get</span>(<span class="kw-2">&amp;</span><span class="ident">EqComparableFloat</span>(<span class="number">0.1</span>)), <span class="prelude-val">Some</span>(<span class="kw-2">&amp;</span><span class="number">0_u8</span>));
+<span class="kw">impl</span> <span class="ident">Display</span> <span class="kw">for</span> <span class="ident">EqComparableFloat</span> {
+    <span class="kw">fn</span> <span class="ident">fmt</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">f</span>: <span class="kw-2">&amp;mut</span> <span class="ident">Formatter</span><span class="op">&lt;</span><span class="lifetime">&#39;_</span><span class="op">&gt;</span>) -&gt; <span class="ident">FmtResult</span> {
+         <span class="ident">std::fmt::Display::fmt</span>(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="number">0</span>, <span class="ident">f</span>)
     }
 }
 </code></pre></div>
-</section></div></main><div id="rustdoc-vars" data-root-path="../../" data-current-crate="terbium_bytecode" data-themes="ayu,dark,light" data-resource-suffix="" data-rustdoc-version="1.63.0-nightly (dc80ca78b 2022-06-21)" ></div>
+</section></div></main><div id="rustdoc-vars" data-root-path="../../" data-current-crate="terbium_bytecode" data-themes="ayu,dark,light" data-resource-suffix="" data-rustdoc-version="1.63.0-nightly (10f4ce324 2022-06-22)" ></div>
 </body></html>
