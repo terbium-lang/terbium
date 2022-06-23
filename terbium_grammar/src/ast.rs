@@ -107,7 +107,7 @@ pub enum TypeExpr {
 }
 
 pub trait ParseInterface {
-    // Parse the tokens using this parser.
+    // Parses the given tokens using this parser.
     ///
     /// # Errors
     /// * The tokens does not match Terbium grammar.
@@ -133,7 +133,7 @@ pub trait ParseInterface {
         Self::parse(tokens)
     }
 
-    /// Read and tokenizes the specified source file.
+    /// Reads and tokenizes the specified source file.
     ///
     /// # Errors
     /// * The source file's content does not match Terbium grammar.
@@ -327,7 +327,7 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
 
             let array = e
                 .clone()
-                .separated_by(just::<_, Token, _>(Token::Comma))
+                .separated_by(just::<_, Token, Error>(Token::Comma))
                 .allow_trailing()
                 .delimited_by(
                     just(Token::StartBracket(Bracket::Bracket)),
@@ -335,7 +335,7 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
                 )
                 .map_with_span(|a, span| Spanned::new(Expr::Array(a), span));
 
-            let if_stmt = just::<_, Token, _>(Token::Keyword(Keyword::If))
+            let if_stmt = just::<_, Token, Error>(Token::Keyword(Keyword::If))
                 .ignore_then(e.clone())
                 .then(body.clone().delimited_by(
                     just(Token::StartBracket(Bracket::Brace)),
@@ -371,7 +371,7 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
                     )
                 });
 
-            let while_stmt = just::<_, Token, _>(Token::Keyword(Keyword::While))
+            let while_stmt = just::<_, Token, Error>(Token::Keyword(Keyword::While))
                 .ignore_then(e.clone())
                 .then(body.clone().delimited_by(
                     just(Token::StartBracket(Bracket::Brace)),
@@ -405,7 +405,7 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
             let attr = atom
                 .clone()
                 .then(
-                    just::<_, Token, _>(Token::Dot)
+                    just::<_, Token, Error>(Token::Dot)
                         .ignore_then(ident)
                         .repeated(),
                 )
@@ -430,7 +430,7 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
                 .clone()
                 .then(
                     e.clone()
-                        .separated_by(just::<_, Token, _>(Token::Comma))
+                        .separated_by(just::<_, Token, Error>(Token::Comma))
                         .allow_trailing()
                         .delimited_by(
                             just(Token::StartBracket(Bracket::Paren)),
