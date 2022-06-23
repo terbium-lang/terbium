@@ -193,6 +193,10 @@ impl From<Instruction> for RichInstruction {
 }
 
 impl RichInstruction {
+    pub fn spanned(instr: Instruction, span: Span) -> Self {
+        Self { inner: instr, span: Some(span), name: None }
+    }
+
     pub fn instr(&self) -> &Instruction {
         &self.inner
     }

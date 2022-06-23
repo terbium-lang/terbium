@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use super::{Addr, AddrRepr, Instruction, Program, RichInstruction};
 use terbium_grammar::ast::Target;
-use terbium_grammar::{Body, Expr, Node, Operator, Spanned};
+use terbium_grammar::{Body, Expr, Node, Operator, Span, Spanned};
 
 // Contrary to assumption, this does not take into account scope and in reality
 // it's just a super basic string-interner, in a way.
@@ -79,6 +79,10 @@ impl Interpreter {
         self.program.push(procedure, instr);
     }
 
+    pub fn push_spanned(&mut self, procedure: MaybeProc, instr: Instruction, span: Span) {
+        self.push_rich(procedure, RichInstruction::spanned(instr, span));
+    }
+
     pub fn push_return(&mut self, procedure: AddrRepr, return_last: bool) {
         self.push(
             Some(procedure),
@@ -104,10 +108,12 @@ impl Interpreter {
         let expr = expr.into_node();
 
         match expr {
-            Expr::Integer(i) => self.push(proc, Instruction::LoadInt(i)),
-            Expr::Bool(b) => self.push(proc, Instruction::LoadBool(b)),
-            Expr::String(s) => self.push(proc, Instruction::LoadString(s)),
-            Expr::Float(f) => self.push(
+            Expr::Integer(i) => self.push_spanned(proc,
+                Instruction::LoadInt(i), span,
+            ),
+            Expr::Bool(b) => self.push_spanned(proc, Instruction::LoadBool(b), span),
+            Expr::String(s) => self.push_spanned(proc, Instruction::LoadString(s), span),
+            Expr::Float(f) => self.push_spanned(
                 proc,
                 Instruction::LoadFloat(
                     f.parse::<f64>()
@@ -118,11 +124,12 @@ impl Interpreter {
                         })
                         .into(),
                 ),
+                span,
             ),
             Expr::UnaryExpr { operator, value } => {
                 self.interpret_expr(proc, value);
 
-                self.push(
+                self.push_spanned(
                     proc,
                     match operator.into_node() {
                         Operator::Add => Instruction::UnOpPos,
@@ -131,13 +138,14 @@ impl Interpreter {
                         Operator::BitNot => Instruction::UnOpBitNot,
                         _ => unimplemented!(),
                     },
+                    span,
                 );
             }
             Expr::BinaryExpr { operator, lhs, rhs } => {
                 self.interpret_expr(proc, lhs);
                 self.interpret_expr(proc, rhs);
 
-                self.push(
+                self.push_spanned(
                     proc,
                     match operator.node() {
                         Operator::Add => Instruction::BinOpAdd,
@@ -158,11 +166,17 @@ impl Interpreter {
                         Operator::Range => todo!(),
                         _ => unimplemented!(),
                     },
+                    span,
                 );
             }
             Expr::Ident(ident) => {
-                let var = self.lookup.get(ident);
-                self.push(proc, Instruction::LoadVar(var));
+                let var = self.lookup.get(ident.clone());
+
+                self.push_rich(proc, RichInstruction {
+                    inner: Instruction::LoadVar(var),
+                    span: Some(span),
+                    name: Some(ident),
+                });
             }
             Expr::If {
                 condition,
@@ -180,17 +194,18 @@ impl Interpreter {
                         let else_proc = self.program.create_procedure();
                         self.interpret_body_scoped(else_proc, else_body.into_node());
 
-                        self.push(
+                        self.push_spanned(
                             proc,
                             Instruction::JumpIfElse(
                                 Addr::Procedure(then_proc),
                                 Addr::Procedure(else_proc),
                             ),
+                            span,
                         );
                         return;
                     }
 
-                    self.push(proc, Instruction::JumpIf(Addr::Procedure(then_proc)));
+                    self.push_spanned(proc, Instruction::JumpIf(Addr::Procedure(then_proc)), span);
                     return;
                 }
 
@@ -205,12 +220,13 @@ impl Interpreter {
                     let then_proc = self.program.create_procedure();
                     self.interpret_body_scoped(then_proc, body.into_node());
 
-                    self.push(
+                    self.push_spanned(
                         last_parent,
                         Instruction::JumpIfElse(
                             Addr::Procedure(then_proc),
                             Addr::Procedure(last_else),
                         ),
+                        span,
                     );
                     // If last_parent is None, Halt instruction should be inserted automatically.
                     if let Some(p) = last_parent {
@@ -254,9 +270,9 @@ impl Interpreter {
             Node::Return(e) => {
                 if let Some(e) = e {
                     self.interpret_expr(proc, e);
-                    self.push(proc, Instruction::Ret);
+                    self.push_spanned(proc, Instruction::Ret, span);
                 } else {
-                    self.push(proc, Instruction::RetNull);
+                    self.push_spanned(proc, Instruction::RetNull, span);
                 }
             }
             // TODO: maybe we can check const and mut at runtime, but those should be caught by the analyzer
@@ -274,14 +290,18 @@ impl Interpreter {
                 if let Target::Ident(s) = target {
                     let key = self.lookup.get(s.clone());
 
-                    self.push(
+                    self.push_rich(
                         proc,
-                        if r#mut {
-                            Instruction::StoreMutVar(key)
-                        } else if r#const {
-                            Instruction::StoreConstVar(key)
-                        } else {
-                            Instruction::StoreVar(key)
+                        RichInstruction {
+                            inner: if r#mut {
+                                Instruction::StoreMutVar(key)
+                            } else if r#const {
+                                Instruction::StoreConstVar(key)
+                            } else {
+                                Instruction::StoreVar(key)
+                            },
+                            span: Some(span),
+                            name: Some(s.clone()),
                         },
                     );
                 }
@@ -295,7 +315,11 @@ impl Interpreter {
                 if let Target::Ident(s) = target {
                     let key = self.lookup.get(s.clone());
 
-                    self.push(proc, Instruction::AssignVar(key));
+                    self.push_rich(proc, RichInstruction {
+                        inner: Instruction::AssignVar(key),
+                        span: Some(span),
+                        name: Some(s.clone()),
+                    });
                 }
             }
             _ => todo!(),
