@@ -1,7 +1,3 @@
-pub mod test_float;
-pub mod test_interpreter;
-pub mod test_intrepreter_from_string;
-
 use terbium::bytecode::Interpreter as Transformer;
 use terbium::grammar::{Body, ParseInterface, Source};
 use terbium::interpreter::{DefaultInterpreter, TerbiumObject};
