@@ -836,7 +836,7 @@
 <span class="kw">use</span> <span class="ident">std::io::Write</span>;
 <span class="kw">use</span> <span class="ident">std::str::FromStr</span>;
 
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">PartialEq</span>)]</span>
+<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">Eq</span>, <span class="ident">PartialEq</span>)]</span>
 <span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">AnalyzerMessageKind</span> {
     <span class="ident">Info</span>,
     <span class="ident">Alert</span>(<span class="ident">AnalyzerKind</span>),
@@ -896,7 +896,7 @@
             <span class="ident">hint</span>: <span class="prelude-val">Some</span>(<span class="ident">Hint</span> {
                 <span class="ident">message</span>: <span class="macro">format!</span>(
                     <span class="string">&quot;remove the declaration, or prefix with `_`: {:?}&quot;</span>,
-                    <span class="string">&quot;_&quot;</span>.<span class="ident">to_string</span>() <span class="op">+</span> <span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="ident">name</span>
+                    <span class="string">&quot;_&quot;</span>.<span class="ident">to_string</span>() <span class="op">+</span> <span class="ident">name</span>
                 ),
                 <span class="ident">action</span>: <span class="ident">HintAction::None</span>,
             }),
