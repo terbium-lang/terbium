@@ -765,7 +765,65 @@
 <span id="759">759</span>
 <span id="760">760</span>
 <span id="761">761</span>
-</pre><pre class="rust"><code><span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">util</span>;
+<span id="762">762</span>
+<span id="763">763</span>
+<span id="764">764</span>
+<span id="765">765</span>
+<span id="766">766</span>
+<span id="767">767</span>
+<span id="768">768</span>
+<span id="769">769</span>
+<span id="770">770</span>
+<span id="771">771</span>
+<span id="772">772</span>
+<span id="773">773</span>
+<span id="774">774</span>
+<span id="775">775</span>
+<span id="776">776</span>
+<span id="777">777</span>
+<span id="778">778</span>
+<span id="779">779</span>
+<span id="780">780</span>
+<span id="781">781</span>
+<span id="782">782</span>
+<span id="783">783</span>
+<span id="784">784</span>
+<span id="785">785</span>
+<span id="786">786</span>
+<span id="787">787</span>
+<span id="788">788</span>
+<span id="789">789</span>
+<span id="790">790</span>
+<span id="791">791</span>
+<span id="792">792</span>
+<span id="793">793</span>
+<span id="794">794</span>
+<span id="795">795</span>
+<span id="796">796</span>
+<span id="797">797</span>
+<span id="798">798</span>
+<span id="799">799</span>
+<span id="800">800</span>
+<span id="801">801</span>
+<span id="802">802</span>
+<span id="803">803</span>
+<span id="804">804</span>
+<span id="805">805</span>
+<span id="806">806</span>
+<span id="807">807</span>
+<span id="808">808</span>
+<span id="809">809</span>
+<span id="810">810</span>
+<span id="811">811</span>
+<span id="812">812</span>
+<span id="813">813</span>
+<span id="814">814</span>
+<span id="815">815</span>
+<span id="816">816</span>
+<span id="817">817</span>
+</pre><pre class="rust"><code><span class="attribute">#![<span class="ident">feature</span>(<span class="ident">lint_reasons</span>)]</span>
+
+<span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">util</span>;
 
 <span class="kw">use</span> <span class="ident">std::collections</span>::{<span class="ident">HashMap</span>, <span class="ident">HashSet</span>};
 <span class="kw">use</span> <span class="ident">std::fmt::Formatter</span>;
@@ -794,7 +852,8 @@
 }
 
 <span class="kw">impl</span> <span class="ident">AnalyzerMessage</span> {
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">non_snake_case</span>(<span class="ident">name</span>: <span class="ident">String</span>, <span class="ident">counterpart</span>: <span class="ident">String</span>, <span class="ident">span</span>: <span class="ident">Span</span>) -&gt; <span class="self">Self</span> {
+    <span class="attribute">#[<span class="ident">must_use</span>]</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">non_snake_case</span>(<span class="ident">name</span>: <span class="kw-2">&amp;</span><span class="ident">str</span>, <span class="ident">counterpart</span>: <span class="ident">String</span>, <span class="ident">span</span>: <span class="ident">Span</span>) -&gt; <span class="self">Self</span> {
         <span class="self">Self</span> {
             <span class="ident">kind</span>: <span class="ident">AnalyzerMessageKind::Alert</span>(<span class="ident">AnalyzerKind::NonSnakeCase</span>),
             <span class="ident">message</span>: <span class="string">&quot;non-type identifier names should be snake_case&quot;</span>.<span class="ident">to_string</span>(),
@@ -807,7 +866,8 @@
         }
     }
 
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">unnecessary_mut_variable</span>(<span class="ident">name</span>: <span class="ident">String</span>, <span class="ident">span</span>: <span class="ident">Span</span>) -&gt; <span class="self">Self</span> {
+    <span class="attribute">#[<span class="ident">must_use</span>]</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">unnecessary_mut_variable</span>(<span class="ident">name</span>: <span class="kw-2">&amp;</span><span class="ident">str</span>, <span class="ident">span</span>: <span class="ident">Span</span>) -&gt; <span class="self">Self</span> {
         <span class="self">Self</span> {
             <span class="ident">kind</span>: <span class="ident">AnalyzerMessageKind::Alert</span>(<span class="ident">AnalyzerKind::UnnecessaryMutVariables</span>),
             <span class="ident">message</span>: <span class="string">&quot;variable was unneedingly declared as mutable&quot;</span>.<span class="ident">to_string</span>(),
@@ -823,7 +883,8 @@
         }
     }
 
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">unused_variable</span>(<span class="ident">name</span>: <span class="ident">String</span>, <span class="ident">span</span>: <span class="ident">Span</span>) -&gt; <span class="self">Self</span> {
+    <span class="attribute">#[<span class="ident">must_use</span>]</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">unused_variable</span>(<span class="ident">name</span>: <span class="kw-2">&amp;</span><span class="ident">str</span>, <span class="ident">span</span>: <span class="ident">Span</span>) -&gt; <span class="self">Self</span> {
         <span class="self">Self</span> {
             <span class="ident">kind</span>: <span class="ident">AnalyzerMessageKind::Alert</span>(<span class="ident">AnalyzerKind::UnusedVariables</span>),
             <span class="ident">message</span>: <span class="string">&quot;variable is declared but never used&quot;</span>.<span class="ident">to_string</span>(),
@@ -842,7 +903,8 @@
         }
     }
 
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">global_mutable_variable</span>(<span class="ident">name</span>: <span class="ident">String</span>, <span class="ident">span</span>: <span class="ident">Span</span>) -&gt; <span class="self">Self</span> {
+    <span class="attribute">#[<span class="ident">must_use</span>]</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">global_mutable_variable</span>(<span class="ident">name</span>: <span class="kw-2">&amp;</span><span class="ident">str</span>, <span class="ident">span</span>: <span class="ident">Span</span>) -&gt; <span class="self">Self</span> {
         <span class="self">Self</span> {
             <span class="ident">kind</span>: <span class="ident">AnalyzerMessageKind::Alert</span>(<span class="ident">AnalyzerKind::GlobalMutableVariables</span>),
             <span class="ident">message</span>: <span class="string">&quot;variable is declared as mutable in the global scope&quot;</span>.<span class="ident">to_string</span>(),
@@ -859,7 +921,8 @@
         }
     }
 
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">unresolved_identifier</span>(<span class="ident">name</span>: <span class="ident">String</span>, <span class="ident">close_match</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span>, <span class="ident">span</span>: <span class="ident">Span</span>) -&gt; <span class="self">Self</span> {
+    <span class="attribute">#[<span class="ident">must_use</span>]</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">unresolved_identifier</span>(<span class="ident">name</span>: <span class="kw-2">&amp;</span><span class="ident">str</span>, <span class="ident">close_match</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span>, <span class="ident">span</span>: <span class="ident">Span</span>) -&gt; <span class="self">Self</span> {
         <span class="self">Self</span> {
             <span class="ident">kind</span>: <span class="ident">AnalyzerMessageKind::Alert</span>(<span class="ident">AnalyzerKind::UnresolvedIdentifiers</span>),
             <span class="ident">message</span>: <span class="string">&quot;identifier could not be resolved&quot;</span>.<span class="ident">to_string</span>(),
@@ -872,7 +935,8 @@
         }
     }
 
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">redeclared_const_variable</span>(<span class="ident">name</span>: <span class="ident">String</span>, <span class="ident">span</span>: <span class="ident">Span</span>) -&gt; <span class="self">Self</span> {
+    <span class="attribute">#[<span class="ident">must_use</span>]</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">redeclared_const_variable</span>(<span class="ident">name</span>: <span class="kw-2">&amp;</span><span class="ident">str</span>, <span class="ident">span</span>: <span class="ident">Span</span>) -&gt; <span class="self">Self</span> {
         <span class="self">Self</span> {
             <span class="ident">kind</span>: <span class="ident">AnalyzerMessageKind::Alert</span>(<span class="ident">AnalyzerKind::RedeclaredConstVariables</span>),
             <span class="ident">message</span>: <span class="string">&quot;cannot redeclare variable declared as `const`&quot;</span>.<span class="ident">to_string</span>(),
@@ -885,7 +949,8 @@
         }
     }
 
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">reassigned_immutable_variable</span>(<span class="ident">name</span>: <span class="ident">String</span>, <span class="ident">span</span>: <span class="ident">Span</span>, <span class="ident">was_const</span>: <span class="ident">bool</span>) -&gt; <span class="self">Self</span> {
+    <span class="attribute">#[<span class="ident">must_use</span>]</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">reassigned_immutable_variable</span>(<span class="ident">name</span>: <span class="kw-2">&amp;</span><span class="ident">str</span>, <span class="ident">span</span>: <span class="ident">Span</span>, <span class="ident">was_const</span>: <span class="ident">bool</span>) -&gt; <span class="self">Self</span> {
         <span class="self">Self</span> {
             <span class="ident">kind</span>: <span class="ident">AnalyzerMessageKind::Alert</span>(<span class="ident">AnalyzerKind::ReassignedImmutableVariables</span>),
             <span class="ident">message</span>: <span class="macro">format!</span>(
@@ -913,9 +978,17 @@
         }
     }
 
+    <span class="doccomment">/// Write error to specified writer.</span>
+    <span class="doccomment">///</span>
+    <span class="doccomment">/// # Panics</span>
+    <span class="doccomment">/// * Panic when writing to writer failed.</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">write</span><span class="op">&lt;</span><span class="ident">C</span>: <span class="ident">Cache</span><span class="op">&lt;</span><span class="ident">Source</span><span class="op">&gt;</span><span class="op">&gt;</span>(<span class="self">self</span>, <span class="ident">cache</span>: <span class="ident">C</span>, <span class="ident">writer</span>: <span class="kw">impl</span> <span class="ident">Write</span>) {
         <span class="kw">use</span> <span class="ident">ariadne</span>::{<span class="ident">Color</span>, <span class="ident">Label</span>, <span class="ident">Report</span>, <span class="ident">ReportKind</span>};
 
+        <span class="attribute">#[<span class="ident">expect</span>(
+            <span class="ident">clippy::match_wildcard_for_single_variants</span>,
+            <span class="ident">reason</span> <span class="op">=</span> <span class="string">&quot;Nothing should reach this arm&quot;</span>
+        )]</span>
         <span class="kw">let</span> <span class="ident">color</span> <span class="op">=</span> <span class="kw">match</span> <span class="self">self</span>.<span class="ident">kind</span> {
             <span class="ident">AnalyzerMessageKind::Info</span> =&gt; <span class="ident">Color::Blue</span>,
             <span class="ident">AnalyzerMessageKind::Alert</span>(<span class="ident">k</span>) <span class="kw">if</span> <span class="ident">k</span>.<span class="ident">is_warning</span>() =&gt; <span class="ident">Color::Yellow</span>,
@@ -924,6 +997,10 @@
         };
 
         <span class="kw">let</span> <span class="ident">report</span> <span class="op">=</span> <span class="ident">Report::build</span>(
+            <span class="attribute">#[<span class="ident">allow</span>(
+                <span class="ident">clippy::match_wildcard_for_single_variants</span>,
+                <span class="ident">reason</span> <span class="op">=</span> <span class="string">&quot;Nothing should reach this arm&quot;</span>
+            )]</span>
             <span class="kw">match</span> <span class="self">self</span>.<span class="ident">kind</span> {
                 <span class="ident">AnalyzerMessageKind::Info</span> =&gt; <span class="ident">ReportKind::Advice</span>,
                 <span class="ident">AnalyzerMessageKind::Alert</span>(<span class="ident">k</span>) <span class="kw">if</span> <span class="ident">k</span>.<span class="ident">is_warning</span>() =&gt; <span class="ident">ReportKind::Warning</span>,
@@ -985,7 +1062,8 @@
 }
 
 <span class="kw">impl</span> <span class="ident">MockScopeEntry</span> {
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">new</span>(<span class="ident">name</span>: <span class="ident">String</span>, <span class="ident">ty</span>: (), <span class="ident">modifier</span>: <span class="ident">ScopeEntryModifier</span>, <span class="ident">span</span>: <span class="ident">Span</span>) -&gt; <span class="self">Self</span> {
+    <span class="attribute">#[<span class="ident">must_use</span>]</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="kw">fn</span> <span class="ident">new</span>(<span class="ident">name</span>: <span class="ident">String</span>, <span class="ident">ty</span>: (), <span class="ident">modifier</span>: <span class="ident">ScopeEntryModifier</span>, <span class="ident">span</span>: <span class="ident">Span</span>) -&gt; <span class="self">Self</span> {
         <span class="self">Self</span> {
             <span class="ident">name</span>,
             <span class="ident">ty</span>,
@@ -1021,12 +1099,20 @@
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">MockScope</span>(<span class="kw">pub</span> <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">String</span>, <span class="ident">MockScopeEntry</span><span class="op">&gt;</span>);
 
 <span class="kw">impl</span> <span class="ident">MockScope</span> {
+    <span class="attribute">#[<span class="ident">must_use</span>]</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">new</span>() -&gt; <span class="self">Self</span> {
         <span class="self">Self</span>(<span class="ident">HashMap::new</span>())
     }
 
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">lookup</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">name</span>: <span class="ident">String</span>) -&gt; <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="kw-2">&amp;</span><span class="ident">MockScopeEntry</span><span class="op">&gt;</span> {
-        <span class="self">self</span>.<span class="number">0</span>.<span class="ident">get</span>(<span class="kw-2">&amp;</span><span class="ident">name</span>)
+    <span class="attribute">#[<span class="ident">must_use</span>]</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">lookup</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">name</span>: <span class="kw-2">&amp;</span><span class="ident">str</span>) -&gt; <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="kw-2">&amp;</span><span class="ident">MockScopeEntry</span><span class="op">&gt;</span> {
+        <span class="self">self</span>.<span class="number">0</span>.<span class="ident">get</span>(<span class="ident">name</span>)
+    }
+}
+
+<span class="kw">impl</span> <span class="ident">Default</span> <span class="kw">for</span> <span class="ident">MockScope</span> {
+    <span class="kw">fn</span> <span class="ident">default</span>() -&gt; <span class="self">Self</span> {
+        <span class="ident"><span class="self">Self</span>::new</span>()
     }
 }
 
@@ -1040,6 +1126,7 @@
 }
 
 <span class="kw">impl</span> <span class="ident">Context</span> {
+    <span class="attribute">#[<span class="ident">must_use</span>]</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">from_tokens</span>(<span class="ident">cache</span>: <span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">Source</span>, <span class="ident">String</span>)<span class="op">&gt;</span>, <span class="ident">tokens</span>: <span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">Token</span>, <span class="ident">Span</span>)<span class="op">&gt;</span>) -&gt; <span class="self">Self</span> {
         <span class="kw">let</span> <span class="ident">ast</span> <span class="op">=</span> <span class="ident">Node::parse</span>(<span class="ident">tokens</span>.<span class="ident">clone</span>()).<span class="ident">unwrap_or_else</span>(<span class="op">|</span><span class="ident">e</span><span class="op">|</span> {
             <span class="kw">for</span> <span class="ident">error</span> <span class="kw">in</span> <span class="ident">e</span> {
@@ -1058,20 +1145,24 @@
         }
     }
 
+    <span class="attribute">#[<span class="ident">must_use</span>]</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">cache</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw">impl</span> <span class="ident">Cache</span><span class="op">&lt;</span><span class="ident">Source</span><span class="op">&gt;</span> {
         <span class="ident">sources</span>(<span class="self">self</span>.<span class="ident">cache</span>.<span class="ident">clone</span>())
     }
 
+    <span class="attribute">#[<span class="ident">must_use</span>]</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">is_top_level</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident">bool</span> {
         <span class="self">self</span>.<span class="ident">scopes</span>.<span class="ident">len</span>() <span class="op">==</span> <span class="number">1</span>
     }
 
+    <span class="attribute">#[<span class="ident">must_use</span>]</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">locals</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span><span class="ident">MockScope</span> {
-        <span class="self">self</span>.<span class="ident">scopes</span>.<span class="ident">last</span>().<span class="ident">unwrap</span>()
+        <span class="self">self</span>.<span class="ident">scopes</span>.<span class="ident">last</span>().<span class="ident">unwrap_or_else</span>(<span class="op">|</span><span class="op">|</span> <span class="macro">unreachable!</span>())
     }
 
+    <span class="attribute">#[<span class="ident">must_use</span>]</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">locals_mut</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>) -&gt; <span class="kw-2">&amp;mut</span> <span class="ident">MockScope</span> {
-        <span class="self">self</span>.<span class="ident">scopes</span>.<span class="ident">last_mut</span>().<span class="ident">unwrap</span>()
+        <span class="self">self</span>.<span class="ident">scopes</span>.<span class="ident">last_mut</span>().<span class="ident">unwrap_or_else</span>(<span class="op">|</span><span class="op">|</span> <span class="macro">unreachable!</span>())
     }
 
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">store_var</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">name</span>: <span class="ident">String</span>, <span class="ident">entry</span>: <span class="ident">MockScopeEntry</span>) {
@@ -1089,6 +1180,7 @@
         <span class="prelude-val">None</span>
     }
 
+    <span class="attribute">#[<span class="ident">must_use</span>]</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">lookup_var_mut</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">name</span>: <span class="kw-2">&amp;</span><span class="ident">String</span>) -&gt; <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="kw-2">&amp;mut</span> <span class="ident">MockScopeEntry</span><span class="op">&gt;</span> {
         <span class="kw">for</span> <span class="ident">scope</span> <span class="kw">in</span> <span class="self">self</span>.<span class="ident">scopes</span>.<span class="ident">iter_mut</span>().<span class="ident">rev</span>() {
             <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">entry</span>) <span class="op">=</span> <span class="ident">scope</span>.<span class="number">0</span>.<span class="ident">get_mut</span>(<span class="ident">name</span>) {
@@ -1099,12 +1191,19 @@
         <span class="prelude-val">None</span>
     }
 
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">close_var_match</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">name</span>: <span class="kw-2">&amp;</span><span class="ident">String</span>) -&gt; <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span> {
+    <span class="attribute">#[<span class="ident">must_use</span>]</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">close_var_match</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">name</span>: <span class="kw-2">&amp;</span><span class="ident">str</span>) -&gt; <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span> {
+        <span class="attribute">#[<span class="ident">expect</span>(
+            <span class="ident">clippy::cast_sign_loss</span>,
+            <span class="ident">clippy::cast_precision_loss</span>,
+            <span class="ident">clippy::cast_possible_truncation</span>,
+            <span class="ident">reason</span> <span class="op">=</span> <span class="string">&quot;Is not possible for indentifer to be this large&quot;</span>
+        )]</span>
         <span class="kw">let</span> <span class="ident">threshold</span> <span class="op">=</span> (<span class="ident">name</span>.<span class="ident">chars</span>().<span class="ident">count</span>() <span class="kw">as</span> <span class="ident">f64</span> <span class="op">*</span> <span class="number">0.14</span>).<span class="ident">round</span>().<span class="ident">max</span>(<span class="number">2_f64</span>) <span class="kw">as</span> <span class="ident">usize</span>;
 
         <span class="kw">for</span> <span class="ident">scope</span> <span class="kw">in</span> <span class="self">self</span>.<span class="ident">scopes</span>.<span class="ident">iter</span>().<span class="ident">rev</span>() {
             <span class="kw">for</span> <span class="ident">sample</span> <span class="kw">in</span> <span class="ident">scope</span>.<span class="number">0</span>.<span class="ident">keys</span>() {
-                <span class="kw">if</span> <span class="ident">get_levenshtein_distance</span>(<span class="ident">name</span>.<span class="ident">as_str</span>(), <span class="ident">sample</span>.<span class="ident">as_str</span>()) <span class="op">&lt;</span><span class="op">=</span> <span class="ident">threshold</span> {
+                <span class="kw">if</span> <span class="ident">get_levenshtein_distance</span>(<span class="ident">name</span>, <span class="ident">sample</span>.<span class="ident">as_str</span>()) <span class="op">&lt;</span><span class="op">=</span> <span class="ident">threshold</span> {
                     <span class="kw">return</span> <span class="prelude-val">Some</span>(<span class="ident">sample</span>.<span class="ident">clone</span>());
                 }
             }
@@ -1118,7 +1217,7 @@
     }
 
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">exit_scope</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">analyzers</span>: <span class="kw-2">&amp;</span><span class="ident">AnalyzerSet</span>, <span class="ident">messages</span>: <span class="kw-2">&amp;mut</span> <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">AnalyzerMessage</span><span class="op">&gt;</span>) {
-        <span class="kw">let</span> <span class="ident">scope</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">scopes</span>.<span class="ident">pop</span>().<span class="ident">unwrap</span>();
+        <span class="kw">let</span> <span class="ident">scope</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">scopes</span>.<span class="ident">pop</span>().<span class="ident">unwrap_or_else</span>(<span class="op">|</span><span class="op">|</span> <span class="macro">unreachable!</span>());
 
         <span class="kw">for</span> <span class="ident">entry</span> <span class="kw">in</span> <span class="ident">scope</span>.<span class="number">0</span>.<span class="ident">into_values</span>() {
             <span class="kw">if</span> <span class="ident">analyzers</span>.<span class="ident">contains</span>(<span class="kw-2">&amp;</span><span class="ident">AnalyzerKind::UnnecessaryMutVariables</span>)
@@ -1126,16 +1225,16 @@
                 <span class="op">&amp;&amp;</span> <span class="op">!</span><span class="ident">entry</span>.<span class="ident">is_mutated</span>()
             {
                 <span class="ident">messages</span>.<span class="ident">push</span>(<span class="ident">AnalyzerMessage::unnecessary_mut_variable</span>(
-                    <span class="ident">entry</span>.<span class="ident">name</span>.<span class="ident">clone</span>(),
+                    <span class="kw-2">&amp;</span><span class="ident">entry</span>.<span class="ident">name</span>,
                     <span class="ident">entry</span>.<span class="ident">span</span>.<span class="ident">clone</span>(),
                 ));
             }
 
             <span class="kw">if</span> <span class="ident">analyzers</span>.<span class="ident">contains</span>(<span class="kw-2">&amp;</span><span class="ident">AnalyzerKind::UnusedVariables</span>)
                 <span class="op">&amp;&amp;</span> <span class="op">!</span><span class="ident">entry</span>.<span class="ident">used</span>
-                <span class="op">&amp;&amp;</span> <span class="op">!</span><span class="ident">entry</span>.<span class="ident">name</span>.<span class="ident">starts_with</span>(<span class="string">&quot;_&quot;</span>)
+                <span class="op">&amp;&amp;</span> <span class="op">!</span><span class="ident">entry</span>.<span class="ident">name</span>.<span class="ident">starts_with</span>(<span class="string">&#39;_&#39;</span>)
             {
-                <span class="ident">messages</span>.<span class="ident">push</span>(<span class="ident">AnalyzerMessage::unused_variable</span>(<span class="ident">entry</span>.<span class="ident">name</span>, <span class="ident">entry</span>.<span class="ident">span</span>));
+                <span class="ident">messages</span>.<span class="ident">push</span>(<span class="ident">AnalyzerMessage::unused_variable</span>(<span class="kw-2">&amp;</span><span class="ident">entry</span>.<span class="ident">name</span>, <span class="ident">entry</span>.<span class="ident">span</span>));
             }
         }
     }
@@ -1179,14 +1278,11 @@
     <span class="attribute">#[<span class="ident">must_use</span>]</span>
     <span class="kw">pub</span> <span class="kw">const</span> <span class="kw">fn</span> <span class="ident">severity</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident">u8</span> {
         <span class="kw">match</span> <span class="self">self</span> {
-            <span class="ident"><span class="self">Self</span>::NonSnakeCase</span> =&gt; <span class="number">1</span>,
-            <span class="ident"><span class="self">Self</span>::NonPascalCase</span> =&gt; <span class="number">1</span>,
-            <span class="ident"><span class="self">Self</span>::NonAscii</span> =&gt; <span class="number">1</span>,
-            <span class="ident"><span class="self">Self</span>::UnusedVariables</span> =&gt; <span class="number">2</span>,
-            <span class="ident"><span class="self">Self</span>::UnnecessaryMutVariables</span> =&gt; <span class="number">2</span>,
-            <span class="ident"><span class="self">Self</span>::UnresolvedIdentifiers</span> =&gt; <span class="number">0</span>,
-            <span class="ident"><span class="self">Self</span>::RedeclaredConstVariables</span> =&gt; <span class="number">0</span>,
-            <span class="ident"><span class="self">Self</span>::ReassignedImmutableVariables</span> =&gt; <span class="number">0</span>,
+            <span class="ident"><span class="self">Self</span>::NonSnakeCase</span> <span class="op">|</span> <span class="ident"><span class="self">Self</span>::NonPascalCase</span> <span class="op">|</span> <span class="ident"><span class="self">Self</span>::NonAscii</span> =&gt; <span class="number">1</span>,
+            <span class="ident"><span class="self">Self</span>::UnusedVariables</span> <span class="op">|</span> <span class="ident"><span class="self">Self</span>::UnnecessaryMutVariables</span> =&gt; <span class="number">2</span>,
+            <span class="ident"><span class="self">Self</span>::UnresolvedIdentifiers</span>
+            <span class="op">|</span> <span class="ident"><span class="self">Self</span>::RedeclaredConstVariables</span>
+            <span class="op">|</span> <span class="ident"><span class="self">Self</span>::ReassignedImmutableVariables</span> =&gt; <span class="number">0</span>,
             <span class="ident"><span class="self">Self</span>::GlobalMutableVariables</span> =&gt; <span class="number">4</span>,
         }
     }
@@ -1196,14 +1292,11 @@
     <span class="kw">pub</span> <span class="kw">const</span> <span class="kw">fn</span> <span class="ident">code</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident">u8</span> {
         <span class="kw">match</span> <span class="self">self</span> {
             <span class="ident"><span class="self">Self</span>::NonSnakeCase</span> =&gt; <span class="number">0</span>,
-            <span class="ident"><span class="self">Self</span>::NonPascalCase</span> =&gt; <span class="number">1</span>,
-            <span class="ident"><span class="self">Self</span>::NonAscii</span> =&gt; <span class="number">2</span>,
-            <span class="ident"><span class="self">Self</span>::UnusedVariables</span> =&gt; <span class="number">3</span>,
+            <span class="ident"><span class="self">Self</span>::NonPascalCase</span> <span class="op">|</span> <span class="ident"><span class="self">Self</span>::UnresolvedIdentifiers</span> =&gt; <span class="number">1</span>,
+            <span class="ident"><span class="self">Self</span>::NonAscii</span> <span class="op">|</span> <span class="ident"><span class="self">Self</span>::RedeclaredConstVariables</span> =&gt; <span class="number">2</span>,
+            <span class="ident"><span class="self">Self</span>::UnusedVariables</span> <span class="op">|</span> <span class="ident"><span class="self">Self</span>::ReassignedImmutableVariables</span> =&gt; <span class="number">3</span>,
             <span class="ident"><span class="self">Self</span>::UnnecessaryMutVariables</span> =&gt; <span class="number">4</span>,
             <span class="ident"><span class="self">Self</span>::GlobalMutableVariables</span> =&gt; <span class="number">5</span>,
-            <span class="ident"><span class="self">Self</span>::UnresolvedIdentifiers</span> =&gt; <span class="number">1</span>,
-            <span class="ident"><span class="self">Self</span>::RedeclaredConstVariables</span> =&gt; <span class="number">2</span>,
-            <span class="ident"><span class="self">Self</span>::ReassignedImmutableVariables</span> =&gt; <span class="number">3</span>,
         }
     }
 
@@ -1217,10 +1310,11 @@
         <span class="self">self</span>.<span class="ident">severity</span>() <span class="op">==</span> <span class="number">0</span>
     }
 
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">warn_level</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">u8</span>, ()<span class="op">&gt;</span> {
+    <span class="attribute">#[<span class="ident">must_use</span>]</span>
+    <span class="kw">pub</span> <span class="kw">const</span> <span class="kw">fn</span> <span class="ident">warn_level</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">u8</span><span class="op">&gt;</span> {
         <span class="kw">match</span> <span class="self">self</span>.<span class="ident">severity</span>() {
-            <span class="number">0</span> =&gt; <span class="prelude-val">Err</span>(()),
-            <span class="ident">n</span> =&gt; <span class="prelude-val">Ok</span>(<span class="ident">n</span>),
+            <span class="number">0</span> =&gt; <span class="prelude-val">None</span>,
+            <span class="ident">n</span> =&gt; <span class="prelude-val">Some</span>(<span class="ident">n</span>),
         }
     }
 }
@@ -1264,14 +1358,17 @@
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">AnalyzerSet</span>(<span class="kw">pub</span> <span class="ident">HashSet</span><span class="op">&lt;</span><span class="ident">AnalyzerKind</span><span class="op">&gt;</span>);
 
 <span class="kw">impl</span> <span class="ident">AnalyzerSet</span> {
+    <span class="attribute">#[<span class="ident">must_use</span>]</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">contains</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">member</span>: <span class="kw-2">&amp;</span><span class="ident">AnalyzerKind</span>) -&gt; <span class="ident">bool</span> {
         <span class="self">self</span>.<span class="number">0</span>.<span class="ident">contains</span>(<span class="ident">member</span>)
     }
 
+    <span class="attribute">#[<span class="ident">must_use</span>]</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">none</span>() -&gt; <span class="self">Self</span> {
         <span class="self">Self</span>(<span class="ident">HashSet::new</span>())
     }
 
+    <span class="attribute">#[<span class="ident">must_use</span>]</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">all</span>() -&gt; <span class="self">Self</span> {
         <span class="kw">type</span> <span class="ident">A</span> <span class="op">=</span> <span class="ident">AnalyzerKind</span>;
 
@@ -1288,27 +1385,23 @@
         ]))
     }
 
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">from_disabled</span>(<span class="ident">disabled</span>: <span class="ident">HashSet</span><span class="op">&lt;</span><span class="ident">AnalyzerKind</span><span class="op">&gt;</span>) -&gt; <span class="self">Self</span> {
-        <span class="self">Self</span>(
-            <span class="ident"><span class="self">Self</span>::default</span>()
-                .<span class="number">0</span>
-                .<span class="ident">difference</span>(<span class="kw-2">&amp;</span><span class="ident">disabled</span>)
-                .<span class="ident">map</span>(<span class="op">|</span><span class="ident">a</span><span class="op">|</span> <span class="ident">a</span>.<span class="ident">clone</span>())
-                .<span class="ident">collect</span>(),
-        )
+    <span class="attribute">#[<span class="ident">must_use</span>]</span>
+    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">from_disabled</span>(<span class="ident">disabled</span>: <span class="kw-2">&amp;</span><span class="ident">HashSet</span><span class="op">&lt;</span><span class="ident">AnalyzerKind</span><span class="op">&gt;</span>) -&gt; <span class="self">Self</span> {
+        <span class="self">Self</span>(<span class="ident"><span class="self">Self</span>::default</span>().<span class="number">0</span>.<span class="ident">difference</span>(<span class="ident">disabled</span>).<span class="ident">copied</span>().<span class="ident">collect</span>())
     }
 
+    <span class="attribute">#[<span class="ident">must_use</span>]</span>
     <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">from_allowed_disabled</span>(
-        <span class="ident">allowed</span>: <span class="ident">HashSet</span><span class="op">&lt;</span><span class="ident">AnalyzerKind</span><span class="op">&gt;</span>,
-        <span class="ident">disabled</span>: <span class="ident">HashSet</span><span class="op">&lt;</span><span class="ident">AnalyzerKind</span><span class="op">&gt;</span>,
+        <span class="ident">allowed</span>: <span class="kw-2">&amp;</span><span class="ident">HashSet</span><span class="op">&lt;</span><span class="ident">AnalyzerKind</span><span class="op">&gt;</span>,
+        <span class="ident">disabled</span>: <span class="kw-2">&amp;</span><span class="ident">HashSet</span><span class="op">&lt;</span><span class="ident">AnalyzerKind</span><span class="op">&gt;</span>,
     ) -&gt; <span class="self">Self</span> {
         <span class="self">Self</span>(
             <span class="ident"><span class="self">Self</span>::default</span>()
                 .<span class="number">0</span>
-                .<span class="ident">union</span>(<span class="kw-2">&amp;</span><span class="ident">allowed</span>)
+                .<span class="ident">union</span>(<span class="ident">allowed</span>)
                 .<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">HashSet</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>()
                 .<span class="ident">difference</span>(<span class="kw-2">&amp;</span><span class="ident">disabled</span>.<span class="ident">iter</span>().<span class="ident">collect</span>())
-                .<span class="ident">map</span>(<span class="op">|</span><span class="ident">a</span><span class="op">|</span> <span class="kw-2">*</span><span class="ident">a</span>.<span class="ident">clone</span>())
+                .<span class="ident">map</span>(<span class="op">|</span><span class="ident">a</span><span class="op">|</span> <span class="kw-2">*</span><span class="kw-2">*</span><span class="ident">a</span>)
                 .<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">HashSet</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>(),
         )
     }
@@ -1320,6 +1413,11 @@
     }
 }
 
+<span class="attribute">#[<span class="ident">allow</span>(<span class="ident">unused_variables</span>, <span class="ident">reason</span> <span class="op">=</span> <span class="string">&quot;`analyzers` will be used later&quot;</span>)]</span>
+<span class="doccomment">/// Visit and analyze expression.</span>
+<span class="doccomment">///</span>
+<span class="doccomment">/// # Errors</span>
+<span class="doccomment">/// * Return any warning or error that the analyzer generated.</span>
 <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">visit_expr</span>(
     <span class="ident">analyzers</span>: <span class="kw-2">&amp;</span><span class="ident">AnalyzerSet</span>,
     <span class="ident">ctx</span>: <span class="kw-2">&amp;mut</span> <span class="ident">Context</span>,
@@ -1337,7 +1435,11 @@
             <span class="prelude-val">None</span> =&gt; {
                 <span class="kw">let</span> <span class="ident">close_match</span> <span class="op">=</span> <span class="ident">ctx</span>.<span class="ident">close_var_match</span>(<span class="kw-2">&amp;</span><span class="ident">s</span>);
 
-                <span class="ident">messages</span>.<span class="ident">push</span>(<span class="ident">AnalyzerMessage::unresolved_identifier</span>(<span class="ident">s</span>, <span class="ident">close_match</span>, <span class="ident">span</span>));
+                <span class="ident">messages</span>.<span class="ident">push</span>(<span class="ident">AnalyzerMessage::unresolved_identifier</span>(
+                    <span class="kw-2">&amp;</span><span class="ident">s</span>,
+                    <span class="ident">close_match</span>,
+                    <span class="ident">span</span>,
+                ));
             }
         },
         <span class="kw">_</span> =&gt; <span class="macro">unimplemented!</span>(),
@@ -1346,6 +1448,12 @@
     <span class="prelude-val">Ok</span>(())
 }
 
+<span class="attribute">#[<span class="ident">allow</span>(<span class="ident">clippy::missing_panics_doc</span>, <span class="ident">reason</span> <span class="op">=</span> <span class="string">&quot;todo!()&quot;</span>)]</span>
+<span class="attribute">#[<span class="ident">allow</span>(<span class="ident">clippy::too_many_lines</span>, <span class="ident">reason</span> <span class="op">=</span> <span class="string">&quot;Should refactor later.&quot;</span>)]</span>
+<span class="doccomment">/// Visit and analyze node.</span>
+<span class="doccomment">///</span>
+<span class="doccomment">/// # Errors</span>
+<span class="doccomment">/// * Return any warning or error that the analyzer generated.</span>
 <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">visit_node</span>(
     <span class="ident">analyzers</span>: <span class="kw-2">&amp;</span><span class="ident">AnalyzerSet</span>,
     <span class="ident">ctx</span>: <span class="kw-2">&amp;mut</span> <span class="ident">Context</span>,
@@ -1367,21 +1475,7 @@
             <span class="ident">r#const</span>,
             ..
         } =&gt; {
-            <span class="comment">// Assume there can only be one target</span>
-            <span class="kw">let</span> (<span class="ident">target</span>, <span class="ident">tgt_span</span>) <span class="op">=</span> <span class="ident">targets</span>
-                .<span class="ident">first</span>()
-                .<span class="ident">ok_or</span>(<span class="string">&quot;multiple declaration targets unsupported&quot;</span>)<span class="question-mark">?</span>
-                .<span class="ident">node_span</span>();
-
-            <span class="kw">let</span> <span class="ident">modifier</span> <span class="op">=</span> <span class="kw">match</span> (<span class="ident">r#mut</span>, <span class="ident">r#const</span>) {
-                (<span class="bool-val">true</span>, <span class="bool-val">false</span>) =&gt; <span class="ident">ScopeEntryModifier::Mut</span>,
-                (<span class="bool-val">false</span>, <span class="bool-val">true</span>) =&gt; <span class="ident">ScopeEntryModifier::Const</span>,
-                (<span class="bool-val">false</span>, <span class="bool-val">false</span>) =&gt; <span class="ident">ScopeEntryModifier::None</span>,
-                (<span class="bool-val">true</span>, <span class="bool-val">true</span>) =&gt; <span class="macro">unreachable!</span>(),
-            };
-
             <span class="kw">type</span> <span class="ident">DeferEntry</span> <span class="op">=</span> (<span class="ident">String</span>, (), <span class="ident">Span</span>);
-            <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">deferred</span> <span class="op">=</span> <span class="ident">Vec</span>::<span class="op">&lt;</span><span class="ident">DeferEntry</span><span class="op">&gt;</span><span class="ident">::new</span>();
 
             <span class="kw">fn</span> <span class="ident">recur</span>(
                 <span class="ident">ctx</span>: <span class="kw-2">&amp;</span><span class="ident">Context</span>,
@@ -1391,14 +1485,12 @@
                 <span class="ident">tgt_span</span>: <span class="ident">Span</span>,
                 <span class="ident">deferred</span>: <span class="kw-2">&amp;mut</span> <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">DeferEntry</span><span class="op">&gt;</span>,
             ) {
+                <span class="attribute">#[<span class="ident">expect</span>(<span class="ident">clippy::match_wildcard_for_single_variants</span>, <span class="ident">reason</span> <span class="op">=</span> <span class="string">&quot;todo!()&quot;</span>)]</span>
                 <span class="kw">match</span> <span class="ident">target</span> {
                     <span class="ident">Target::Ident</span>(<span class="ident">s</span>) =&gt; {
                         <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">entry</span>) <span class="op">=</span> <span class="ident">ctx</span>.<span class="ident">lookup_var</span>(<span class="kw-2">&amp;</span><span class="ident">s</span>) {
                             <span class="kw">if</span> <span class="ident">entry</span>.<span class="ident">is_const</span>() {
-                                <span class="ident">messages</span>.<span class="ident">push</span>(<span class="ident">AnalyzerMessage::redeclared_const_variable</span>(
-                                    <span class="ident">s</span>.<span class="ident">clone</span>(),
-                                    <span class="ident">span</span>.<span class="ident">clone</span>(),
-                                ));
+                                <span class="ident">messages</span>.<span class="ident">push</span>(<span class="ident">AnalyzerMessage::redeclared_const_variable</span>(<span class="kw-2">&amp;</span><span class="ident">s</span>, <span class="ident">span</span>));
                             }
                         }
 
@@ -1422,6 +1514,21 @@
                 };
             }
 
+            <span class="comment">// Assume there can only be one target</span>
+            <span class="kw">let</span> (<span class="ident">target</span>, <span class="ident">tgt_span</span>) <span class="op">=</span> <span class="ident">targets</span>
+                .<span class="ident">first</span>()
+                .<span class="ident">ok_or</span>(<span class="string">&quot;multiple declaration targets unsupported&quot;</span>)<span class="question-mark">?</span>
+                .<span class="ident">node_span</span>();
+
+            <span class="kw">let</span> <span class="ident">modifier</span> <span class="op">=</span> <span class="kw">match</span> (<span class="ident">r#mut</span>, <span class="ident">r#const</span>) {
+                (<span class="bool-val">true</span>, <span class="bool-val">false</span>) =&gt; <span class="ident">ScopeEntryModifier::Mut</span>,
+                (<span class="bool-val">false</span>, <span class="bool-val">true</span>) =&gt; <span class="ident">ScopeEntryModifier::Const</span>,
+                (<span class="bool-val">false</span>, <span class="bool-val">false</span>) =&gt; <span class="ident">ScopeEntryModifier::None</span>,
+                (<span class="bool-val">true</span>, <span class="bool-val">true</span>) =&gt; <span class="macro">unreachable!</span>(),
+            };
+
+            <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">deferred</span> <span class="op">=</span> <span class="ident">Vec</span>::<span class="op">&lt;</span><span class="ident">DeferEntry</span><span class="op">&gt;</span><span class="ident">::new</span>();
+
             <span class="ident">recur</span>(
                 <span class="ident">ctx</span>,
                 <span class="ident">messages</span>,
@@ -1437,7 +1544,7 @@
 
                     <span class="kw">if</span> <span class="ident">name</span> <span class="op">!</span><span class="op">=</span> <span class="ident">snake</span> {
                         <span class="ident">messages</span>.<span class="ident">push</span>(<span class="ident">AnalyzerMessage::non_snake_case</span>(
-                            <span class="ident">name</span>.<span class="ident">clone</span>(),
+                            <span class="kw-2">&amp;</span><span class="ident">name</span>,
                             <span class="ident">snake</span>,
                             <span class="ident">tgt_span</span>.<span class="ident">clone</span>(),
                         ));
@@ -1449,7 +1556,7 @@
                     <span class="op">&amp;&amp;</span> <span class="ident">modifier</span> <span class="op">==</span> <span class="ident">ScopeEntryModifier::Mut</span>
                 {
                     <span class="ident">messages</span>.<span class="ident">push</span>(<span class="ident">AnalyzerMessage::global_mutable_variable</span>(
-                        <span class="ident">name</span>.<span class="ident">clone</span>(),
+                        <span class="kw-2">&amp;</span><span class="ident">name</span>,
                         <span class="ident">span</span>.<span class="ident">clone</span>(),
                     ));
                 }
@@ -1467,6 +1574,7 @@
                 .<span class="ident">ok_or</span>(<span class="string">&quot;multiple assignment targets unsupported&quot;</span>)<span class="question-mark">?</span>
                 .<span class="ident">node_span</span>();
 
+            <span class="attribute">#[<span class="ident">expect</span>(<span class="ident">clippy::match_wildcard_for_single_variants</span>, <span class="ident">reason</span> <span class="op">=</span> <span class="string">&quot;todo!()&quot;</span>)]</span>
             <span class="kw">match</span> <span class="ident">target</span> {
                 <span class="ident">Target::Ident</span>(<span class="ident">s</span>) =&gt; {
                     <span class="kw">let</span> <span class="ident">entry</span> <span class="op">=</span> <span class="ident">ctx</span>.<span class="ident">lookup_var_mut</span>(<span class="ident">s</span>);
@@ -1477,7 +1585,7 @@
 
                             <span class="kw">if</span> <span class="ident">entry</span>.<span class="ident">is_const</span>() <span class="op">|</span><span class="op">|</span> <span class="op">!</span><span class="ident">entry</span>.<span class="ident">is_mut</span>() {
                                 <span class="ident">messages</span>.<span class="ident">push</span>(<span class="ident">AnalyzerMessage::reassigned_immutable_variable</span>(
-                                    <span class="ident">s</span>.<span class="ident">to_string</span>(),
+                                    <span class="ident">s</span>,
                                     <span class="ident">span</span>,
                                     <span class="ident">entry</span>.<span class="ident">is_const</span>(),
                                 ));
@@ -1487,7 +1595,7 @@
                             <span class="kw">let</span> <span class="ident">close_match</span> <span class="op">=</span> <span class="ident">ctx</span>.<span class="ident">close_var_match</span>(<span class="ident">s</span>);
 
                             <span class="ident">messages</span>.<span class="ident">push</span>(<span class="ident">AnalyzerMessage::unresolved_identifier</span>(
-                                <span class="ident">s</span>.<span class="ident">clone</span>(),
+                                <span class="ident">s</span>,
                                 <span class="ident">close_match</span>,
                                 <span class="ident">tgt_span</span>.<span class="ident">clone</span>(),
                             ));
@@ -1506,15 +1614,19 @@
     <span class="prelude-val">Ok</span>(())
 }
 
+<span class="doccomment">/// Analyze the given context.</span>
+<span class="doccomment">///</span>
+<span class="doccomment">/// # Errors</span>
+<span class="doccomment">/// * Return any warning or error the analyzer generated.</span>
 <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">run_analysis</span>(
-    <span class="ident">analyzers</span>: <span class="ident">AnalyzerSet</span>,
+    <span class="ident">analyzers</span>: <span class="kw-2">&amp;</span><span class="ident">AnalyzerSet</span>,
     <span class="kw-2">mut</span> <span class="ident">ctx</span>: <span class="ident">Context</span>,
 ) -&gt; <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">AnalyzerMessage</span><span class="op">&gt;</span>, <span class="kw-2">&amp;</span><span class="lifetime">&#39;static</span> <span class="ident">str</span><span class="op">&gt;</span> {
     <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">messages</span> <span class="op">=</span> <span class="ident">Vec::new</span>();
     <span class="kw">let</span> <span class="ident">ast</span> <span class="op">=</span> <span class="ident">std::mem::replace</span>(<span class="kw-2">&amp;mut</span> <span class="ident">ctx</span>.<span class="ident">ast</span>, <span class="ident">Node::Module</span>(<span class="ident">Vec::new</span>()));
 
     <span class="ident">visit_node</span>(
-        <span class="kw-2">&amp;</span><span class="ident">analyzers</span>,
+        <span class="ident">analyzers</span>,
         <span class="kw-2">&amp;mut</span> <span class="ident">ctx</span>,
         <span class="kw-2">&amp;mut</span> <span class="ident">messages</span>,
         <span class="ident">Spanned::new</span>(
@@ -1523,7 +1635,7 @@
         ),
     )<span class="question-mark">?</span>;
 
-    <span class="ident">ctx</span>.<span class="ident">exit_scope</span>(<span class="kw-2">&amp;</span><span class="ident">analyzers</span>, <span class="kw-2">&amp;mut</span> <span class="ident">messages</span>);
+    <span class="ident">ctx</span>.<span class="ident">exit_scope</span>(<span class="ident">analyzers</span>, <span class="kw-2">&amp;mut</span> <span class="ident">messages</span>);
     <span class="prelude-val">Ok</span>(<span class="ident">messages</span>)
 }
 </code></pre></div>
