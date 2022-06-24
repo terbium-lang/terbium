@@ -842,7 +842,7 @@
     <span class="ident">Alert</span>(<span class="ident">AnalyzerKind</span>),
 }
 
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">PartialEq</span>)]</span>
+<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>, <span class="ident">Eq</span>, <span class="ident">PartialEq</span>)]</span>
 <span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">AnalyzerMessage</span> {
     <span class="kw">pub</span> <span class="ident">kind</span>: <span class="ident">AnalyzerMessageKind</span>,
     <span class="ident">message</span>: <span class="ident">String</span>,
