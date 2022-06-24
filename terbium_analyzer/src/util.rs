@@ -68,7 +68,7 @@ pub fn get_levenshtein_distance(a: &str, b: &str) -> usize {
         a_dist = b_idx;
 
         for (a_idx, a_code) in a.chars().enumerate() {
-            b_dist = a_dist + (a_code != b_code) as usize;
+            b_dist = a_dist + usize::from(a_code != b_code);
             a_dist = cache[a_idx];
 
             result = if a_dist > result {

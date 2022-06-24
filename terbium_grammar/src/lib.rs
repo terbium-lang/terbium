@@ -240,7 +240,7 @@ impl<T> Spanned<T> {
     }
 
     #[must_use]
-    pub fn node_span(&self) -> (&T, &Span) {
+    pub const fn node_span(&self) -> (&T, &Span) {
         (&self.inner, &self.span)
     }
 

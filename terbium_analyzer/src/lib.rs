@@ -1,3 +1,5 @@
+#![feature(lint_reasons)]
+
 pub mod util;
 
 use std::collections::{HashMap, HashSet};
@@ -27,7 +29,8 @@ pub struct AnalyzerMessage {
 }
 
 impl AnalyzerMessage {
-    pub fn non_snake_case(name: String, counterpart: String, span: Span) -> Self {
+    #[must_use]
+    pub fn non_snake_case(name: &str, counterpart: String, span: Span) -> Self {
         Self {
             kind: AnalyzerMessageKind::Alert(AnalyzerKind::NonSnakeCase),
             message: "non-type identifier names should be snake_case".to_string(),
@@ -40,7 +43,8 @@ impl AnalyzerMessage {
         }
     }
 
-    pub fn unresolved_identifier(name: String, close_match: Option<String>, span: Span) -> Self {
+    #[must_use]
+    pub fn unresolved_identifier(name: &str, close_match: Option<String>, span: Span) -> Self {
         Self {
             kind: AnalyzerMessageKind::Alert(AnalyzerKind::UnresolvedIdentifiers),
             message: "identifier could not be resolved".to_string(),
@@ -53,7 +57,8 @@ impl AnalyzerMessage {
         }
     }
 
-    pub fn redeclared_const_variable(name: String, span: Span) -> Self {
+    #[must_use]
+    pub fn redeclared_const_variable(name: &str, span: Span) -> Self {
         Self {
             kind: AnalyzerMessageKind::Alert(AnalyzerKind::RedeclaredConstVariables),
             message: "cannot redeclare variable declared as `const`".to_string(),
@@ -66,7 +71,8 @@ impl AnalyzerMessage {
         }
     }
 
-    pub fn reassigned_immutable_variable(name: String, span: Span, was_const: bool) -> Self {
+    #[must_use]
+    pub fn reassigned_immutable_variable(name: &str, span: Span, was_const: bool) -> Self {
         Self {
             kind: AnalyzerMessageKind::Alert(AnalyzerKind::ReassignedImmutableVariables),
             message: format!("cannot reassign to {}", if was_const {
@@ -87,9 +93,17 @@ impl AnalyzerMessage {
         }
     }
 
+    /// Write error to specified writer.
+    /// 
+    /// # Panics
+    /// * Panic when writing to writer failed.
     pub fn write<C: Cache<Source>>(self, cache: C, writer: impl Write) {
         use ariadne::{Color, Label, Report, ReportKind};
 
+        #[expect(
+            clippy::match_wildcard_for_single_variants, 
+            reason = "Nothing should reach this arm"
+        )]
         let color = match self.kind {
             AnalyzerMessageKind::Info => Color::Blue,
             AnalyzerMessageKind::Alert(k) if k.is_warning() => Color::Yellow,
@@ -98,6 +112,10 @@ impl AnalyzerMessage {
         };
 
         let report = Report::build(
+            #[allow(
+                clippy::match_wildcard_for_single_variants, 
+                reason = "Nothing should reach this arm"
+            )]
             match self.kind {
                 AnalyzerMessageKind::Info => ReportKind::Advice,
                 AnalyzerMessageKind::Alert(k) if k.is_warning() => ReportKind::Warning,
@@ -179,10 +197,18 @@ impl MockScopeEntry {
 pub struct MockScope(pub HashMap<String, MockScopeEntry>);
 
 impl MockScope {
+    #[must_use]
     pub fn new() -> Self { Self(HashMap::new()) }
 
-    pub fn lookup(&self, name: String) -> Option<&MockScopeEntry> {
-        self.0.get(&name)
+    #[must_use]
+    pub fn lookup(&self, name: &str) -> Option<&MockScopeEntry> {
+        self.0.get(name)
+    }
+}
+
+impl Default for MockScope {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -196,6 +222,7 @@ pub struct Context {
 }
 
 impl Context {
+    #[must_use]
     pub fn from_tokens(cache: Vec<(Source, String)>, tokens: Vec<(Token, Span)>) -> Self {
         let ast = Node::parse(tokens.clone()).unwrap_or_else(|e| {
             for error in e {
@@ -214,16 +241,19 @@ impl Context {
         }
     }
 
+    #[must_use]
     pub fn cache(&self) -> impl Cache<Source> {
         sources(self.cache.clone())
     }
 
+    #[must_use]
     pub fn locals(&self) -> &MockScope {
-        self.scopes.last().unwrap()
+        self.scopes.last().unwrap_or_else(|| unreachable!())
     }
 
+    #[must_use]
     pub fn locals_mut(&mut self) -> &mut MockScope {
-        self.scopes.last_mut().unwrap()
+        self.scopes.last_mut().unwrap_or_else(|| unreachable!())
     }
 
     pub fn store_var(&mut self, name: String, entry: MockScopeEntry) {
@@ -241,6 +271,7 @@ impl Context {
         None
     }
 
+    #[must_use]
     pub fn lookup_var_mut(&mut self, name: &String) -> Option<&mut MockScopeEntry> {
         for scope in self.scopes.iter_mut().rev() {
             if let Some(entry) = scope.0.get_mut(name) {
@@ -251,14 +282,21 @@ impl Context {
         None
     }
 
-    pub fn close_var_match(&self, name: &String) -> Option<String> {
+    #[must_use]
+    pub fn close_var_match(&self, name: &str) -> Option<String> {
+        #[expect(
+            clippy::cast_sign_loss,
+            clippy::cast_precision_loss,
+            clippy::cast_possible_truncation,
+            reason = "Is not possible for indentifer to be this large"
+        )]
         let threshold = (name.chars().count() as f64 * 0.14)
             .round()
             .max(2_f64) as usize;
 
         for scope in self.scopes.iter().rev() {
             for sample in scope.0.keys() {
-                if get_levenshtein_distance(name.as_str(), sample.as_str()) <= threshold {
+                if get_levenshtein_distance(name, sample.as_str()) <= threshold {
                     return Some(sample.clone());
                 }
             }
@@ -314,13 +352,13 @@ impl AnalyzerKind {
     #[must_use]
     pub const fn severity(&self) -> u8 {
         match self {
-            Self::NonSnakeCase => 1,
-            Self::NonPascalCase => 1,
+            Self::NonSnakeCase |
+            Self::NonPascalCase |
             Self::NonAscii => 1,
-            Self::UnusedVariables => 2,
+            Self::UnusedVariables |
             Self::UnnecessaryMutVariables => 2,
-            Self::UnresolvedIdentifiers => 0,
-            Self::RedeclaredConstVariables => 0,
+            Self::UnresolvedIdentifiers |
+            Self::RedeclaredConstVariables |
             Self::ReassignedImmutableVariables => 0,
             Self::GlobalMutableVariables => 4,
         }
@@ -331,14 +369,11 @@ impl AnalyzerKind {
     pub const fn code(&self) -> u8 {
         match self {
             Self::NonSnakeCase => 0,
-            Self::NonPascalCase => 1,
-            Self::NonAscii => 2,
-            Self::UnusedVariables => 3,
+            Self::NonPascalCase | Self::UnresolvedIdentifiers => 1,
+            Self::NonAscii | Self::RedeclaredConstVariables => 2,
+            Self::UnusedVariables | Self::ReassignedImmutableVariables => 3,
             Self::UnnecessaryMutVariables => 4,
             Self::GlobalMutableVariables => 5,
-            Self::UnresolvedIdentifiers => 1,
-            Self::RedeclaredConstVariables => 2,
-            Self::ReassignedImmutableVariables => 3,
         }
     }
 
@@ -352,7 +387,7 @@ impl AnalyzerKind {
         self.severity() == 0
     }
 
-    pub fn warn_level(&self) -> Result<u8, ()> {
+    pub const fn warn_level(&self) -> Result<u8, ()> {
         match self.severity() {
             0 => Err(()),
             n => Ok(n),
@@ -399,14 +434,17 @@ impl std::fmt::Display for AnalyzerKind {
 pub struct AnalyzerSet(pub HashSet<AnalyzerKind>);
 
 impl AnalyzerSet {
+    #[must_use]
     pub fn contains(&self, member: &AnalyzerKind) -> bool {
         self.0.contains(member)
     }
 
+    #[must_use]
     pub fn none() -> Self {
         Self(HashSet::new())
     }
 
+    #[must_use]
     pub fn all() -> Self {
         type A = AnalyzerKind;
 
@@ -445,6 +483,7 @@ impl Default for AnalyzerSet {
     }
 }
 
+#[allow(unused_variables, reason = "`analyzers` will be used later")]
 pub fn visit_expr(
     analyzers: &AnalyzerSet,
     ctx: &mut Context,
@@ -460,7 +499,7 @@ pub fn visit_expr(
                 let close_match = ctx.close_var_match(&s);
 
                 messages.push(AnalyzerMessage::unresolved_identifier(
-                    s,
+                    &s,
                     close_match,
                     span,
                 ))
@@ -486,21 +525,7 @@ pub fn visit_node(
             visit_node(analyzers, ctx, messages, node)?;
         },
         Node::Declare { targets, r#mut, r#const, .. } => {
-            // Assume there can only be one target
-            let (target, tgt_span) = targets
-                .first()
-                .ok_or("multiple declaration targets unsupported")?
-                .node_span();
-
-            let modifier = match (r#mut, r#const) {
-                (true, false) => ScopeEntryModifier::Mut,
-                (false, true) => ScopeEntryModifier::Const,
-                (false, false) => ScopeEntryModifier::None,
-                (true, true) => unreachable!(),
-            };
-
             type DeferEntry = (String, (), Span);
-            let mut deferred = Vec::<DeferEntry>::new();
 
             fn recur(
                 ctx: &Context,
@@ -515,7 +540,7 @@ pub fn visit_node(
                         if let Some(entry) = ctx.lookup_var(&s) {
                             if entry.is_const() {
                                 messages.push(AnalyzerMessage::redeclared_const_variable(
-                                    s.clone(),
+                                    &s,
                                     span.clone(),
                                 ));
                             }
@@ -532,6 +557,21 @@ pub fn visit_node(
                 };
             }
 
+            // Assume there can only be one target
+            let (target, tgt_span) = targets
+                .first()
+                .ok_or("multiple declaration targets unsupported")?
+                .node_span();
+
+            let modifier = match (r#mut, r#const) {
+                (true, false) => ScopeEntryModifier::Mut,
+                (false, true) => ScopeEntryModifier::Const,
+                (false, false) => ScopeEntryModifier::None,
+                (true, true) => unreachable!(),
+            };
+
+            let mut deferred = Vec::<DeferEntry>::new();
+
             recur(ctx, messages, target.clone(), span.clone(), tgt_span.clone(), &mut deferred);
 
             for (name, ty, tgt_span) in deferred {
@@ -540,7 +580,7 @@ pub fn visit_node(
 
                     if name != snake {
                         messages.push(AnalyzerMessage::non_snake_case(
-                            name.clone(),
+                            &name,
                             snake,
                             tgt_span.clone(),
                         ));
@@ -565,7 +605,7 @@ pub fn visit_node(
                         Some(entry) => {
                             if entry.is_const() || !entry.is_mut() {
                                 messages.push(AnalyzerMessage::reassigned_immutable_variable(
-                                    s.to_string(),
+                                    s,
                                     span,
                                     entry.is_const(),
                                 ));
@@ -575,7 +615,7 @@ pub fn visit_node(
                             let close_match = ctx.close_var_match(s);
 
                             messages.push(AnalyzerMessage::unresolved_identifier(
-                                s.clone(),
+                                s,
                                 close_match,
                                 tgt_span.clone(),
                             ));
