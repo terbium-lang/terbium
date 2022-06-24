@@ -28,7 +28,7 @@ pub enum Addr {
     Offset(AddrRepr, AddrRepr),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Instruction {
     // Constants mapped to a lookup table
     LoadInt(u128), // TODO: this takes 16 bytes in raw bytecode representation, not the best
@@ -429,7 +429,7 @@ impl Program {
             let span_bytes = span.clone().map(|s| {
                 let path = s.src().to_path();
                 let lossy = path.to_string_lossy();
-                let src_bytes = &*lossy.as_bytes();
+                let src_bytes = lossy.as_bytes();
 
                 [
                     [1_u8].as_slice(),

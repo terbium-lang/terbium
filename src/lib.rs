@@ -29,4 +29,5 @@ pub use terbium_interpreter::{
     self as interpreter, DefaultInterpreter, Interpreter, Stack, TerbiumObject,
 };
 
+pub use ariadne::sources;
 pub use terbium_analyzer as analyzer;

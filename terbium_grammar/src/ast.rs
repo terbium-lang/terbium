@@ -258,7 +258,8 @@ impl ParseInterface for Body {
             .parse(Stream::<_, Span, _>::from_iter(
                 Span::single(span.src(), span.end()),
                 tokens.into_iter(),
-            )).map(Spanned::into_node)
+            ))
+            .map(Spanned::into_node)
     }
 }
 
