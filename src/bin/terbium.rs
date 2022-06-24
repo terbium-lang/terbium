@@ -1,3 +1,5 @@
+#![feature(lint_reasons)]
+
 use std::io::{stderr, Write};
 use std::path::PathBuf;
 use std::process::exit;
@@ -84,10 +86,12 @@ enum Command {
     },
 }
 
+type ParseError = Vec<(Source, String)>;
+
 fn run_ast<N>(
     file: Option<PathBuf>,
     code: Option<String>,
-) -> Result<(N, Vec<(Source, String)>), Box<dyn std::error::Error>>
+) -> Result<(N, ParseError), Box<dyn std::error::Error>>
 where
     N: ParseInterface,
 {
@@ -104,7 +108,7 @@ where
     let s = vec![(src.clone(), code.clone())];
 
     Ok((
-        N::from_string(src.clone(), code.clone()).unwrap_or_else(|e| {
+        N::from_string(src, code).unwrap_or_else(|e| {
             for error in e {
                 let cache = sources::<Source, String, _>(s.clone());
 
@@ -127,8 +131,12 @@ where
     let analyzers = AnalyzerSet::default();
 
     let instant = Instant::now();
-    let messages = run_analysis(analyzers, ctx)?;
-    let elapsed = instant.elapsed().as_micros() as f64 / 1000 as f64;
+    let messages = run_analysis(&analyzers, ctx)?;
+    #[expect(
+        clippy::cast_precision_loss, 
+        reason = "The timing is provided on a best-effort basis, precision loss is tolerable."
+    )]
+    let elapsed = instant.elapsed().as_micros() as f64 / 1000_f64;
 
     let mut should_exit = false;
 
@@ -157,12 +165,12 @@ where
     eprintln!(
         "{} message{} ({} info, {} warning{}, {} error{})\n",
         count,
-        if count != 1 { "s" } else { "" },
+        if count == 1 { "" } else { "s" },
         info_count,
         warning_count,
-        if warning_count != 1 { "s" } else { "" },
+        if warning_count == 1 { "" } else { "s" },
         error_count,
-        if error_count != 1 { "s" } else { "" },
+        if error_count == 1 { "" } else { "s" },
     );
 
     if should_exit {

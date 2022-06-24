@@ -43,7 +43,8 @@ impl AnalyzerMessage {
         }
     }
 
-    pub fn unnecessary_mut_variable(name: String, span: Span) -> Self {
+    #[must_use]
+    pub fn unnecessary_mut_variable(name: &str, span: Span) -> Self {
         Self {
             kind: AnalyzerMessageKind::Alert(AnalyzerKind::UnnecessaryMutVariables),
             message: "variable was unneedingly declared as mutable".to_string(),
@@ -59,7 +60,8 @@ impl AnalyzerMessage {
         }
     }
 
-    pub fn unused_variable(name: String, span: Span) -> Self {
+    #[must_use]
+    pub fn unused_variable(name: &str, span: Span) -> Self {
         Self {
             kind: AnalyzerMessageKind::Alert(AnalyzerKind::UnusedVariables),
             message: "variable is declared but never used".to_string(),
@@ -78,7 +80,8 @@ impl AnalyzerMessage {
         }
     }
 
-    pub fn global_mutable_variable(name: String, span: Span) -> Self {
+    #[must_use]
+    pub fn global_mutable_variable(name: &str, span: Span) -> Self {
         Self {
             kind: AnalyzerMessageKind::Alert(AnalyzerKind::GlobalMutableVariables),
             message: "variable is declared as mutable in the global scope".to_string(),
@@ -236,7 +239,8 @@ pub struct MockScopeEntry {
 }
 
 impl MockScopeEntry {
-    pub fn new(name: String, ty: (), modifier: ScopeEntryModifier, span: Span) -> Self {
+    #[must_use]
+    pub const fn new(name: String, ty: (), modifier: ScopeEntryModifier, span: Span) -> Self {
         Self {
             name,
             ty,
@@ -326,6 +330,7 @@ impl Context {
         self.scopes.len() == 1
     }
 
+    #[must_use]
     pub fn locals(&self) -> &MockScope {
         self.scopes.last().unwrap_or_else(|| unreachable!())
     }
@@ -389,7 +394,7 @@ impl Context {
     }
 
     pub fn exit_scope(&mut self, analyzers: &AnalyzerSet, messages: &mut Vec<AnalyzerMessage>) {
-        let scope = self.scopes.pop().unwrap();
+        let scope = self.scopes.pop().unwrap_or_else(|| unreachable!());
 
         for entry in scope.0.into_values() {
             if analyzers.contains(&AnalyzerKind::UnnecessaryMutVariables)
@@ -397,16 +402,16 @@ impl Context {
                 && !entry.is_mutated()
             {
                 messages.push(AnalyzerMessage::unnecessary_mut_variable(
-                    entry.name.clone(),
+                    &entry.name,
                     entry.span.clone(),
                 ));
             }
 
             if analyzers.contains(&AnalyzerKind::UnusedVariables)
                 && !entry.used
-                && !entry.name.starts_with("_")
+                && !entry.name.starts_with('_')
             {
-                messages.push(AnalyzerMessage::unused_variable(entry.name, entry.span));
+                messages.push(AnalyzerMessage::unused_variable(&entry.name, entry.span));
             }
         }
     }
@@ -485,10 +490,11 @@ impl AnalyzerKind {
         self.severity() == 0
     }
 
-    pub const fn warn_level(&self) -> Result<u8, ()> {
+    #[must_use]
+    pub const fn warn_level(&self) -> Option<u8> {
         match self.severity() {
-            0 => Err(()),
-            n => Ok(n),
+            0 => None,
+            n => Some(n),
         }
     }
 }
@@ -559,27 +565,29 @@ impl AnalyzerSet {
         ]))
     }
 
-    pub fn from_disabled(disabled: HashSet<AnalyzerKind>) -> Self {
+    #[must_use]
+    pub fn from_disabled(disabled: &HashSet<AnalyzerKind>) -> Self {
         Self(
             Self::default()
                 .0
-                .difference(&disabled)
-                .map(|a| a.clone())
+                .difference(disabled)
+                .copied()
                 .collect(),
         )
     }
 
+    #[must_use]
     pub fn from_allowed_disabled(
-        allowed: HashSet<AnalyzerKind>,
-        disabled: HashSet<AnalyzerKind>,
+        allowed: &HashSet<AnalyzerKind>,
+        disabled: &HashSet<AnalyzerKind>,
     ) -> Self {
         Self(
             Self::default()
                 .0
-                .union(&allowed)
+                .union(allowed)
                 .collect::<HashSet<_>>()
                 .difference(&disabled.iter().collect())
-                .map(|a| *a.clone())
+                .map(|a| **a)
                 .collect::<HashSet<_>>(),
         )
     }
@@ -592,6 +600,10 @@ impl Default for AnalyzerSet {
 }
 
 #[allow(unused_variables, reason = "`analyzers` will be used later")]
+/// Visit and analyze expression.
+/// 
+/// # Errors
+/// * Return any warning or error that the analyzer generated.
 pub fn visit_expr(
     analyzers: &AnalyzerSet,
     ctx: &mut Context,
@@ -613,7 +625,7 @@ pub fn visit_expr(
                     &s,
                     close_match,
                     span,
-                ))
+                ));
             }
         },
         _ => unimplemented!(),
@@ -622,6 +634,12 @@ pub fn visit_expr(
     Ok(())
 }
 
+#[allow(clippy::missing_panics_doc, reason = "todo!()")]
+#[allow(clippy::too_many_lines, reason = "Should refactor later.")]
+/// Visit and analyze node.
+/// 
+/// # Errors
+/// * Return any warning or error that the analyzer generated.
 pub fn visit_node(
     analyzers: &AnalyzerSet,
     ctx: &mut Context,
@@ -653,13 +671,14 @@ pub fn visit_node(
                 tgt_span: Span,
                 deferred: &mut Vec<DeferEntry>,
             ) {
+                #[expect(clippy::match_wildcard_for_single_variants, reason = "todo!()")]
                 match target {
                     Target::Ident(s) => {
                         if let Some(entry) = ctx.lookup_var(&s) {
                             if entry.is_const() {
                                 messages.push(AnalyzerMessage::redeclared_const_variable(
                                     &s,
-                                    span.clone(),
+                                    span,
                                 ));
                             }
                         }
@@ -719,7 +738,7 @@ pub fn visit_node(
                     && modifier == ScopeEntryModifier::Mut
                 {
                     messages.push(AnalyzerMessage::global_mutable_variable(
-                        name.clone(),
+                        &name,
                         span.clone(),
                     ));
                 }
@@ -737,6 +756,7 @@ pub fn visit_node(
                 .ok_or("multiple assignment targets unsupported")?
                 .node_span();
 
+            #[expect(clippy::match_wildcard_for_single_variants, reason = "todo!()")]
             match target {
                 Target::Ident(s) => {
                     let entry = ctx.lookup_var_mut(s);
@@ -776,15 +796,19 @@ pub fn visit_node(
     Ok(())
 }
 
+/// Analyze the given context.
+/// 
+/// # Errors
+/// * Return any warning or error the analyzer generated.
 pub fn run_analysis(
-    analyzers: AnalyzerSet,
+    analyzers: &AnalyzerSet,
     mut ctx: Context,
 ) -> Result<Vec<AnalyzerMessage>, &'static str> {
     let mut messages = Vec::new();
     let ast = std::mem::replace(&mut ctx.ast, Node::Module(Vec::new()));
 
     visit_node(
-        &analyzers,
+        analyzers,
         &mut ctx,
         &mut messages,
         Spanned::new(
@@ -793,6 +817,6 @@ pub fn run_analysis(
         ),
     )?;
 
-    ctx.exit_scope(&analyzers, &mut messages);
+    ctx.exit_scope(analyzers, &mut messages);
     Ok(messages)
 }
