@@ -9,7 +9,6 @@ use util::to_snake_case;
 use std::io::Write;
 use std::str::FromStr;
 use ariadne::{Cache, sources};
-use chumsky::chain::Chain;
 use crate::util::get_levenshtein_distance;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -20,7 +19,7 @@ pub enum AnalyzerMessageKind {
 
 #[derive(Debug, PartialEq)]
 pub struct AnalyzerMessage {
-    kind: AnalyzerMessageKind,
+    pub kind: AnalyzerMessageKind,
     message: String,
     label: Option<String>,
     span: Span,
@@ -86,6 +85,62 @@ impl AnalyzerMessage {
                 action: HintAction::None,
             })
         }
+    }
+
+    pub fn write<C: Cache<Source>>(self, cache: C, writer: impl Write) {
+        use ariadne::{Color, Label, Report, ReportKind};
+
+        let color = match self.kind {
+            AnalyzerMessageKind::Info => Color::Blue,
+            AnalyzerMessageKind::Alert(k) if k.is_warning() => Color::Yellow,
+            AnalyzerMessageKind::Alert(k) if k.is_error() => Color::Red,
+            _ => unreachable!(),
+        };
+
+        let report = Report::build(
+            match self.kind {
+                AnalyzerMessageKind::Info => ReportKind::Advice,
+                AnalyzerMessageKind::Alert(k) if k.is_warning() => ReportKind::Warning,
+                AnalyzerMessageKind::Alert(k) if k.is_error() => ReportKind::Error,
+                _ => unreachable!(),
+            },
+            self.span.src(),
+            self.span.start(),
+        );
+
+        let report = match self.kind {
+            AnalyzerMessageKind::Alert(k) => report.with_code(k.code()),
+            AnalyzerMessageKind::Info => report,
+        }
+            .with_message(self.message);
+
+        let report = if let Some(label) = self.label {
+            report.with_label(Label::new(self.span)
+                .with_message(label)
+                .with_color(color)
+            )
+        } else {
+            report
+        };
+
+        let report = if let Some(hint) = self.hint {
+            report.with_help(hint.message)
+        } else {
+            report
+        };
+
+        let report = if let AnalyzerMessageKind::Alert(k) = self.kind {
+           report.with_note(format!(
+               "view this {} in the error index: https://github.com/TerbiumLang/standard/blob/main/error_index.md#{}{:0>3}",
+               if k.is_error() { "error" } else { "warning" },
+               if k.is_error() { "E" } else { "W" },
+               k.code(),
+           ))
+        } else {
+            report
+        };
+
+        report.finish().write(cache, writer).unwrap();
     }
 }
 
@@ -197,7 +252,7 @@ impl Context {
     }
 
     pub fn close_var_match(&self, name: &String) -> Option<String> {
-        let threshold = (name.chars().len() as f64 * 0.14)
+        let threshold = (name.chars().count() as f64 * 0.14)
             .round()
             .max(2_f64) as usize;
 
@@ -233,14 +288,14 @@ pub enum AnalyzerKind {
     UnusedVariables,
     /// [W004] A variable or parameter was declared as mutable, but is never mutated
     UnnecessaryMutVariables,
+    /// [W005] Global mutable variables are highly discouraged
+    GlobalMutableVariables,
     /// [E001] An identifier (e.g. a variable) could not be found in the current scope
     UnresolvedIdentifiers,
     /// [E002] A variable declared as `const` was redeclared later on
     RedeclaredConstVariables,
     /// [E003] An immutable variable was reassigned to
     ReassignedImmutableVariables,
-    /// [W005] Global mutable variables are highly discouraged
-    GlobalMutableVariables,
 }
 
 impl AnalyzerKind {
@@ -271,14 +326,30 @@ impl AnalyzerKind {
         }
     }
 
+    /// References the error index
+    #[must_use]
+    pub const fn code(&self) -> u8 {
+        match self {
+            Self::NonSnakeCase => 0,
+            Self::NonPascalCase => 1,
+            Self::NonAscii => 2,
+            Self::UnusedVariables => 3,
+            Self::UnnecessaryMutVariables => 4,
+            Self::GlobalMutableVariables => 5,
+            Self::UnresolvedIdentifiers => 1,
+            Self::RedeclaredConstVariables => 2,
+            Self::ReassignedImmutableVariables => 3,
+        }
+    }
+
     #[must_use]
     pub const fn is_warning(&self) -> bool {
-        self.severity() == 0
+        self.severity() != 0
     }
 
     #[must_use]
     pub const fn is_error(&self) -> bool {
-        self.severity() != 0
+        self.severity() == 0
     }
 
     pub fn warn_level(&self) -> Result<u8, ()> {
@@ -340,6 +411,7 @@ impl AnalyzerSet {
         type A = AnalyzerKind;
 
         Self(HashSet::from([
+            A::NonSnakeCase,
             A::NonPascalCase,
             A::NonAscii,
             A::UnusedVariables,
@@ -383,8 +455,21 @@ pub fn visit_expr(
     let expr = expr.into_node();
 
     match expr {
+        Expr::Ident(s) => {
+            if ctx.lookup_var(&s).is_none() {
+                let close_match = ctx.close_var_match(&s);
+
+                messages.push(AnalyzerMessage::unresolved_identifier(
+                    s,
+                    close_match,
+                    span,
+                ))
+            }
+        }
         _ => unimplemented!(),
     }
+
+    Ok(())
 }
 
 pub fn visit_node(
@@ -402,7 +487,7 @@ pub fn visit_node(
         },
         Node::Declare { targets, r#mut, r#const, .. } => {
             // Assume there can only be one target
-            let (target, span) = targets
+            let (target, tgt_span) = targets
                 .first()
                 .ok_or("multiple declaration targets unsupported")?
                 .node_span();
@@ -422,6 +507,7 @@ pub fn visit_node(
                 messages: &mut Vec<AnalyzerMessage>,
                 target: Target,
                 span: Span,
+                tgt_span: Span,
                 deferred: &mut Vec<DeferEntry>,
             ) {
                 match target {
@@ -435,20 +521,20 @@ pub fn visit_node(
                             }
                         }
 
-                        deferred.push((s, (), span));
+                        deferred.push((s, (), tgt_span));
                     },
                     Target::Array(targets) => for target in targets {
-                        let (target, span) = target.into_node_span();
+                        let (target, tgt_span) = target.into_node_span();
 
-                        recur(ctx, messages, target, span, deferred);
+                        recur(ctx, messages, target, span.clone(), tgt_span.clone(), deferred);
                     }
                     _ => todo!(),
                 };
             }
 
-            recur(ctx, messages, target.clone(), span.clone(), &mut deferred);
+            recur(ctx, messages, target.clone(), span.clone(), tgt_span.clone(), &mut deferred);
 
-            for (name, ty, span) in deferred {
+            for (name, ty, tgt_span) in deferred {
                 if analyzers.contains(&AnalyzerKind::NonSnakeCase) {
                     let snake = to_snake_case(&*name);
 
@@ -456,7 +542,7 @@ pub fn visit_node(
                         messages.push(AnalyzerMessage::non_snake_case(
                             name.clone(),
                             snake,
-                            span.clone(),
+                            tgt_span.clone(),
                         ));
                     }
                 }
@@ -466,7 +552,7 @@ pub fn visit_node(
         }
         Node::Assign { targets, .. } => {
             // Assume there can only be one target
-            let (target, span) = targets
+            let (target, tgt_span) = targets
                 .first()
                 .ok_or("multiple assignment targets unsupported")?
                 .node_span();
@@ -480,7 +566,7 @@ pub fn visit_node(
                             if entry.is_const() || !entry.is_mut() {
                                 messages.push(AnalyzerMessage::reassigned_immutable_variable(
                                     s.to_string(),
-                                    span.clone(),
+                                    span,
                                     entry.is_const(),
                                 ));
                             }
@@ -491,7 +577,7 @@ pub fn visit_node(
                             messages.push(AnalyzerMessage::unresolved_identifier(
                                 s.clone(),
                                 close_match,
-                                span.clone(),
+                                tgt_span.clone(),
                             ));
                             return Ok(());
                         }
@@ -521,33 +607,4 @@ pub fn run_analysis(
     ))?;
 
     Ok(messages)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::BulkAnalyzer;
-    use terbium_grammar::Source;
-
-    #[test]
-    fn test_analysis() {
-        let mut a = BulkAnalyzer::new_with_analyzers(
-            vec!["non-snake-case"]
-                .iter()
-                .map(ToString::to_string)
-                .collect(),
-        );
-
-        a.analyze_string(
-            Source::default(),
-            String::from(
-                "
-            func camelCase() {
-                let notSnakeCase = 5;
-            }
-        ",
-            ),
-        );
-
-        a.write(std::io::stdout());
-    }
 }

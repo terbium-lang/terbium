@@ -1,11 +1,18 @@
 use std::io::{stderr, Write};
 use std::path::PathBuf;
 use std::process::exit;
+use std::time::Instant;
 
 use ariadne::sources;
 use clap::{Parser, Subcommand};
-use terbium::{AstNode, BcTransformer};
-use terbium_grammar::{ParseInterface, Source};
+use terbium::{AstNode, AstToken, BcTransformer};
+use terbium_analyzer::{
+    AnalyzerMessageKind,
+    AnalyzerSet,
+    Context,
+    run_analysis,
+};
+use terbium_grammar::{ParseInterface, Source, Span};
 use terbium_interpreter::DefaultInterpreter;
 
 #[derive(Debug, Parser)]
@@ -58,6 +65,7 @@ enum Command {
     ///
     /// Errors encountered during evaluation will be written to standard error.
     #[clap(arg_required_else_help = true)]
+    #[clap(aliases(&["evaluate", "e"]))]
     Eval {
         /// The input file containing Terbium source code.
         #[clap(parse(from_os_str))]
@@ -67,9 +75,22 @@ enum Command {
         #[clap(short, long)]
         code: Option<String>,
     },
+    /// Analyzes the Terbium source code and checks for any potential runtime errors.
+    #[clap(arg_required_else_help = true)]
+    #[clap(alias("analyze"))]
+    Check {
+        /// The input file containing Terbium source code.
+        #[clap(parse(from_os_str))]
+        file: Option<PathBuf>,
+
+        /// The direct source code to analyze. Cannot be used with the file argument.
+        #[clap(short, long)]
+        code: Option<String>,
+    }
 }
 
-fn run_ast<N>(file: Option<PathBuf>, code: Option<String>) -> Result<N, Box<dyn std::error::Error>>
+fn run_ast<N>(file: Option<PathBuf>, code: Option<String>)
+    -> Result<(N, Vec<(Source, String)>), Box<dyn std::error::Error>>
 where
     N: ParseInterface,
 {
@@ -83,17 +104,74 @@ where
         (None, None) => return Err("must provide one of file or code".into()),
     };
 
-    Ok(
+    let s = vec![(src.clone(), code.clone())];
+
+    Ok((
         N::from_string(src.clone(), code.clone()).unwrap_or_else(|e| {
             for error in e {
-                let cache = sources::<Source, String, _>(vec![(src.clone(), code.clone())]);
+                let cache = sources::<Source, String, _>(s.clone());
 
                 error.write(cache, stderr());
             }
 
             exit(-1)
         }),
-    )
+        s,
+    ))
+}
+
+fn analyze<N>(file: Option<PathBuf>, code: Option<String>) -> Result<N, Box<dyn std::error::Error>>
+where
+    N: ParseInterface,
+{
+    let (tokens, src) = run_ast::<Vec<(AstToken, Span)>>(file, code)?;
+
+    let ctx = Context::from_tokens(
+        src.clone(),
+        tokens.clone(),
+    );
+    let analyzers = AnalyzerSet::default();
+
+    let instant = Instant::now();
+    let messages = run_analysis(analyzers, ctx)?;
+    let elapsed = instant.elapsed().as_micros() as f64 / 1000 as f64;
+
+    let mut should_exit = false;
+
+    let count = messages.len();
+    let mut info_count = 0;
+    let mut warning_count = 0;
+    let mut error_count = 0;
+
+    for message in messages {
+        match message.kind {
+            AnalyzerMessageKind::Info => info_count += 1,
+            AnalyzerMessageKind::Alert(k) => if k.is_error() {
+                should_exit = true;
+                error_count += 1;
+            } else {
+                warning_count += 1;
+            },
+        }
+
+        message.write(sources(src.clone()), stderr());
+    }
+
+    eprintln!("completed analysis in {} ms", elapsed);
+    eprintln!(
+        "{} message{} ({} info, {} warning{}, {} error{})\n",
+        count, if count != 1 { "s" } else { "" },
+        info_count,
+        warning_count, if warning_count != 1 { "s" } else { "" },
+        error_count, if error_count != 1 { "s" } else { "" },
+    );
+
+    if should_exit {
+        exit(-1);
+    }
+
+    // we can unwrap here since analysis unwraps for us
+    Ok(N::parse(tokens).unwrap())
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -101,7 +179,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match args.command {
         Command::Ast { file, code, pretty } => {
-            let node = run_ast::<AstNode>(file, code)?;
+            let node = run_ast::<AstNode>(file, code)?.0;
 
             if pretty {
                 println!("{:#?}", node);
@@ -109,8 +187,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("{:?}", node);
             }
         }
-        Command::Dis { code, file, raw } => {
-            let body = run_ast(file, code)?;
+        Command::Dis { file, code, raw } => {
+            let body = analyze(file, code)?;
 
             let mut transformer = BcTransformer::default();
             transformer.interpret_body(None, body);
@@ -126,8 +204,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 program.dis(&mut stdout)?;
             }
         }
-        Command::Eval { code, file } => {
-            let body = run_ast(file, code)?;
+        Command::Eval { file, code } => {
+            let body = analyze(file, code)?;
 
             let mut transformer = BcTransformer::default();
             transformer.interpret_body(None, body);
@@ -141,6 +219,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let popped = interpreter.ctx.pop_ref();
             let popped = interpreter.ctx.store.resolve(popped);
             println!("{}", interpreter.get_object_repr(popped));
+        }
+        Command::Check { code, file } => {
+            println!("analyzing... (analysis will be streamed into stderr)");
+            analyze::<Vec<(AstToken, Span)>>(file, code)?;
         }
     }
 
