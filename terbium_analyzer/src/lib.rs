@@ -13,7 +13,7 @@ use ariadne::{sources, Cache};
 use std::io::Write;
 use std::str::FromStr;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum AnalyzerMessageKind {
     Info,
     Alert(AnalyzerKind),
@@ -73,7 +73,7 @@ impl AnalyzerMessage {
             hint: Some(Hint {
                 message: format!(
                     "remove the declaration, or prefix with `_`: {:?}",
-                    "_".to_string() + &*name
+                    "_".to_string() + name
                 ),
                 action: HintAction::None,
             }),
