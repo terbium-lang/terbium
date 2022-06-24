@@ -778,7 +778,7 @@
 <span class="doccomment">/// The integer type of the location of a `TerbiumObject`.</span>
 <span class="kw">pub</span> <span class="kw">type</span> <span class="ident">ObjectRef</span> <span class="op">=</span> <span class="ident">usize</span>;
 
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Copy</span>, <span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">PartialEq</span>)]</span>
+<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Copy</span>, <span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">Eq</span>, <span class="ident">PartialEq</span>)]</span>
 <span class="doccomment">/// The internal Terbium object model. These are created during the interpreter runtime.</span>
 <span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">TerbiumObject</span> {
     <span class="ident">Null</span>,
