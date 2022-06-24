@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":[["to_snake_case",""]]};
+window.SIDEBAR_ITEMS = {"fn":[["get_levenshtein_distance",""],["to_snake_case",""]]};
