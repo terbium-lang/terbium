@@ -197,9 +197,12 @@ impl<T: Into<TargetKind> + Clone> chumsky::Error<T> for Error {
             expected,
             label: None,
             message: format!(
-                "expected {}, found {} instead",
+                "expected {}{}",
                 expected_message,
-                found.map_or_else(String::new, |found| found.into().to_string())
+                found.map_or_else(
+                    String::new,
+                    |found| format!(", found {} instead", found.into().to_string())
+                ),
             ),
             hint: None,
         }
