@@ -13,7 +13,7 @@ use interner::StringId;
 /// The integer type of the location of a `TerbiumObject`.
 pub type ObjectRef = usize;
 
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 /// The internal Terbium object model. These are created during the interpreter runtime.
 pub enum TerbiumObject {
     Null,
