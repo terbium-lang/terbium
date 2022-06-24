@@ -133,7 +133,7 @@ where
     let instant = Instant::now();
     let messages = run_analysis(&analyzers, ctx)?;
     #[expect(
-        clippy::cast_precision_loss, 
+        clippy::cast_precision_loss,
         reason = "The timing is provided on a best-effort basis, precision loss is tolerable."
     )]
     let elapsed = instant.elapsed().as_micros() as f64 / 1000_f64;

@@ -156,14 +156,14 @@ impl AnalyzerMessage {
     }
 
     /// Write error to specified writer.
-    /// 
+    ///
     /// # Panics
     /// * Panic when writing to writer failed.
     pub fn write<C: Cache<Source>>(self, cache: C, writer: impl Write) {
         use ariadne::{Color, Label, Report, ReportKind};
 
         #[expect(
-            clippy::match_wildcard_for_single_variants, 
+            clippy::match_wildcard_for_single_variants,
             reason = "Nothing should reach this arm"
         )]
         let color = match self.kind {
@@ -175,7 +175,7 @@ impl AnalyzerMessage {
 
         let report = Report::build(
             #[allow(
-                clippy::match_wildcard_for_single_variants, 
+                clippy::match_wildcard_for_single_variants,
                 reason = "Nothing should reach this arm"
             )]
             match self.kind {
@@ -277,7 +277,9 @@ pub struct MockScope(pub HashMap<String, MockScopeEntry>);
 
 impl MockScope {
     #[must_use]
-    pub fn new() -> Self { Self(HashMap::new()) }
+    pub fn new() -> Self {
+        Self(HashMap::new())
+    }
 
     #[must_use]
     pub fn lookup(&self, name: &str) -> Option<&MockScopeEntry> {
@@ -374,9 +376,7 @@ impl Context {
             clippy::cast_possible_truncation,
             reason = "Is not possible for indentifer to be this large"
         )]
-        let threshold = (name.chars().count() as f64 * 0.14)
-            .round()
-            .max(2_f64) as usize;
+        let threshold = (name.chars().count() as f64 * 0.14).round().max(2_f64) as usize;
 
         for scope in self.scopes.iter().rev() {
             for sample in scope.0.keys() {
@@ -455,14 +455,11 @@ impl AnalyzerKind {
     #[must_use]
     pub const fn severity(&self) -> u8 {
         match self {
-            Self::NonSnakeCase |
-            Self::NonPascalCase |
-            Self::NonAscii => 1,
-            Self::UnusedVariables |
-            Self::UnnecessaryMutVariables => 2,
-            Self::UnresolvedIdentifiers |
-            Self::RedeclaredConstVariables |
-            Self::ReassignedImmutableVariables => 0,
+            Self::NonSnakeCase | Self::NonPascalCase | Self::NonAscii => 1,
+            Self::UnusedVariables | Self::UnnecessaryMutVariables => 2,
+            Self::UnresolvedIdentifiers
+            | Self::RedeclaredConstVariables
+            | Self::ReassignedImmutableVariables => 0,
             Self::GlobalMutableVariables => 4,
         }
     }
@@ -567,13 +564,7 @@ impl AnalyzerSet {
 
     #[must_use]
     pub fn from_disabled(disabled: &HashSet<AnalyzerKind>) -> Self {
-        Self(
-            Self::default()
-                .0
-                .difference(disabled)
-                .copied()
-                .collect(),
-        )
+        Self(Self::default().0.difference(disabled).copied().collect())
     }
 
     #[must_use]
@@ -601,7 +592,7 @@ impl Default for AnalyzerSet {
 
 #[allow(unused_variables, reason = "`analyzers` will be used later")]
 /// Visit and analyze expression.
-/// 
+///
 /// # Errors
 /// * Return any warning or error that the analyzer generated.
 pub fn visit_expr(
@@ -637,7 +628,7 @@ pub fn visit_expr(
 #[allow(clippy::missing_panics_doc, reason = "todo!()")]
 #[allow(clippy::too_many_lines, reason = "Should refactor later.")]
 /// Visit and analyze node.
-/// 
+///
 /// # Errors
 /// * Return any warning or error that the analyzer generated.
 pub fn visit_node(
@@ -676,10 +667,7 @@ pub fn visit_node(
                     Target::Ident(s) => {
                         if let Some(entry) = ctx.lookup_var(&s) {
                             if entry.is_const() {
-                                messages.push(AnalyzerMessage::redeclared_const_variable(
-                                    &s,
-                                    span,
-                                ));
+                                messages.push(AnalyzerMessage::redeclared_const_variable(&s, span));
                             }
                         }
 
@@ -718,7 +706,14 @@ pub fn visit_node(
 
             let mut deferred = Vec::<DeferEntry>::new();
 
-            recur(ctx, messages, target.clone(), span.clone(), tgt_span.clone(), &mut deferred);
+            recur(
+                ctx,
+                messages,
+                target.clone(),
+                span.clone(),
+                tgt_span.clone(),
+                &mut deferred,
+            );
 
             for (name, ty, tgt_span) in deferred {
                 if analyzers.contains(&AnalyzerKind::NonSnakeCase) {
@@ -797,7 +792,7 @@ pub fn visit_node(
 }
 
 /// Analyze the given context.
-/// 
+///
 /// # Errors
 /// * Return any warning or error the analyzer generated.
 pub fn run_analysis(
