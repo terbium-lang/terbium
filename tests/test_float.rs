@@ -1,6 +1,7 @@
 use terbium::{EqComparableFloat, TerbiumObject};
 
-use super::interpret;
+mod interpreter;
+use interpreter::interpret;
 
 #[test]
 fn test_float() {

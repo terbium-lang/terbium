@@ -1,5 +1,7 @@
-use super::interpret;
 use terbium::interpreter::TerbiumObject;
+
+mod interpreter;
+use interpreter::interpret;
 
 #[test]
 fn test_interpreter_from_string() {
