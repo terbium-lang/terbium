@@ -40,3 +40,52 @@ impl<I: Iterator<Item = char>> Iterator for CamelCaseRemover<I> {
         }
     }
 }
+
+#[must_use]
+pub fn get_levenshtein_distance(a: &str, b: &str) -> usize {
+    let mut result = 0;
+
+    if a == b {
+        return result;
+    }
+
+    let a_len = a.chars().count();
+    let b_len = b.chars().count();
+
+    if a_len == 0 {
+        return b_len;
+    }
+    if b_len == 0 {
+        return a_len;
+    }
+
+    let mut cache: Vec<usize> = (1..).take(a_len).collect();
+    let mut a_dist;
+    let mut b_dist;
+
+    for (b_idx, b_code) in b.chars().enumerate() {
+        result = b_idx;
+        a_dist = b_idx;
+
+        for (a_idx, a_code) in a.chars().enumerate() {
+            b_dist = a_dist + (a_code != b_code) as usize;
+            a_dist = cache[a_idx];
+
+            result = if a_dist > result {
+                if b_dist > result {
+                    result + 1
+                } else {
+                    b_dist
+                }
+            } else if b_dist > a_dist {
+                a_dist + 1
+            } else {
+                b_dist
+            };
+
+            cache[a_idx] = result;
+        }
+    }
+
+    result
+}
