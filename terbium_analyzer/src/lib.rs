@@ -643,19 +643,6 @@ pub fn visit_node(
             r#const,
             ..
         } => {
-            // Assume there can only be one target
-            let (target, tgt_span) = targets
-                .first()
-                .ok_or("multiple declaration targets unsupported")?
-                .node_span();
-
-            let modifier = match (r#mut, r#const) {
-                (true, false) => ScopeEntryModifier::Mut,
-                (false, true) => ScopeEntryModifier::Const,
-                (false, false) => ScopeEntryModifier::None,
-                (true, true) => unreachable!(),
-            };
-
             type DeferEntry = (String, (), Span);
 
             fn recur(
