@@ -1,1 +1,1 @@
-window.ALL_CRATES = ["terbium","terbium_analyzer","terbium_bytecode","terbium_grammar","terbium_interpreter","tests"];
+window.ALL_CRATES = ["terbium","terbium_analyzer","terbium_bytecode","terbium_grammar","terbium_interpreter"];
