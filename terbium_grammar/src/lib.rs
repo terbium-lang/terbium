@@ -4,7 +4,7 @@ pub mod ast;
 pub mod error;
 pub mod token;
 
-pub use crate::ast::{Body, Expr, Node, ParseInterface, Param, TypeExpr, Target};
+pub use crate::ast::{Body, Expr, Node, Param, ParseInterface, Target, TypeExpr};
 pub use crate::error::*;
 pub use crate::token::{get_lexer as tokenizer, Operator, Token};
 pub use chumsky::Parser as ChumskyParser;
