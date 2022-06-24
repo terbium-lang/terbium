@@ -19,7 +19,7 @@ pub enum AnalyzerMessageKind {
     Alert(AnalyzerKind),
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct AnalyzerMessage {
     pub kind: AnalyzerMessageKind,
     message: String,
