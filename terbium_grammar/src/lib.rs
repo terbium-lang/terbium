@@ -4,7 +4,7 @@ pub mod ast;
 pub mod error;
 pub mod token;
 
-pub use crate::ast::{Body, Expr, Node, ParseInterface, TypeExpr};
+pub use crate::ast::{Body, Expr, Node, ParseInterface, Param, TypeExpr, Target};
 pub use crate::error::*;
 pub use crate::token::{get_lexer as tokenizer, Operator, Token};
 pub use chumsky::Parser as ChumskyParser;
@@ -237,6 +237,16 @@ impl<T> Spanned<T> {
     #[must_use]
     pub fn span_mut(&mut self) -> &mut Span {
         &mut self.span
+    }
+
+    #[must_use]
+    pub fn node_span(&self) -> (&T, &Span) {
+        (&self.inner, &self.span)
+    }
+
+    #[must_use]
+    pub fn into_node_span(self) -> (T, Span) {
+        (*self.inner, self.span)
     }
 }
 

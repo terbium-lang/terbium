@@ -2,12 +2,15 @@ pub mod util;
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::Formatter;
-use terbium_grammar::{Expr, Node, ParseInterface, Source, Span, Spanned, Token};
+use terbium_grammar::{Expr, Node, ParseInterface, Source, Span, Spanned, Target, Token};
 use terbium_grammar::error::{Hint, HintAction};
 use util::to_snake_case;
 
 use std::io::Write;
 use std::str::FromStr;
+use ariadne::{Cache, sources};
+use chumsky::chain::Chain;
+use crate::util::get_levenshtein_distance;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum AnalyzerMessageKind {
@@ -15,12 +18,75 @@ pub enum AnalyzerMessageKind {
     Alert(AnalyzerKind),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct AnalyzerMessage {
     kind: AnalyzerMessageKind,
     message: String,
+    label: Option<String>,
     span: Span,
     hint: Option<Hint>,
+}
+
+impl AnalyzerMessage {
+    pub fn non_snake_case(name: String, counterpart: String, span: Span) -> Self {
+        Self {
+            kind: AnalyzerMessageKind::Alert(AnalyzerKind::NonSnakeCase),
+            message: "non-type identifier names should be snake_case".to_string(),
+            label: Some(format!("{:?} is not snake_case", name)),
+            span,
+            hint: Some(Hint {
+                message: format!("rename to {:?}", counterpart),
+                action: HintAction::Replace(counterpart),
+            })
+        }
+    }
+
+    pub fn unresolved_identifier(name: String, close_match: Option<String>, span: Span) -> Self {
+        Self {
+            kind: AnalyzerMessageKind::Alert(AnalyzerKind::UnresolvedIdentifiers),
+            message: "identifier could not be resolved".to_string(),
+            label: Some(format!("variable {:?} not found in this scope", name)),
+            span,
+            hint: close_match.map(|m| Hint {
+                message: format!("perhaps you meant {:?}", m),
+                action: HintAction::Replace(m),
+            }),
+        }
+    }
+
+    pub fn redeclared_const_variable(name: String, span: Span) -> Self {
+        Self {
+            kind: AnalyzerMessageKind::Alert(AnalyzerKind::RedeclaredConstVariables),
+            message: "cannot redeclare variable declared as `const`".to_string(),
+            label: Some(format!("variable {:?} was declared as `const`", name)),
+            span,
+            hint: Some(Hint {
+                message: "declare with `let` instead".to_string(),
+                action: HintAction::None,
+            })
+        }
+    }
+
+    pub fn reassigned_immutable_variable(name: String, span: Span, was_const: bool) -> Self {
+        Self {
+            kind: AnalyzerMessageKind::Alert(AnalyzerKind::ReassignedImmutableVariables),
+            message: format!("cannot reassign to {}", if was_const {
+                "variable declared as `const`"
+            } else {
+                "immutable variable"
+            }),
+            label: Some(format!("attempted to reassign to variable {:?}, but it was {}", name, if was_const {
+                "declared as `const`"
+            } else {
+                "never declared as `mut`"
+            })),
+            span,
+            hint: Some(Hint {
+                message: "make variable mutable by declaring with `let mut` instead".to_string(),
+                action: HintAction::None,
+            })
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -39,17 +105,17 @@ pub struct MockScopeEntry {
 
 impl MockScopeEntry {
     #[must_use]
-    pub const fn is_let(&self) -> bool {
+    pub fn is_let(&self) -> bool {
         self.modifier == ScopeEntryModifier::None
     }
 
     #[must_use]
-    pub const fn is_mut(&self) -> bool {
+    pub fn is_mut(&self) -> bool {
         self.modifier == ScopeEntryModifier::Mut
     }
 
     #[must_use]
-    pub const fn is_const(&self) -> bool {
+    pub fn is_const(&self) -> bool {
         self.modifier == ScopeEntryModifier::Const
     }
 }
@@ -71,15 +137,14 @@ pub struct Context {
     pub ast: Node,
     pub messages: Vec<AnalyzerMessage>,
     pub scopes: Vec<MockScope>,
+    pub cache: Vec<(Source, String)>,
 }
 
 impl Context {
-    pub fn from_tokens(tokens: Vec<(Token, Span)>) -> Self {
+    pub fn from_tokens(cache: Vec<(Source, String)>, tokens: Vec<(Token, Span)>) -> Self {
         let ast = Node::parse(tokens.clone()).unwrap_or_else(|e| {
             for error in e {
-                let cache = sources::<Source, String, _>(vec![(src.clone(), code.clone())]);
-
-                error.write(cache, std::io::stderr());
+                error.write(sources(cache.clone()), std::io::stderr());
             }
 
             std::process::exit(-1)
@@ -90,7 +155,12 @@ impl Context {
             ast,
             messages: Vec::new(),
             scopes: vec![MockScope::new()],
+            cache,
         }
+    }
+
+    pub fn cache(&self) -> impl Cache<Source> {
+        sources(self.cache.clone())
     }
 
     pub fn locals(&self) -> &MockScope {
@@ -106,9 +176,9 @@ impl Context {
     }
 
     #[must_use]
-    pub fn lookup_var(&self, name: String) -> Option<&MockScopeEntry> {
+    pub fn lookup_var(&self, name: &String) -> Option<&MockScopeEntry> {
         for scope in self.scopes.iter().rev() {
-            if let Some(entry) = scope.0.get(&name) {
+            if let Some(entry) = scope.0.get(name) {
                 return Some(entry);
             }
         }
@@ -116,10 +186,26 @@ impl Context {
         None
     }
 
-    pub fn lookup_var_mut(&mut self, name: String) -> Option<&mut MockScopeEntry> {
+    pub fn lookup_var_mut(&mut self, name: &String) -> Option<&mut MockScopeEntry> {
         for scope in self.scopes.iter_mut().rev() {
-            if let Some(entry) = scope.0.get_mut(&name) {
+            if let Some(entry) = scope.0.get_mut(name) {
                 return Some(entry);
+            }
+        }
+
+        None
+    }
+
+    pub fn close_var_match(&self, name: &String) -> Option<String> {
+        let threshold = (name.chars().len() as f64 * 0.14)
+            .round()
+            .max(2_f64) as usize;
+
+        for scope in self.scopes.iter().rev() {
+            for sample in scope.0.keys() {
+                if get_levenshtein_distance(name.as_str(), sample.as_str()) <= threshold {
+                    return Some(sample.clone());
+                }
             }
         }
 
@@ -312,11 +398,110 @@ pub fn visit_node(
 
     match node {
         Node::Module(m) => for node in m {
-            visit_node(analyzers, ctx, messages, node);
+            visit_node(analyzers, ctx, messages, node)?;
         },
         Node::Declare { targets, r#mut, r#const, .. } => {
+            // Assume there can only be one target
+            let (target, span) = targets
+                .first()
+                .ok_or("multiple declaration targets unsupported")?
+                .node_span();
 
+            let modifier = match (r#mut, r#const) {
+                (true, false) => ScopeEntryModifier::Mut,
+                (false, true) => ScopeEntryModifier::Const,
+                (false, false) => ScopeEntryModifier::None,
+                (true, true) => unreachable!(),
+            };
+
+            type DeferEntry = (String, (), Span);
+            let mut deferred = Vec::<DeferEntry>::new();
+
+            fn recur(
+                ctx: &Context,
+                messages: &mut Vec<AnalyzerMessage>,
+                target: Target,
+                span: Span,
+                deferred: &mut Vec<DeferEntry>,
+            ) {
+                match target {
+                    Target::Ident(s) => {
+                        if let Some(entry) = ctx.lookup_var(&s) {
+                            if entry.is_const() {
+                                messages.push(AnalyzerMessage::redeclared_const_variable(
+                                    s.clone(),
+                                    span.clone(),
+                                ));
+                            }
+                        }
+
+                        deferred.push((s, (), span));
+                    },
+                    Target::Array(targets) => for target in targets {
+                        let (target, span) = target.into_node_span();
+
+                        recur(ctx, messages, target, span, deferred);
+                    }
+                    _ => todo!(),
+                };
+            }
+
+            recur(ctx, messages, target.clone(), span.clone(), &mut deferred);
+
+            for (name, ty, span) in deferred {
+                if analyzers.contains(&AnalyzerKind::NonSnakeCase) {
+                    let snake = to_snake_case(&*name);
+
+                    if name != snake {
+                        messages.push(AnalyzerMessage::non_snake_case(
+                            name.clone(),
+                            snake,
+                            span.clone(),
+                        ));
+                    }
+                }
+
+                ctx.store_var(name.clone(), MockScopeEntry { name, ty, modifier });
+            }
         }
+        Node::Assign { targets, .. } => {
+            // Assume there can only be one target
+            let (target, span) = targets
+                .first()
+                .ok_or("multiple assignment targets unsupported")?
+                .node_span();
+
+            match target {
+                Target::Ident(s) => {
+                    let entry = ctx.lookup_var(s);
+
+                    match entry {
+                        Some(entry) => {
+                            if entry.is_const() || !entry.is_mut() {
+                                messages.push(AnalyzerMessage::reassigned_immutable_variable(
+                                    s.to_string(),
+                                    span.clone(),
+                                    entry.is_const(),
+                                ));
+                            }
+                        }
+                        None => {
+                            let close_match = ctx.close_var_match(s);
+
+                            messages.push(AnalyzerMessage::unresolved_identifier(
+                                s.clone(),
+                                close_match,
+                                span.clone(),
+                            ));
+                            return Ok(());
+                        }
+                    }
+                },
+                Target::Array(_) => return Err("array assignments unsupported"),
+                _ => todo!(),
+            }
+        }
+        Node::Expr(expr) => visit_expr(analyzers, ctx, messages, expr)?,
         _ => unimplemented!(),
     }
 
@@ -328,8 +513,12 @@ pub fn run_analysis(
     mut ctx: Context,
 ) -> Result<Vec<AnalyzerMessage>, &'static str> {
     let mut messages = Vec::new();
+    let ast = std::mem::replace(&mut ctx.ast, Node::Module(Vec::new()));
 
-
+    visit_node(&analyzers, &mut ctx, &mut messages, Spanned::new(
+        ast,
+        Span::default(), // Guaranteed to be a module, this is a placeholder
+    ))?;
 
     Ok(messages)
 }
