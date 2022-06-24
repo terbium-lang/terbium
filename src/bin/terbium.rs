@@ -6,12 +6,7 @@ use std::time::Instant;
 use ariadne::sources;
 use clap::{Parser, Subcommand};
 use terbium::{AstNode, AstToken, BcTransformer};
-use terbium_analyzer::{
-    AnalyzerMessageKind,
-    AnalyzerSet,
-    Context,
-    run_analysis,
-};
+use terbium_analyzer::{run_analysis, AnalyzerMessageKind, AnalyzerSet, Context};
 use terbium_grammar::{ParseInterface, Source, Span};
 use terbium_interpreter::DefaultInterpreter;
 
@@ -86,11 +81,13 @@ enum Command {
         /// The direct source code to analyze. Cannot be used with the file argument.
         #[clap(short, long)]
         code: Option<String>,
-    }
+    },
 }
 
-fn run_ast<N>(file: Option<PathBuf>, code: Option<String>)
-    -> Result<(N, Vec<(Source, String)>), Box<dyn std::error::Error>>
+fn run_ast<N>(
+    file: Option<PathBuf>,
+    code: Option<String>,
+) -> Result<(N, Vec<(Source, String)>), Box<dyn std::error::Error>>
 where
     N: ParseInterface,
 {
@@ -126,10 +123,7 @@ where
 {
     let (tokens, src) = run_ast::<Vec<(AstToken, Span)>>(file, code)?;
 
-    let ctx = Context::from_tokens(
-        src.clone(),
-        tokens.clone(),
-    );
+    let ctx = Context::from_tokens(src.clone(), tokens.clone());
     let analyzers = AnalyzerSet::default();
 
     let instant = Instant::now();
@@ -146,12 +140,14 @@ where
     for message in messages {
         match message.kind {
             AnalyzerMessageKind::Info => info_count += 1,
-            AnalyzerMessageKind::Alert(k) => if k.is_error() {
-                should_exit = true;
-                error_count += 1;
-            } else {
-                warning_count += 1;
-            },
+            AnalyzerMessageKind::Alert(k) => {
+                if k.is_error() {
+                    should_exit = true;
+                    error_count += 1;
+                } else {
+                    warning_count += 1;
+                }
+            }
         }
 
         message.write(sources(src.clone()), stderr());
@@ -160,10 +156,13 @@ where
     eprintln!("completed analysis in {} ms", elapsed);
     eprintln!(
         "{} message{} ({} info, {} warning{}, {} error{})\n",
-        count, if count != 1 { "s" } else { "" },
+        count,
+        if count != 1 { "s" } else { "" },
         info_count,
-        warning_count, if warning_count != 1 { "s" } else { "" },
-        error_count, if error_count != 1 { "s" } else { "" },
+        warning_count,
+        if warning_count != 1 { "s" } else { "" },
+        error_count,
+        if error_count != 1 { "s" } else { "" },
     );
 
     if should_exit {
