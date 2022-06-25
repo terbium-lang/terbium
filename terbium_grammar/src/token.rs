@@ -241,8 +241,8 @@ pub enum Token {
     Question,
     Semicolon,
     Assign, // =
-    Colon, // :
-    Arrow, // ->
+    Colon,  // :
+    Arrow,  // ->
 }
 
 impl Display for Token {

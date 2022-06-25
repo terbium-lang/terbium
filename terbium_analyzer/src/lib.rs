@@ -620,7 +620,12 @@ pub fn visit_expr(
                 ));
             }
         },
-        Expr::If { condition, body, mut else_if_bodies, else_body } => {
+        Expr::If {
+            condition,
+            body,
+            mut else_if_bodies,
+            else_body,
+        } => {
             else_if_bodies.insert(0, (condition, body));
 
             for (condition, body) in else_if_bodies {
