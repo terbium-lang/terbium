@@ -5,12 +5,11 @@ pub mod util;
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::Formatter;
-use terbium_grammar::error::{Hint, HintAction};
-use terbium_grammar::{Expr, Node, ParseInterface, Source, Span, Spanned, Target, Token};
+use terbium_grammar::{Expr, Node, ParseInterface, Source, Span, Spanned, Target, Token, TypeExpr};
 use util::to_snake_case;
 
 use crate::util::get_levenshtein_distance;
-use ariadne::{sources, Cache};
+use ariadne::{sources, Cache, Color, Label, Report, ReportBuilder, ReportKind};
 use std::io::Write;
 use std::str::FromStr;
 
@@ -20,154 +19,22 @@ pub enum AnalyzerMessageKind {
     Alert(AnalyzerKind),
 }
 
-#[derive(Debug, Eq, PartialEq)]
 pub struct AnalyzerMessage {
     pub kind: AnalyzerMessageKind,
-    message: String,
-    label: Option<String>,
+    pub report: ReportBuilder<Span>,
     span: Span,
-    hint: Option<Hint>,
 }
 
 impl AnalyzerMessage {
-    #[must_use]
-    pub fn non_snake_case(name: &str, counterpart: String, span: Span) -> Self {
-        Self {
-            kind: AnalyzerMessageKind::Alert(AnalyzerKind::NonSnakeCase),
-            message: "non-type identifier names should be snake_case".to_string(),
-            label: Some(format!("{:?} is not snake_case", name)),
-            span,
-            hint: Some(Hint {
-                message: format!("rename to {:?}", counterpart),
-                action: HintAction::Replace(counterpart),
-            }),
-        }
-    }
-
-    #[must_use]
-    pub fn unnecessary_mut_variable(name: &str, span: Span) -> Self {
-        Self {
-            kind: AnalyzerMessageKind::Alert(AnalyzerKind::UnnecessaryMutVariables),
-            message: "variable was unneedingly declared as mutable".to_string(),
-            label: Some(format!(
-                "variable {:?} is declared mutable here, but it is never mutated",
-                name
-            )),
-            span,
-            hint: Some(Hint {
-                message: "make variable immutable by declaring with `let` instead".to_string(),
-                action: HintAction::None,
-            }),
-        }
-    }
-
-    #[must_use]
-    pub fn unused_variable(name: &str, span: Span) -> Self {
-        Self {
-            kind: AnalyzerMessageKind::Alert(AnalyzerKind::UnusedVariables),
-            message: "variable is declared but never used".to_string(),
-            label: Some(format!(
-                "variable {:?} is declared here, but it is never used",
-                name
-            )),
-            span,
-            hint: Some(Hint {
-                message: format!(
-                    "remove the declaration, or prefix with `_`: {:?}",
-                    "_".to_string() + name
-                ),
-                action: HintAction::None,
-            }),
-        }
-    }
-
-    #[must_use]
-    pub fn global_mutable_variable(name: &str, span: Span) -> Self {
-        Self {
-            kind: AnalyzerMessageKind::Alert(AnalyzerKind::GlobalMutableVariables),
-            message: "variable is declared as mutable in the global scope".to_string(),
-            label: Some(format!(
-                "variable {:?} is declared as mutable here, but it is accessible to the entire program",
-                name
-            )),
-            span,
-            hint: Some(Hint {
-                message: "declare as immutable instead, or move the declaration into a non-global context such as inside of a function"
-                    .to_string(),
-                action: HintAction::None,
-            }),
-        }
-    }
-
-    #[must_use]
-    pub fn unresolved_identifier(name: &str, close_match: Option<String>, span: Span) -> Self {
-        Self {
-            kind: AnalyzerMessageKind::Alert(AnalyzerKind::UnresolvedIdentifiers),
-            message: "identifier could not be resolved".to_string(),
-            label: Some(format!("variable {:?} not found in this scope", name)),
-            span,
-            hint: close_match.map(|m| Hint {
-                message: format!("perhaps you meant {:?}", m),
-                action: HintAction::Replace(m),
-            }),
-        }
-    }
-
-    #[must_use]
-    pub fn redeclared_const_variable(name: &str, span: Span) -> Self {
-        Self {
-            kind: AnalyzerMessageKind::Alert(AnalyzerKind::RedeclaredConstVariables),
-            message: "cannot redeclare variable declared as `const`".to_string(),
-            label: Some(format!("variable {:?} was declared as `const`", name)),
-            span,
-            hint: Some(Hint {
-                message: "declare with `let` instead".to_string(),
-                action: HintAction::None,
-            }),
-        }
-    }
-
-    #[must_use]
-    pub fn reassigned_immutable_variable(name: &str, span: Span, was_const: bool) -> Self {
-        Self {
-            kind: AnalyzerMessageKind::Alert(AnalyzerKind::ReassignedImmutableVariables),
-            message: format!(
-                "cannot reassign to {}",
-                if was_const {
-                    "variable declared as `const`"
-                } else {
-                    "immutable variable"
-                }
-            ),
-            label: Some(format!(
-                "attempted to reassign to variable {:?}, but it was {}",
-                name,
-                if was_const {
-                    "declared as `const`"
-                } else {
-                    "never declared as `mut`"
-                }
-            )),
-            span,
-            hint: Some(Hint {
-                message: "make variable mutable by declaring with `let mut` instead".to_string(),
-                action: HintAction::None,
-            }),
-        }
-    }
-
-    /// Write error to specified writer.
-    ///
-    /// # Panics
-    /// * Panic when writing to writer failed.
-    pub fn write<C: Cache<Source>>(self, cache: C, writer: impl Write) {
-        use ariadne::{Color, Label, Report, ReportKind};
-
+    pub fn new<F>(kind: AnalyzerMessageKind, span: Span, f: F) -> Self
+    where
+        F: FnOnce(ReportBuilder<Span>, Color) -> ReportBuilder<Span>,
+    {
         #[allow(
             clippy::match_wildcard_for_single_variants,
             reason = "Nothing should reach this arm"
         )]
-        let color = match self.kind {
+        let color = match &kind {
             AnalyzerMessageKind::Info => Color::Blue,
             AnalyzerMessageKind::Alert(k) if k.is_warning() => Color::Yellow,
             AnalyzerMessageKind::Alert(k) if k.is_error() => Color::Red,
@@ -179,47 +46,203 @@ impl AnalyzerMessage {
                 clippy::match_wildcard_for_single_variants,
                 reason = "Nothing should reach this arm"
             )]
-            match self.kind {
+            match &kind {
                 AnalyzerMessageKind::Info => ReportKind::Advice,
                 AnalyzerMessageKind::Alert(k) if k.is_warning() => ReportKind::Warning,
                 AnalyzerMessageKind::Alert(k) if k.is_error() => ReportKind::Error,
                 _ => unreachable!(),
             },
-            self.span.src(),
-            self.span.start(),
+            span.src(),
+            span.start(),
         );
 
-        let report = match self.kind {
-            AnalyzerMessageKind::Alert(k) => report.with_code(k.code()),
-            AnalyzerMessageKind::Info => report,
+        Self {
+            kind,
+            span,
+            report: f(report, color),
         }
-        .with_message(self.message);
+    }
 
-        let report = if let Some(label) = self.label {
-            report.with_label(Label::new(self.span).with_message(label).with_color(color))
-        } else {
-            report
-        };
+    #[must_use]
+    pub fn non_snake_case(name: &str, counterpart: String, span: Span) -> Self {
+        Self::new(
+            AnalyzerMessageKind::Alert(AnalyzerKind::NonSnakeCase),
+            span.clone(),
+            |report, color| report
+                .with_message("non-type identifier names should be snake_case")
+                .with_label(Label::new(span)
+                    .with_message(format!("{:?} is not snake_case", name))
+                    .with_color(color)
+                )
+                .with_help(format!("rename to {:?}", counterpart))
+        )
+    }
 
-        let report = if let Some(hint) = self.hint {
-            report.with_help(hint.message)
-        } else {
-            report
-        };
+    #[must_use]
+    pub fn unnecessary_mut_variable(name: &str, span: Span) -> Self {
+        Self::new(
+            AnalyzerMessageKind::Alert(AnalyzerKind::UnnecessaryMutVariables),
+            span.clone(),
+            |report, color| report
+                .with_message("variable was unneedingly declared as mutable")
+                .with_label(Label::new(span)
+                    .with_message(format!(
+                        "variable {:?} declared mutable here, but it is never mutated",
+                        name,
+                    ))
+                    .with_color(color)
+                )
+                .with_help("make variable immutable by declaring with `let` instead")
+        )
+    }
 
+    #[must_use]
+    pub fn unused_variable(name: &str, span: Span) -> Self {
+        Self::new(
+            AnalyzerMessageKind::Alert(AnalyzerKind::UnusedVariables),
+            span.clone(),
+            |report, color| report
+                .with_message("variable is declared but never used")
+                .with_label(Label::new(span)
+                    .with_message(format!(
+                        "variable {:?} is declared here, but it is never used",
+                        name,
+                    ))
+                    .with_color(color)
+                )
+                .with_help(format!(
+                    "remove the declaration, or prefix with an underscore: {:?}",
+                    "_".to_string() + name,
+                ))
+        )
+    }
+
+    #[must_use]
+    pub fn global_mutable_variable(span: Span) -> Self {
+        Self::new(
+            AnalyzerMessageKind::Alert(AnalyzerKind::GlobalMutableVariables),
+            span.clone(),
+            |report, color| report
+                .with_message("mutable declaration found in the global scope")
+                .with_label(Label::new(span)
+                    .with_message("variables declared here are accessible to the entire program")
+                    .with_color(color)
+                )
+                .with_help(
+                    "declare as immutable instead, or move the declaration into a \
+                    non-global context such as inside of a function"
+                )
+        )
+    }
+
+    #[must_use]
+    pub fn unresolved_identifier(name: &str, close_match: Option<(String, Span)>, span: Span) -> Self {
+        Self::new(
+            AnalyzerMessageKind::Alert(AnalyzerKind::UnresolvedIdentifiers),
+            span.clone(),
+            |report, color| {
+                let report = report
+                    .with_message("identifier could not be resolved")
+                    .with_label(Label::new(span)
+                        .with_message(format!("variable {:?} not found in this scope", name))
+                        .with_color(color)
+                        .with_order(0)
+                    );
+
+                if let Some((close_match, close_span)) = close_match {
+                    report.with_label(Label::new(close_span)
+                        .with_message(format!("perhaps you meant {:?}, which was declared here", close_match))
+                        .with_color(Color::Cyan)
+                        .with_order(1)
+                    )
+                } else {
+                    report
+                }
+            },
+        )
+    }
+
+    #[must_use]
+    pub fn redeclared_const_variable(name: &str, decl_span: Span, span: Span) -> Self {
+        Self::new(
+            AnalyzerMessageKind::Alert(AnalyzerKind::RedeclaredConstVariables),
+            span.clone(),
+            |report, color| report
+                .with_message("cannot redeclare variable declared as `const`")
+                .with_label(Label::new(decl_span)
+                    .with_message(format!("variable {:?} declared as `const` here", name))
+                    .with_color(color)
+                    .with_order(0))
+                .with_label(Label::new(span)
+                    .with_message(format!("attempted to redeclare {:?} here", name))
+                    .with_color(color)
+                    .with_order(1))
+                .with_help("declare with `let` instead")
+        )
+    }
+
+    #[must_use]
+    pub fn reassigned_immutable_variable(name: &str, decl_span: Span, span: Span, was_const: bool) -> Self {
+        Self::new(
+            AnalyzerMessageKind::Alert(AnalyzerKind::ReassignedImmutableVariables),
+            span.clone(),
+            |report, color| report
+                .with_message(format!(
+                    "cannot reassign to {}",
+                    if was_const {
+                        "variable declared as `const`"
+                    } else {
+                        "immutable variable"
+                    }
+                ))
+                .with_label(Label::new(decl_span)
+                    .with_message(format!(
+                        "variable {:?} declared as {} here",
+                        name,
+                        if was_const { "`const`" } else { "immutable" },
+                    ))
+                    .with_color(Color::Cyan)
+                    .with_order(0))
+                .with_label(Label::new(span)
+                    .with_message(format!("attempted to reassign to variable {:?} here", name))
+                    .with_color(color)
+                    .with_order(1))
+                .with_help("make variable mutable by declaring with `let mut` instead")
+        )
+    }
+
+    /// Write error to specified writer.
+    ///
+    /// # Panics
+    /// * Panic when writing to writer failed.
+    pub fn write<C: Cache<Source>>(self, cache: C, writer: impl Write) {
         let report = if let AnalyzerMessageKind::Alert(k) = self.kind {
-            report.with_note(format!(
+            self.report.with_note(format!(
                "view this {} in the error index: https://github.com/TerbiumLang/standard/blob/main/error_index.md#{}{:0>3}",
                if k.is_error() { "error" } else { "warning" },
                if k.is_error() { "E" } else { "W" },
                k.code(),
            ))
         } else {
-            report
+            self.report
         };
 
         report.finish().write(cache, writer).unwrap();
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum PrimitiveType {
+    Int,
+    Float,
+    String,
+    Bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Type {
+    Primitive(PrimitiveType),
+    Union(),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -294,7 +317,6 @@ impl Default for MockScope {
     }
 }
 
-#[derive(Debug)]
 pub struct Context {
     pub tokens: Vec<(Token, Span)>,
     pub ast: Node,
@@ -370,7 +392,7 @@ impl Context {
     }
 
     #[must_use]
-    pub fn close_var_match(&self, name: &str) -> Option<String> {
+    pub fn close_var_match(&self, name: &str) -> Option<(String, Span)> {
         #[allow(
             clippy::cast_sign_loss,
             clippy::cast_precision_loss,
@@ -380,9 +402,9 @@ impl Context {
         let threshold = (name.chars().count() as f64 * 0.14).round().max(2_f64) as usize;
 
         for scope in self.scopes.iter().rev() {
-            for sample in scope.0.keys() {
+            for (sample, entry) in &scope.0 {
                 if get_levenshtein_distance(name, sample.as_str()) <= threshold {
-                    return Some(sample.clone());
+                    return Some((sample.clone(), entry.span.clone()));
                 }
             }
         }
@@ -710,7 +732,7 @@ pub fn visit_node(
                     Target::Ident(s) => {
                         if let Some(entry) = ctx.lookup_var(&s) {
                             if entry.is_const() {
-                                messages.push(AnalyzerMessage::redeclared_const_variable(&s, span));
+                                messages.push(AnalyzerMessage::redeclared_const_variable(&s, entry.span.clone(), span));
                             }
                         }
 
@@ -747,6 +769,15 @@ pub fn visit_node(
                 (true, true) => unreachable!(),
             };
 
+            if analyzers.contains(&AnalyzerKind::GlobalMutableVariables)
+                && ctx.is_top_level()
+                && modifier == ScopeEntryModifier::Mut
+            {
+                messages.push(AnalyzerMessage::global_mutable_variable(
+                    span.clone(),
+                ));
+            }
+
             let mut deferred = Vec::<DeferEntry>::new();
 
             recur(
@@ -769,16 +800,6 @@ pub fn visit_node(
                             tgt_span.clone(),
                         ));
                     }
-                }
-
-                if analyzers.contains(&AnalyzerKind::GlobalMutableVariables)
-                    && ctx.is_top_level()
-                    && modifier == ScopeEntryModifier::Mut
-                {
-                    messages.push(AnalyzerMessage::global_mutable_variable(
-                        &name,
-                        span.clone(),
-                    ));
                 }
 
                 ctx.store_var(
@@ -806,6 +827,7 @@ pub fn visit_node(
                             if entry.is_const() || !entry.is_mut() {
                                 messages.push(AnalyzerMessage::reassigned_immutable_variable(
                                     s,
+                                    entry.span.clone(),
                                     span,
                                     entry.is_const(),
                                 ));
