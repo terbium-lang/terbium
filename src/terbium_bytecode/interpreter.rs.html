@@ -373,6 +373,7 @@
 <span id="367">367</span>
 <span id="368">368</span>
 <span id="369">369</span>
+<span id="370">370</span>
 </pre><pre class="rust"><code><span class="doccomment">//! Interprets Terbium AST into Bytecode.</span>
 <span class="comment">// TODO: utilize #![feature(box_patterns)] for this module</span>
 
@@ -661,6 +662,7 @@
                 <span class="ident">value</span>,
                 <span class="ident">r#mut</span>,
                 <span class="ident">r#const</span>,
+                <span class="ident">ty</span>: <span class="kw">_</span>,
             } =&gt; {
                 <span class="self">self</span>.<span class="ident">interpret_expr</span>(<span class="ident">proc</span>, <span class="ident">value</span>);
 
@@ -743,5 +745,5 @@
     }
 }
 </code></pre></div>
-</section></div></main><div id="rustdoc-vars" data-root-path="../../" data-current-crate="terbium_bytecode" data-themes="ayu,dark,light" data-resource-suffix="" data-rustdoc-version="1.63.0-nightly (43347397f 2022-06-23)" ></div>
+</section></div></main><div id="rustdoc-vars" data-root-path="../../" data-current-crate="terbium_bytecode" data-themes="ayu,dark,light" data-resource-suffix="" data-rustdoc-version="1.63.0-nightly (fdca237d5 2022-06-24)" ></div>
 </body></html>

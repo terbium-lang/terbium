@@ -458,6 +458,12 @@
 <span id="452">452</span>
 <span id="453">453</span>
 <span id="454">454</span>
+<span id="455">455</span>
+<span id="456">456</span>
+<span id="457">457</span>
+<span id="458">458</span>
+<span id="459">459</span>
+<span id="460">460</span>
 </pre><pre class="rust"><code><span class="kw">use</span> <span class="kw">super</span>::{<span class="ident">Error</span>, <span class="ident">Span</span>};
 
 <span class="kw">use</span> <span class="ident">chumsky::prelude</span>::<span class="kw-2">*</span>;
@@ -701,6 +707,8 @@
     <span class="ident">Question</span>,
     <span class="ident">Semicolon</span>,
     <span class="ident">Assign</span>, <span class="comment">// =</span>
+    <span class="ident">Colon</span>,  <span class="comment">// :</span>
+    <span class="ident">Arrow</span>,  <span class="comment">// -&gt;</span>
 }
 
 <span class="kw">impl</span> <span class="ident">Display</span> <span class="kw">for</span> <span class="ident">Token</span> {
@@ -741,6 +749,8 @@
             <span class="ident"><span class="self">Self</span>::Question</span> =&gt; <span class="string">&quot;?&quot;</span>,
             <span class="ident"><span class="self">Self</span>::Semicolon</span> =&gt; <span class="string">&quot;;&quot;</span>,
             <span class="ident"><span class="self">Self</span>::Assign</span> =&gt; <span class="string">&quot;=&quot;</span>,
+            <span class="ident"><span class="self">Self</span>::Colon</span> =&gt; <span class="string">&quot;:&quot;</span>,
+            <span class="ident"><span class="self">Self</span>::Arrow</span> =&gt; <span class="string">&quot;-&gt;&quot;</span>,
         })
     }
 }
@@ -853,13 +863,15 @@
 
     <span class="kw">let</span> <span class="ident">comment</span> <span class="op">=</span> <span class="ident">single_line</span>.<span class="ident">or</span>(<span class="ident">multi_line</span>).<span class="ident">or_not</span>();
 
-    <span class="kw">let</span> <span class="ident">right_shift</span> <span class="op">=</span> <span class="ident">just</span>(<span class="string">&quot;&gt;&gt;&quot;</span>).<span class="ident">then_ignore</span>(<span class="ident">none_of</span>(<span class="string">&quot;)&lt;&gt;]},;&quot;</span>).<span class="ident">rewind</span>());
+    <span class="kw">let</span> <span class="ident">right_shift</span> <span class="op">=</span> <span class="ident">just</span>(<span class="string">&quot;&gt;&gt;&quot;</span>).<span class="ident">then_ignore</span>(<span class="ident">none_of</span>(<span class="string">&quot;)&lt;&gt;]},;&quot;</span>).<span class="ident">padded</span>().<span class="ident">rewind</span>());
 
     <span class="kw">let</span> <span class="ident">symbol</span> <span class="op">=</span> <span class="ident">choice</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Error</span><span class="op">&gt;</span>((
         <span class="ident">just</span>(<span class="string">&#39;,&#39;</span>).<span class="ident">to</span>(<span class="ident">Token::Comma</span>),
         <span class="ident">just</span>(<span class="string">&#39;;&#39;</span>).<span class="ident">to</span>(<span class="ident">Token::Semicolon</span>),
         <span class="ident">just</span>(<span class="string">&#39;?&#39;</span>).<span class="ident">to</span>(<span class="ident">Token::Question</span>),
         <span class="ident">just</span>(<span class="string">&quot;::&quot;</span>).<span class="ident">to</span>(<span class="ident">Token::Cast</span>),
+        <span class="ident">just</span>(<span class="string">&#39;:&#39;</span>).<span class="ident">to</span>(<span class="ident">Token::Colon</span>),
+        <span class="ident">just</span>(<span class="string">&quot;-&gt;&quot;</span>).<span class="ident">to</span>(<span class="ident">Token::Arrow</span>),
         <span class="ident">just</span>(<span class="string">&quot;..&quot;</span>).<span class="ident">map</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="ident">Token::Operator</span>(<span class="ident">Operator::Range</span>)),
         <span class="ident">just</span>(<span class="string">&#39;.&#39;</span>).<span class="ident">to</span>(<span class="ident">Token::Dot</span>),
         <span class="ident">just</span>(<span class="string">&#39;+&#39;</span>).<span class="ident">map</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="ident">Token::Operator</span>(<span class="ident">Operator::Add</span>)),
@@ -913,5 +925,5 @@
         .<span class="ident">then_ignore</span>(<span class="ident">end</span>())
 }
 </code></pre></div>
-</section></div></main><div id="rustdoc-vars" data-root-path="../../" data-current-crate="terbium_grammar" data-themes="ayu,dark,light" data-resource-suffix="" data-rustdoc-version="1.63.0-nightly (43347397f 2022-06-23)" ></div>
+</section></div></main><div id="rustdoc-vars" data-root-path="../../" data-current-crate="terbium_grammar" data-themes="ayu,dark,light" data-resource-suffix="" data-rustdoc-version="1.63.0-nightly (fdca237d5 2022-06-24)" ></div>
 </body></html>
