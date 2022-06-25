@@ -286,6 +286,7 @@ impl Interpreter {
                 value,
                 r#mut,
                 r#const,
+                ty: _,
             } => {
                 self.interpret_expr(proc, value);
 

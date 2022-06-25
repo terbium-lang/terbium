@@ -1,4 +1,5 @@
 #![feature(lint_reasons)]
+#![feature(stmt_expr_attributes)]
 
 pub mod util;
 
@@ -162,7 +163,7 @@ impl AnalyzerMessage {
     pub fn write<C: Cache<Source>>(self, cache: C, writer: impl Write) {
         use ariadne::{Color, Label, Report, ReportKind};
 
-        #[expect(
+        #[allow(
             clippy::match_wildcard_for_single_variants,
             reason = "Nothing should reach this arm"
         )]
@@ -370,11 +371,11 @@ impl Context {
 
     #[must_use]
     pub fn close_var_match(&self, name: &str) -> Option<String> {
-        #[expect(
+        #[allow(
             clippy::cast_sign_loss,
             clippy::cast_precision_loss,
             clippy::cast_possible_truncation,
-            reason = "Is not possible for indentifer to be this large"
+            reason = "It isn't possible for an indentifer to be this large"
         )]
         let threshold = (name.chars().count() as f64 * 0.14).round().max(2_f64) as usize;
 
@@ -591,10 +592,10 @@ impl Default for AnalyzerSet {
 }
 
 #[allow(unused_variables, reason = "`analyzers` will be used later")]
-/// Visit and analyze expression.
+/// Analyzes the expression.
 ///
 /// # Errors
-/// * Return any warning or error that the analyzer generated.
+/// * The analyzer generated an error.
 pub fn visit_expr(
     analyzers: &AnalyzerSet,
     ctx: &mut Context,
@@ -619,7 +620,44 @@ pub fn visit_expr(
                 ));
             }
         },
-        _ => unimplemented!(),
+        Expr::If { condition, body, mut else_if_bodies, else_body } => {
+            else_if_bodies.insert(0, (condition, body));
+
+            for (condition, body) in else_if_bodies {
+                visit_expr(analyzers, ctx, messages, condition)?;
+
+                ctx.enter_scope();
+                for node in body.into_node().0 {
+                    visit_node(analyzers, ctx, messages, node)?;
+                }
+                ctx.exit_scope(analyzers, messages);
+            }
+
+            if let Some(else_body) = else_body {
+                ctx.enter_scope();
+                for node in else_body.into_node().0 {
+                    visit_node(analyzers, ctx, messages, node)?;
+                }
+                ctx.exit_scope(analyzers, messages);
+            }
+        }
+        Expr::While { condition, body } => {
+            visit_expr(analyzers, ctx, messages, condition)?;
+
+            ctx.enter_scope();
+            for node in body {
+                visit_node(analyzers, ctx, messages, node)?;
+            }
+            ctx.exit_scope(analyzers, messages);
+        }
+        Expr::UnaryExpr { operator, value } => {
+            visit_expr(analyzers, ctx, messages, value)?;
+        }
+        Expr::BinaryExpr { operator, lhs, rhs } => {
+            visit_expr(analyzers, ctx, messages, lhs)?;
+            visit_expr(analyzers, ctx, messages, rhs)?;
+        }
+        _ => return Ok(()),
     }
 
     Ok(())
@@ -627,10 +665,10 @@ pub fn visit_expr(
 
 #[allow(clippy::missing_panics_doc, reason = "todo!()")]
 #[allow(clippy::too_many_lines, reason = "Should refactor later.")]
-/// Visit and analyze node.
+/// Analyzes the node.
 ///
 /// # Errors
-/// * Return any warning or error that the analyzer generated.
+/// * The analyzer generated an error.
 pub fn visit_node(
     analyzers: &AnalyzerSet,
     ctx: &mut Context,
@@ -662,7 +700,7 @@ pub fn visit_node(
                 tgt_span: Span,
                 deferred: &mut Vec<DeferEntry>,
             ) {
-                #[expect(clippy::match_wildcard_for_single_variants, reason = "todo!()")]
+                #[allow(clippy::match_wildcard_for_single_variants, reason = "todo!()")]
                 match target {
                     Target::Ident(s) => {
                         if let Some(entry) = ctx.lookup_var(&s) {
@@ -751,7 +789,7 @@ pub fn visit_node(
                 .ok_or("multiple assignment targets unsupported")?
                 .node_span();
 
-            #[expect(clippy::match_wildcard_for_single_variants, reason = "todo!()")]
+            #[allow(clippy::match_wildcard_for_single_variants, reason = "todo!()")]
             match target {
                 Target::Ident(s) => {
                     let entry = ctx.lookup_var_mut(s);

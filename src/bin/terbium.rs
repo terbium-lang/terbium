@@ -132,7 +132,7 @@ where
 
     let instant = Instant::now();
     let messages = run_analysis(&analyzers, ctx)?;
-    #[expect(
+    #[allow(
         clippy::cast_precision_loss,
         reason = "The timing is provided on a best-effort basis, precision loss is tolerable."
     )]

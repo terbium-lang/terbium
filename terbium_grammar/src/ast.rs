@@ -12,6 +12,7 @@ pub type SpannedNode = Spanned<Node>;
 pub type SpannedBody = Spanned<Body>;
 pub type SpannedTarget = Spanned<Target>;
 pub type SpannedParam = Spanned<Param>;
+pub type SpannedTypeExpr = Spanned<TypeExpr>;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
@@ -54,15 +55,15 @@ pub enum TypeExpr {
     /// Given T, this becomes Ident("T")
     Ident(String),
     /// Given mod.Type, this becomes Attr(Ident(mod), "type")
-    Attr(Box<TypeExpr>, String),
+    Attr(SpannedTypeExpr, String),
     /// Given Type<A, B>, this becomes Generic(Ident(Type), [Ident(A), Ident(B)])
-    Generic(Box<TypeExpr>, Vec<TypeExpr>),
+    Generic(SpannedTypeExpr, Vec<SpannedTypeExpr>),
     /// Given A | B, this becomes Union(Ident(A), Ident(B))
     ///
     /// Terbium handles Unions wide-to-narrow. This means given type A | B,
     /// something compatible with either type A or B will be compatible with it,
     /// but only fields/operations that exist on **both** A and B will exist on the type.
-    Union(Vec<TypeExpr>),
+    Union(SpannedTypeExpr, SpannedTypeExpr),
     /// Given A & B, this becomes And(Ident(A), Ident(B))
     ///
     /// Terbium handles And narrow-to-wide. This means given type A & B,
@@ -72,25 +73,25 @@ pub enum TypeExpr {
     ///
     /// This is useful for requiring types that implement a multitude of traits,
     /// i.e. the type ``Iterator & Joinable``.
-    And(Vec<TypeExpr>),
+    And(SpannedTypeExpr, SpannedTypeExpr),
     /// Given ?T, this becomes Nullable(Ident(T))
     /// Equivalent to T | null.
-    Nullable(Box<TypeExpr>),
+    Nullable(SpannedTypeExpr),
     /// Given !T, this becomes Not(Ident(T))
     ///
     /// Only types that are not compatible with T will be compatible with !T.
-    Not(Box<TypeExpr>),
+    Not(SpannedTypeExpr),
     /// Given T[], this becomes Array(Ident(T), None).
     /// Given T[n], where n is u32, this becomes Array(Ident(T), Some(n)).
     ///
     /// This represents an Array of T, and if n is specified, an array with
     /// such capacity.
-    Array(Box<TypeExpr>, Option<u32>),
+    Array(SpannedTypeExpr, Option<u32>),
     /// Given [A, B], this becomes Tuple([Ident(A), Ident(B)]).
     ///
     /// A tuple is an array with an exact number of elements but with
     /// varying types throughout each element.
-    Tuple(Vec<TypeExpr>),
+    Tuple(Vec<SpannedTypeExpr>),
     /// The constant null type. Only `null` will be compatible with this,
     /// nothing else.
     Null,
@@ -157,8 +158,8 @@ pub enum Target {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Param {
-    // TODO: typing
     target: SpannedTarget,
+    ty: SpannedTypeExpr,
     default: Option<SpannedExpr>,
 }
 
@@ -170,11 +171,13 @@ pub enum Node {
         params: Vec<SpannedParam>,
         body: Vec<SpannedNode>,
         return_last: bool,
+        return_ty: SpannedTypeExpr,
     },
     Expr(SpannedExpr),
     // e.g. x.y = z becomes Assign { target: Attr(Ident("x"), "y"), value: Ident("z"), .. }
     Declare {
         targets: Vec<SpannedTarget>,
+        ty: SpannedTypeExpr,
         value: SpannedExpr,
         r#mut: bool,
         r#const: bool,
@@ -302,6 +305,155 @@ pub fn nested_parser<'a, T: 'a>(
 #[allow(clippy::too_many_lines, clippy::missing_panics_doc)]
 pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
     recursive(|body: Recursive<Token, SpannedBody, Error>| {
+        let ty = recursive(|ty: Recursive<Token, SpannedTypeExpr, Error>| {
+            let ident = select! {
+                Token::Identifier(s) => match s.as_str() {
+                    "any" => TypeExpr::Any,
+                    "auto" => TypeExpr::Auto,
+                    "null" => TypeExpr::Null,
+                    _ => TypeExpr::Ident(s),
+                },
+            }
+            .map_with_span(Spanned::new)
+            .labelled("type identifier");
+
+            let array = ty
+                .clone()
+                .then(select!(Token::Literal(Literal::Integer(i)) => i).or_not().delimited_by(
+                    just(Token::StartBracket(Bracket::Bracket)),
+                    just(Token::StartBracket(Bracket::Bracket)),
+                ))
+                .try_map(|(t, n), span| Ok(
+                    Spanned::new(
+                        TypeExpr::Array(
+                            t,
+                            if let Some(n) = n {
+                                Some(n.try_into().map_err(|_| Error::custom(
+                                    span.clone(),
+                                    "fixed array length is too large",
+                                ))?)
+                            } else {
+                                None
+                            },
+                        ),
+                        span,
+                    ),
+                ));
+
+            let tuple = ty
+                .clone()
+                .separated_by(just::<_, Token, Error>(Token::Comma))
+                .allow_trailing()
+                .delimited_by(
+                    just(Token::StartBracket(Bracket::Bracket)),
+                    just(Token::StartBracket(Bracket::Bracket)),
+                )
+                .map_with_span(|a, span| Spanned::new(TypeExpr::Tuple(a), span));
+
+            let atom = choice((
+                ident,
+                array,
+                tuple,
+                ty.clone()
+                    .delimited_by(
+                        just(Token::StartBracket(Bracket::Paren)),
+                        just(Token::EndBracket(Bracket::Paren)),
+                    )
+                    .boxed(),
+            ));
+
+            let attr = atom
+                .clone()
+                .then(just::<_, Token, _>(Token::Dot)
+                    .ignore_then(select!(Token::Identifier(s) => s).map_with_span(Spanned::<String>::new))
+                    .repeated()
+                )
+                .foldl(|t, ident| {
+                    let span = t.span().merge(ident.span());
+
+                    Spanned::new(
+                        TypeExpr::Attr(t, ident.into_node()),
+                        span,
+                    )
+                })
+                .boxed();
+
+            let generic = attr
+                .clone()
+                .then(ty
+                    .clone()
+                    .separated_by(just::<_, Token, _>(Token::Comma))
+                    .allow_trailing()
+                    .delimited_by(
+                    just(Token::Operator(Operator::Lt)),
+                    just(Token::Operator(Operator::Gt))
+                    )
+                    .or_not(),
+                )
+                .map_with_span(|(subject, params), span| match params {
+                    Some(params) => Spanned::new(
+                        TypeExpr::Generic(subject, params),
+                        span,
+                    ),
+                    None => subject,
+                })
+                .boxed();
+
+            let nullable = just(Token::Question)
+                .map_with_span(Spanned::<Token>::new)
+                .repeated()
+                .then(generic.clone())
+                .foldr(|op, t| {
+                    let span = op.span().merge(t.span());
+
+                    Spanned::new(
+                        TypeExpr::Nullable(t),
+                        span,
+                    )
+                })
+                .boxed();
+
+            let not = just(Token::Operator(Operator::Not))
+                .map_with_span(Spanned::<Token>::new)
+                .repeated()
+                .then(nullable.clone())
+                .foldr(|op, t| {
+                    let span = op.span().merge(t.span());
+
+                    Spanned::new(
+                        TypeExpr::Not(t),
+                        span,
+                    )
+                })
+                .boxed();
+
+            let and = not
+                .clone()
+                .then(just(Token::Operator(Operator::BitAnd))
+                    .ignore_then(not)
+                    .repeated()
+                )
+                .foldl(|lhs, rhs| {
+                    let span = lhs.span().merge(rhs.span());
+
+                    Spanned::new(TypeExpr::And(lhs, rhs), span)
+                })
+                .boxed();
+
+            and
+                .clone()
+                .then(just(Token::Operator(Operator::BitOr))
+                    .ignore_then(and)
+                    .repeated()
+                )
+                .foldl(|lhs, rhs| {
+                    let span = lhs.span().merge(rhs.span());
+
+                    Spanned::new(TypeExpr::Union(lhs, rhs), span)
+                })
+                .boxed()
+        });
+
         let e = recursive(|e: Recursive<Token, SpannedExpr, Error>| {
             let literal = select! {
                 Token::Literal(lit) => match lit {
@@ -321,7 +473,7 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
                     "true" => Expr::Bool(true),
                     "false" => Expr::Bool(false),
                     _ => Expr::Ident(s),
-                }
+                },
             }
             .map_with_span(SpannedExpr::new)
             .labelled("identifier");
@@ -626,13 +778,19 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
             .then(
                 target
                     .clone()
-                    .then_ignore(just::<_, Token, _>(Token::Assign))
-                    .repeated()
-                    .at_least(1),
+                    .then(just(Token::Colon)
+                        .ignore_then(ty.clone())
+                        .or_not()
+                        .map_with_span(|t, span| t.unwrap_or_else(|| Spanned::new(
+                            TypeExpr::Auto,
+                            span,
+                        )))
+                    )
+                    .then_ignore(just::<_, Token, _>(Token::Assign)),
             )
             .then(e.clone())
             .then_ignore(just::<_, Token, _>(Token::Semicolon))
-            .try_map(|((modifiers, targets), expr), span| {
+            .try_map(|((modifiers, (target, ty)), expr), span| {
                 let (modifier, is_mut) = modifiers.node();
 
                 let r#mut = is_mut.is_some();
@@ -644,7 +802,8 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
 
                 Ok(Spanned::new(
                     Node::Declare {
-                        targets,
+                        targets: vec![target],
+                        ty,
                         value: expr,
                         r#mut,
                         r#const,
@@ -672,12 +831,20 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
 
         let param = target
             .clone()
+            .then(just(Token::Colon)
+                .ignore_then(ty.clone())
+                .or_not()
+                .map_with_span(|t, span| t.unwrap_or_else(|| Spanned::new(
+                    TypeExpr::Auto,
+                    span,
+                )))
+            )
             .then(
                 just::<_, Token, _>(Token::Assign)
                     .ignore_then(e.clone())
                     .or_not(),
             )
-            .map_with_span(|(target, default), span| Spanned::new(Param { target, default }, span));
+            .map_with_span(|((target, ty), default), span| Spanned::new(Param { target, ty, default }, span));
 
         let func = just::<_, Token, _>(Token::Keyword(Keyword::Func))
             .ignore_then(select! {
@@ -691,12 +858,20 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
                         just(Token::StartBracket(Bracket::Paren)),
                         just(Token::EndBracket(Bracket::Paren)),
                     ),
-            ) // TODO: return type annotation
+            )
+            .then(just(Token::Arrow)
+                .ignore_then(ty)
+                .or_not()
+                .map_with_span(|t, span| t.unwrap_or_else(|| Spanned::new(
+                    TypeExpr::Auto,
+                    span,
+                )))
+            )
             .then(body.clone().delimited_by(
                 just(Token::StartBracket(Bracket::Brace)),
                 just(Token::EndBracket(Bracket::Brace)),
             ))
-            .map_with_span(|((name, params), body), span| {
+            .map_with_span(|(((name, params), return_ty), body), span| {
                 let Body(body, return_last) = body.into_node();
 
                 Spanned::new(
@@ -705,6 +880,7 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
                         params,
                         body,
                         return_last,
+                        return_ty,
                     },
                     span,
                 )

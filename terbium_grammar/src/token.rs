@@ -241,6 +241,8 @@ pub enum Token {
     Question,
     Semicolon,
     Assign, // =
+    Colon, // :
+    Arrow, // ->
 }
 
 impl Display for Token {
@@ -281,6 +283,8 @@ impl Display for Token {
             Self::Question => "?",
             Self::Semicolon => ";",
             Self::Assign => "=",
+            Self::Colon => ":",
+            Self::Arrow => "->",
         })
     }
 }
@@ -393,13 +397,15 @@ pub fn get_lexer() -> impl Parser<char, Vec<(Token, Span)>, Error = Error> {
 
     let comment = single_line.or(multi_line).or_not();
 
-    let right_shift = just(">>").then_ignore(none_of(")<>]},;").rewind());
+    let right_shift = just(">>").then_ignore(none_of(")<>]},;").padded().rewind());
 
     let symbol = choice::<_, Error>((
         just(',').to(Token::Comma),
         just(';').to(Token::Semicolon),
         just('?').to(Token::Question),
         just("::").to(Token::Cast),
+        just(':').to(Token::Colon),
+        just("->").to(Token::Arrow),
         just("..").map(|_| Token::Operator(Operator::Range)),
         just('.').to(Token::Dot),
         just('+').map(|_| Token::Operator(Operator::Add)),
