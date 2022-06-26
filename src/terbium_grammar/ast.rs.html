@@ -1841,9 +1841,9 @@
             .<span class="ident">then_ignore</span>(<span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="ident">Token::Semicolon</span>))
             .<span class="ident">or</span>(<span class="ident">e</span>
                 .<span class="ident">clone</span>()
-                .<span class="ident">try_map</span>(<span class="op">|</span><span class="ident">e</span>, <span class="kw">_</span><span class="op">|</span> <span class="kw">match</span> <span class="ident">e</span>.<span class="ident">node</span>() {
+                .<span class="ident">try_map</span>(<span class="op">|</span><span class="ident">e</span>, <span class="ident">span</span><span class="op">|</span> <span class="kw">match</span> <span class="ident">e</span>.<span class="ident">node</span>() {
                     <span class="ident">Expr::If</span> { .. } <span class="op">|</span> <span class="ident">Expr::While</span> { .. } =&gt; <span class="prelude-val">Ok</span>(<span class="ident">e</span>),
-                    <span class="kw">_</span> =&gt; <span class="prelude-val">Err</span>(<span class="ident">Error::placeholder</span>()),
+                    <span class="kw">_</span> =&gt; <span class="prelude-val">Err</span>(<span class="ident">Error::custom</span>(<span class="ident">span</span>, <span class="string">&quot;missing semicolon&quot;</span>)),
                 })
                 .<span class="ident">then_ignore</span>(<span class="ident">none_of</span>(<span class="ident">Token::EndBracket</span>(<span class="ident">Bracket::Brace</span>)).<span class="ident">rewind</span>()))
             .<span class="ident">map_with_span</span>(<span class="op">|</span><span class="ident">e</span>, <span class="ident">span</span><span class="op">|</span> <span class="ident">Spanned::new</span>(<span class="ident">Node::Expr</span>(<span class="ident">e</span>), <span class="ident">span</span>));
@@ -1873,5 +1873,5 @@
 
 <span class="comment">// TODO: write tests</span>
 </code></pre></div>
-</section></div></main><div id="rustdoc-vars" data-root-path="../../" data-current-crate="terbium_grammar" data-themes="ayu,dark,light" data-resource-suffix="" data-rustdoc-version="1.63.0-nightly (fdca237d5 2022-06-24)" ></div>
+</section></div></main><div id="rustdoc-vars" data-root-path="../../" data-current-crate="terbium_grammar" data-themes="ayu,dark,light" data-resource-suffix="" data-rustdoc-version="1.64.0-nightly (20a6f3a8a 2022-06-25)" ></div>
 </body></html>
