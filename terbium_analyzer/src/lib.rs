@@ -6,7 +6,9 @@ pub mod util;
 
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter, Result as FmtResult};
-use terbium_grammar::{Body, Expr, Node, Operator, ParseInterface, Source, Span, Spanned, Target, Token, TypeExpr};
+use terbium_grammar::{
+    Body, Expr, Node, Operator, ParseInterface, Source, Span, Spanned, Target, Token, TypeExpr,
+};
 use util::to_snake_case;
 
 use crate::util::get_levenshtein_distance;
@@ -69,13 +71,16 @@ impl AnalyzerMessage {
         Self::new(
             AnalyzerMessageKind::Alert(AnalyzerKind::NonSnakeCase),
             span.clone(),
-            |report, color| report
-                .with_message("non-type identifier names should be snake_case")
-                .with_label(Label::new(span)
-                    .with_message(format!("{:?} is not snake_case", name))
-                    .with_color(color)
-                )
-                .with_help(format!("rename to {:?}", counterpart))
+            |report, color| {
+                report
+                    .with_message("non-type identifier names should be snake_case")
+                    .with_label(
+                        Label::new(span)
+                            .with_message(format!("{:?} is not snake_case", name))
+                            .with_color(color),
+                    )
+                    .with_help(format!("rename to {:?}", counterpart))
+            },
         )
     }
 
@@ -84,16 +89,19 @@ impl AnalyzerMessage {
         Self::new(
             AnalyzerMessageKind::Alert(AnalyzerKind::UnnecessaryMutVariables),
             span.clone(),
-            |report, color| report
-                .with_message("variable was unneedingly declared as mutable")
-                .with_label(Label::new(span)
-                    .with_message(format!(
-                        "variable {:?} declared mutable here, but it is never mutated",
-                        name,
-                    ))
-                    .with_color(color)
-                )
-                .with_help("make variable immutable by declaring with `let` instead")
+            |report, color| {
+                report
+                    .with_message("variable was unneedingly declared as mutable")
+                    .with_label(
+                        Label::new(span)
+                            .with_message(format!(
+                                "variable {:?} declared mutable here, but it is never mutated",
+                                name,
+                            ))
+                            .with_color(color),
+                    )
+                    .with_help("make variable immutable by declaring with `let` instead")
+            },
         )
     }
 
@@ -102,19 +110,22 @@ impl AnalyzerMessage {
         Self::new(
             AnalyzerMessageKind::Alert(AnalyzerKind::UnusedVariables),
             span.clone(),
-            |report, color| report
-                .with_message("variable is declared but never used")
-                .with_label(Label::new(span)
-                    .with_message(format!(
-                        "variable {:?} is declared here, but it is never used",
-                        name,
+            |report, color| {
+                report
+                    .with_message("variable is declared but never used")
+                    .with_label(
+                        Label::new(span)
+                            .with_message(format!(
+                                "variable {:?} is declared here, but it is never used",
+                                name,
+                            ))
+                            .with_color(color),
+                    )
+                    .with_help(format!(
+                        "remove the declaration, or prefix with an underscore: {:?}",
+                        "_".to_string() + name,
                     ))
-                    .with_color(color)
-                )
-                .with_help(format!(
-                    "remove the declaration, or prefix with an underscore: {:?}",
-                    "_".to_string() + name,
-                ))
+            },
         )
     }
 
@@ -123,38 +134,52 @@ impl AnalyzerMessage {
         Self::new(
             AnalyzerMessageKind::Alert(AnalyzerKind::GlobalMutableVariables),
             span.clone(),
-            |report, color| report
-                .with_message("mutable declaration found in the global scope")
-                .with_label(Label::new(span)
-                    .with_message("variables declared here are accessible to the entire program")
-                    .with_color(color)
-                )
-                .with_help(
-                    "declare as immutable instead, or move the declaration into a \
-                    non-global context such as inside of a function"
-                )
+            |report, color| {
+                report
+                    .with_message("mutable declaration found in the global scope")
+                    .with_label(
+                        Label::new(span)
+                            .with_message(
+                                "variables declared here are accessible to the entire program",
+                            )
+                            .with_color(color),
+                    )
+                    .with_help(
+                        "declare as immutable instead, or move the declaration into a \
+                    non-global context such as inside of a function",
+                    )
+            },
         )
     }
 
     #[must_use]
-    pub fn unresolved_identifier(name: &str, close_match: Option<(String, Span)>, span: Span) -> Self {
+    pub fn unresolved_identifier(
+        name: &str,
+        close_match: Option<(String, Span)>,
+        span: Span,
+    ) -> Self {
         Self::new(
             AnalyzerMessageKind::Alert(AnalyzerKind::UnresolvedIdentifiers),
             span.clone(),
             |report, color| {
                 let report = report
                     .with_message("identifier could not be resolved")
-                    .with_label(Label::new(span)
-                        .with_message(format!("variable {:?} not found in this scope", name))
-                        .with_color(color)
-                        .with_order(0)
+                    .with_label(
+                        Label::new(span)
+                            .with_message(format!("variable {:?} not found in this scope", name))
+                            .with_color(color)
+                            .with_order(0),
                     );
 
                 if let Some((close_match, close_span)) = close_match {
-                    report.with_label(Label::new(close_span)
-                        .with_message(format!("perhaps you meant {:?}, which was declared here", close_match))
-                        .with_color(Color::Cyan)
-                        .with_order(1)
+                    report.with_label(
+                        Label::new(close_span)
+                            .with_message(format!(
+                                "perhaps you meant {:?}, which was declared here",
+                                close_match
+                            ))
+                            .with_color(Color::Cyan)
+                            .with_order(1),
                     )
                 } else {
                     report
@@ -168,47 +193,67 @@ impl AnalyzerMessage {
         Self::new(
             AnalyzerMessageKind::Alert(AnalyzerKind::RedeclaredConstVariables),
             span.clone(),
-            |report, color| report
-                .with_message("cannot redeclare variable declared as `const`")
-                .with_label(Label::new(decl_span)
-                    .with_message(format!("variable {:?} declared as `const` here", name))
-                    .with_color(color)
-                    .with_order(0))
-                .with_label(Label::new(span)
-                    .with_message(format!("attempted to redeclare {:?} here", name))
-                    .with_color(color)
-                    .with_order(1))
-                .with_help("declare with `let` instead")
+            |report, color| {
+                report
+                    .with_message("cannot redeclare variable declared as `const`")
+                    .with_label(
+                        Label::new(decl_span)
+                            .with_message(format!("variable {:?} declared as `const` here", name))
+                            .with_color(color)
+                            .with_order(0),
+                    )
+                    .with_label(
+                        Label::new(span)
+                            .with_message(format!("attempted to redeclare {:?} here", name))
+                            .with_color(color)
+                            .with_order(1),
+                    )
+                    .with_help("declare with `let` instead")
+            },
         )
     }
 
     #[must_use]
-    pub fn reassigned_immutable_variable(name: &str, decl_span: Span, span: Span, was_const: bool) -> Self {
+    pub fn reassigned_immutable_variable(
+        name: &str,
+        decl_span: Span,
+        span: Span,
+        was_const: bool,
+    ) -> Self {
         Self::new(
             AnalyzerMessageKind::Alert(AnalyzerKind::ReassignedImmutableVariables),
             span.clone(),
-            |report, color| report
-                .with_message(format!(
-                    "cannot reassign to {}",
-                    if was_const {
-                        "variable declared as `const`"
-                    } else {
-                        "immutable variable"
-                    }
-                ))
-                .with_label(Label::new(decl_span)
+            |report, color| {
+                report
                     .with_message(format!(
-                        "variable {:?} declared as {} here",
-                        name,
-                        if was_const { "`const`" } else { "immutable" },
+                        "cannot reassign to {}",
+                        if was_const {
+                            "variable declared as `const`"
+                        } else {
+                            "immutable variable"
+                        }
                     ))
-                    .with_color(Color::Cyan)
-                    .with_order(0))
-                .with_label(Label::new(span)
-                    .with_message(format!("attempted to reassign to variable {:?} here", name))
-                    .with_color(color)
-                    .with_order(1))
-                .with_help("make variable mutable by declaring with `let mut` instead")
+                    .with_label(
+                        Label::new(decl_span)
+                            .with_message(format!(
+                                "variable {:?} declared as {} here",
+                                name,
+                                if was_const { "`const`" } else { "immutable" },
+                            ))
+                            .with_color(Color::Cyan)
+                            .with_order(0),
+                    )
+                    .with_label(
+                        Label::new(span)
+                            .with_message(format!(
+                                "attempted to reassign to variable {:?} here",
+                                name
+                            ))
+                            .with_color(color)
+                            .with_order(1),
+                    )
+                    .with_help("make variable mutable by declaring with `let mut` instead")
+            },
         )
     }
 
@@ -223,23 +268,30 @@ impl AnalyzerMessage {
         Self::new(
             AnalyzerMessageKind::Alert(AnalyzerKind::UnsupportedOperators),
             span.clone(),
-            |report, color| report
-                .with_message(format!("type does not support unary {:?} operator", op.to_string()))
-                .with_label(Label::new(val_span)
-                    .with_message(format!("this is of type {}", val_ty))
-                    .with_color(Color::Cyan)
-                    .with_order(0)
-                )
-                .with_label(Label::new(op_span)
+            |report, color| {
+                report
                     .with_message(format!(
-                        "cannot use operator {:?} on {}",
-                        op.to_string(),
-                        val_ty,
+                        "type does not support unary {:?} operator",
+                        op.to_string()
                     ))
-                    .with_color(color)
-                    .with_order(1)
-                )
-                .with_help("try casting to a supported type")
+                    .with_label(
+                        Label::new(val_span)
+                            .with_message(format!("this is of type {}", val_ty))
+                            .with_color(Color::Cyan)
+                            .with_order(0),
+                    )
+                    .with_label(
+                        Label::new(op_span)
+                            .with_message(format!(
+                                "cannot use operator {:?} on {}",
+                                op.to_string(),
+                                val_ty,
+                            ))
+                            .with_color(color)
+                            .with_order(1),
+                    )
+                    .with_help("try casting to a supported type")
+            },
         )
     }
 
@@ -256,29 +308,37 @@ impl AnalyzerMessage {
         Self::new(
             AnalyzerMessageKind::Alert(AnalyzerKind::UnsupportedOperators),
             span.clone(),
-            |report, color| report
-                .with_message(format!("these types do not support {:?} operator", op.to_string()))
-                .with_label(Label::new(lhs_span)
-                    .with_message(format!("this is of type {}", lhs_ty))
-                    .with_color(Color::Cyan)
-                    .with_order(0)
-                )
-                .with_label(Label::new(rhs_span)
-                    .with_message(format!("this is of type {}", rhs_ty))
-                    .with_color(Color::Cyan)
-                    .with_order(1)
-                )
-                .with_label(Label::new(op_span)
+            |report, color| {
+                report
                     .with_message(format!(
-                        "cannot use operator {:?} on {} and {}",
-                        op.to_string(),
-                        lhs_ty,
-                        rhs_ty,
+                        "these types do not support {:?} operator",
+                        op.to_string()
                     ))
-                    .with_color(color)
-                    .with_order(2)
-                )
-                .with_help("try casting to supported types")
+                    .with_label(
+                        Label::new(lhs_span)
+                            .with_message(format!("this is of type {}", lhs_ty))
+                            .with_color(Color::Cyan)
+                            .with_order(0),
+                    )
+                    .with_label(
+                        Label::new(rhs_span)
+                            .with_message(format!("this is of type {}", rhs_ty))
+                            .with_color(Color::Cyan)
+                            .with_order(1),
+                    )
+                    .with_label(
+                        Label::new(op_span)
+                            .with_message(format!(
+                                "cannot use operator {:?} on {} and {}",
+                                op.to_string(),
+                                lhs_ty,
+                                rhs_ty,
+                            ))
+                            .with_color(color)
+                            .with_order(2),
+                    )
+                    .with_help("try casting to supported types")
+            },
         )
     }
 
@@ -293,43 +353,56 @@ impl AnalyzerMessage {
         Self::new(
             AnalyzerMessageKind::Alert(AnalyzerKind::UnbalancedIfStatements),
             span.clone(),
-            |report, color| report
-                .with_message("return types of if-statement are unbalanced")
-                .with_label(Label::new(first_span)
-                    .with_message(format!("this resolves to {}", first_ty))
-                    .with_color(Color::Cyan)
-                    .with_order(0)
-                )
-                .with_label(Label::new(second_span)
-                    .with_message(format!("this resolves to {}, which is incompatible with {}", second_ty, first_ty))
-                    .with_color(color)
-                    .with_order(1)
-                )
-                .with_help("try adding semicolons or balancing the types")
+            |report, color| {
+                report
+                    .with_message("return types of if-statement are unbalanced")
+                    .with_label(
+                        Label::new(first_span)
+                            .with_message(format!("this resolves to {}", first_ty))
+                            .with_color(Color::Cyan)
+                            .with_order(0),
+                    )
+                    .with_label(
+                        Label::new(second_span)
+                            .with_message(format!(
+                                "this resolves to {}, which is incompatible with {}",
+                                second_ty, first_ty
+                            ))
+                            .with_color(color)
+                            .with_order(1),
+                    )
+                    .with_help("try adding semicolons or balancing the types")
+            },
         )
     }
 
     #[must_use]
-    pub fn unbalanced_if_statement_no_else(
-        span: Span,
-        first_span: Span,
-        first_ty: String,
-    ) -> Self {
+    pub fn unbalanced_if_statement_no_else(span: Span, first_span: Span, first_ty: String) -> Self {
         Self::new(
             AnalyzerMessageKind::Alert(AnalyzerKind::UnbalancedIfStatements),
             span.clone(),
-            |report, color| report
-                .with_message("return types of if-statement are unbalanced")
-                .with_label(Label::new(first_span)
-                    .with_message(format!("this resolves to {}, which is not null", first_ty))
-                    .with_color(color)
-                    .with_order(0)
-                )
-                .with_label(Label::new(span)
-                    .with_message("note that the lack of an `else` causes the possibility of null")
-                    .with_color(color)
-                    .with_order(1))
-                .with_help("try adding semicolons")
+            |report, color| {
+                report
+                    .with_message("return types of if-statement are unbalanced")
+                    .with_label(
+                        Label::new(first_span)
+                            .with_message(format!(
+                                "this resolves to {}, which is not null",
+                                first_ty
+                            ))
+                            .with_color(color)
+                            .with_order(0),
+                    )
+                    .with_label(
+                        Label::new(span)
+                            .with_message(
+                                "note that the lack of an `else` causes the possibility of null",
+                            )
+                            .with_color(color)
+                            .with_order(1),
+                    )
+                    .with_help("try adding semicolons")
+            },
         )
     }
 
@@ -347,27 +420,28 @@ impl AnalyzerMessage {
             |report, color| {
                 let report = report
                     .with_message(format!("incompatible types (expected {})", expected_ty))
-                    .with_label(Label::new(expr_span)
-                        .with_message(format!(
-                            "this is of type {}, which is incompatible with {}",
-                            expr_ty,
-                            expected_ty,
-                        ))
-                        .with_color(color)
-                        .with_order(1)
+                    .with_label(
+                        Label::new(expr_span)
+                            .with_message(format!(
+                                "this is of type {}, which is incompatible with {}",
+                                expr_ty, expected_ty,
+                            ))
+                            .with_color(color)
+                            .with_order(1),
                     )
                     .with_help("try changing to a value that satisfies the type");
 
                 if let Some(expected_span) = expected_span {
-                    report.with_label(Label::new(expected_span)
-                        .with_message(format!("expected {} here", expected_ty))
-                        .with_color(Color::Cyan)
-                        .with_order(0)
+                    report.with_label(
+                        Label::new(expected_span)
+                            .with_message(format!("expected {} here", expected_ty))
+                            .with_color(Color::Cyan)
+                            .with_order(0),
                     )
                 } else {
                     report
                 }
-            }
+            },
         )
     }
 
@@ -375,13 +449,19 @@ impl AnalyzerMessage {
         Self::new(
             AnalyzerMessageKind::Alert(AnalyzerKind::UninferableTypes),
             span.clone(),
-            |report, color| report
-                .with_message("could not infer type")
-                .with_label(Label::new(span)
-                    .with_message(format!("could not infer the type of {:?}, defined here", name))
-                    .with_color(color)
-                )
-                .with_help("explicitly specify the type")
+            |report, color| {
+                report
+                    .with_message("could not infer type")
+                    .with_label(
+                        Label::new(span)
+                            .with_message(format!(
+                                "could not infer the type of {:?}, defined here",
+                                name
+                            ))
+                            .with_color(color),
+                    )
+                    .with_help("explicitly specify the type")
+            },
         )
     }
 
@@ -391,15 +471,13 @@ impl AnalyzerMessage {
     /// * Panic when writing to writer failed.
     pub fn write<C: Cache<Source>>(self, cache: C, writer: impl Write) {
         let report = if let AnalyzerMessageKind::Alert(k) = self.kind {
-            self.report
-                .with_code(k.code())
-                .with_note(format!(
-                   "view this {} in the error index: \
+            self.report.with_code(k.code()).with_note(format!(
+                "view this {} in the error index: \
                    https://github.com/TerbiumLang/standard/blob/main/error_index.md#{}{:0>3}",
-                   if k.is_error() { "error" } else { "warning" },
-                   if k.is_error() { "E" } else { "W" },
-                   k.code(),
-               ))
+                if k.is_error() { "error" } else { "warning" },
+                if k.is_error() { "E" } else { "W" },
+                k.code(),
+            ))
         } else {
             self.report
         };
@@ -445,20 +523,32 @@ impl PrimitiveType {
         Some(match (self, op, other) {
             (
                 Self::Int,
-                Op::Add | Op::Sub | Op::Mul | Op::Div | Op::Pow | Op::Mod | Op::BitOr | Op::BitAnd | Op::BitXor | Op::BitLShift | Op::BitRShift,
+                Op::Add
+                | Op::Sub
+                | Op::Mul
+                | Op::Div
+                | Op::Pow
+                | Op::Mod
+                | Op::BitOr
+                | Op::BitAnd
+                | Op::BitXor
+                | Op::BitLShift
+                | Op::BitRShift,
                 Type::Primitive(Self::Int),
             ) => Type::Primitive(Self::Int),
             (
                 Self::Float | Self::Int,
                 Op::Add | Op::Sub | Op::Mul | Op::Div | Op::Pow | Op::Mod,
-                Type::Primitive(Self::Float | Self::Int)
+                Type::Primitive(Self::Float | Self::Int),
             ) => Type::Primitive(Self::Float),
             (
                 Self::Float | Self::Int,
                 Op::Lt | Op::Le | Op::Gt | Op::Ge | Op::Eq | Op::Ne,
                 Type::Primitive(Self::Float | Self::Int),
             ) => Type::Primitive(Self::Bool),
-            (Self::String, Op::Add | Op::Mul, Type::Primitive(Self::String)) => Type::Primitive(Self::String),
+            (Self::String, Op::Add | Op::Mul, Type::Primitive(Self::String)) => {
+                Type::Primitive(Self::String)
+            }
             _ => return None,
         })
     }
@@ -499,14 +589,14 @@ pub enum Type {
 impl Type {
     pub fn get_unary_op_outcome(&self, op: Operator) -> Option<Self> {
         Some(match (op, self) {
-            (op, Self::Deferred(d)) => Self::Deferred(
-                Box::new(DeferredType::ApplyUnary(op, d.clone())),
-            ),
+            (op, Self::Deferred(d)) => {
+                Self::Deferred(Box::new(DeferredType::ApplyUnary(op, d.clone())))
+            }
             (op, Self::Primitive(p)) => p.get_unary_op_outcome(op)?,
-            (op, Self::Union(a, b)) =>
-                a.get_unary_op_outcome(op).and(b.get_unary_op_outcome(op))?,
-            (op, Self::And(a, b)) =>
-                a.get_unary_op_outcome(op).or(b.get_unary_op_outcome(op))?,
+            (op, Self::Union(a, b)) => {
+                a.get_unary_op_outcome(op).and(b.get_unary_op_outcome(op))?
+            }
+            (op, Self::And(a, b)) => a.get_unary_op_outcome(op).or(b.get_unary_op_outcome(op))?,
             (Operator::Not, _) => Self::Primitive(PrimitiveType::Bool),
             (_, t @ (Self::Any | Self::Unknown)) => t.clone(),
             _ => return None,
@@ -515,26 +605,20 @@ impl Type {
 
     pub fn get_binary_op_outcome(&self, op: Operator, other: &Type) -> Option<Self> {
         Some(match (self, op, other) {
-            (Self::Deferred(a), op, Self::Deferred(b)) => Self::Deferred(
-                Box::new(DeferredType::ApplyBinary(op, a.clone(), b.clone()))
-            ),
+            (Self::Deferred(a), op, Self::Deferred(b)) => Self::Deferred(Box::new(
+                DeferredType::ApplyBinary(op, a.clone(), b.clone()),
+            )),
             (Self::Primitive(a), op, b) => a.get_binary_op_outcome(op, b)?,
-            (Self::Union(box a, box b), op, c)
-            | (c, op, Self::Union(box a, box b)) => {
-                a.get_binary_op_outcome(op, c)
-                    .and(b.get_binary_op_outcome(op, c))?
-            },
-            (Self::And(box a, box b), op, c)
-            | (c, op, Self::And(box a, box b)) => {
-                a.get_binary_op_outcome(op, c)
-                    .or(b.get_binary_op_outcome(op, c))?
-            },
-            (Self::Array(ty_a, len_a), Operator::Add, Self::Array(ty_b, len_b)) => {
-                Self::Array(
-                    Box::new(Self::Union(ty_a.clone(), ty_b.clone())),
-                    len_a.map(|l| l + len_b.unwrap_or(0)),
-                )
-            }
+            (Self::Union(box a, box b), op, c) | (c, op, Self::Union(box a, box b)) => a
+                .get_binary_op_outcome(op, c)
+                .and(b.get_binary_op_outcome(op, c))?,
+            (Self::And(box a, box b), op, c) | (c, op, Self::And(box a, box b)) => a
+                .get_binary_op_outcome(op, c)
+                .or(b.get_binary_op_outcome(op, c))?,
+            (Self::Array(ty_a, len_a), Operator::Add, Self::Array(ty_b, len_b)) => Self::Array(
+                Box::new(Self::Union(ty_a.clone(), ty_b.clone())),
+                len_a.map(|l| l + len_b.unwrap_or(0)),
+            ),
             (Self::Tuple(a), Operator::Add, Self::Tuple(b)) => {
                 Self::Tuple(a.clone().into_iter().chain(b.clone()).collect())
             }
@@ -548,16 +632,22 @@ impl Type {
         match (self, other) {
             (Self::Any, _) | (_, Self::Any) => true,
             (Self::Primitive(a), Self::Primitive(b)) => a == b,
-            (Self::Union(box a, box b), other) => a.is_compatible_with(other) || b.is_compatible_with(other),
-            (Self::And(box a, box b), other) => a.is_compatible_with(other) && b.is_compatible_with(other),
-            (Self::Array(box a, a_len), Self::Array(box b, b_len)) =>
-                a.is_compatible_with(b)
-                    && (a_len == b_len || a_len.is_some() && b_len.is_none()),
-            (Self::Tuple(a), Self::Tuple(b)) => a.len() == b.len()
-                && a.iter().zip(b).all(|(a, b)| a.is_compatible_with(b)),
-            (Self::Func(a, a_ret), Self::Func(b, b_ret)) =>
+            (Self::Union(box a, box b), other) => {
+                a.is_compatible_with(other) || b.is_compatible_with(other)
+            }
+            (Self::And(box a, box b), other) => {
+                a.is_compatible_with(other) && b.is_compatible_with(other)
+            }
+            (Self::Array(box a, a_len), Self::Array(box b, b_len)) => {
+                a.is_compatible_with(b) && (a_len == b_len || a_len.is_some() && b_len.is_none())
+            }
+            (Self::Tuple(a), Self::Tuple(b)) => {
+                a.len() == b.len() && a.iter().zip(b).all(|(a, b)| a.is_compatible_with(b))
+            }
+            (Self::Func(a, a_ret), Self::Func(b, b_ret)) => {
                 a_ret.is_compatible_with(b_ret)
-                    && a.iter().zip(b).all(|(a, b)| a.is_compatible_with(b)),
+                    && a.iter().zip(b).all(|(a, b)| a.is_compatible_with(b))
+            }
             _ => false,
         }
     }
@@ -565,9 +655,7 @@ impl Type {
     // TODO: this doesn't work properly
     pub fn flatten(self) -> Self {
         match self {
-            Self::Union(a, b)
-            | Self::And(a, b)
-            if a == b => a.flatten(),
+            Self::Union(a, b) | Self::And(a, b) if a == b => a.flatten(),
             o => o,
         }
     }
@@ -576,11 +664,12 @@ impl Type {
         match self {
             Self::Deferred(_) => !strict,
             Self::Unknown => true,
-            Self::Union(a, b)
-            | Self::And(a, b) => a._is_unknown(strict) || b._is_unknown(strict),
+            Self::Union(a, b) | Self::And(a, b) => a._is_unknown(strict) || b._is_unknown(strict),
             Self::Array(t, _) => t._is_unknown(strict),
             Self::Tuple(items) => items.iter().any(|t| t._is_unknown(strict)),
-            Self::Func(params, ty) => ty._is_unknown(strict) || params.iter().any(|t| t._is_unknown(strict)),
+            Self::Func(params, ty) => {
+                ty._is_unknown(strict) || params.iter().any(|t| t._is_unknown(strict))
+            }
             _ => false,
         }
     }
@@ -598,18 +687,26 @@ impl Display for Type {
     fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
         match self {
             Self::Primitive(p) => write!(f, "{}", p),
-            Self::Union(box Self::Null, ty) | Self::Union(ty, box Self::Null)
-                => write!(f, "?{}", ty),
+            Self::Union(box Self::Null, ty) | Self::Union(ty, box Self::Null) => {
+                write!(f, "?{}", ty)
+            }
             Self::Union(lhs, rhs) => write!(f, "{} | {}", lhs, rhs),
             Self::And(lhs, rhs) => write!(f, "{} & {}", lhs, rhs),
-            Self::Array(ty, size) => write!(f, "{}[{}]", ty, size
-                .map(|s| s.to_string())
-                .unwrap_or_else(String::new)),
-            Self::Tuple(items) => write!(f, "[{}]", items
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>()
-                .join(", ")),
+            Self::Array(ty, size) => write!(
+                f,
+                "{}[{}]",
+                ty,
+                size.map(|s| s.to_string()).unwrap_or_else(String::new)
+            ),
+            Self::Tuple(items) => write!(
+                f,
+                "[{}]",
+                items
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
             Self::Func(params, ret) => write!(
                 f,
                 "({}) -> {}",
@@ -827,7 +924,10 @@ impl Context {
             };
 
             if ty.is_strictly_unknown() && !previously_unknown {
-                messages.push(AnalyzerMessage::uninferable_type(&entry.name, entry.span.clone()));
+                messages.push(AnalyzerMessage::uninferable_type(
+                    &entry.name,
+                    entry.span.clone(),
+                ));
             }
 
             if analyzers.contains(&AnalyzerKind::UnnecessaryMutVariables)
@@ -1102,7 +1202,12 @@ pub fn infer_type(
                 }
             }
         }
-        Expr::If { body, else_if_bodies, else_body, .. } => {
+        Expr::If {
+            body,
+            else_if_bodies,
+            else_body,
+            ..
+        } => {
             let mut bodies = else_if_bodies.iter().map(|b| &b.1).collect::<Vec<_>>();
             bodies.insert(0, body);
 
@@ -1113,10 +1218,7 @@ pub fn infer_type(
             let mut types = Vec::new();
 
             for s in bodies {
-                let (
-                    Body(nodes, return_last),
-                    body_span
-                ) = s.node_span();
+                let (Body(nodes, return_last), body_span) = s.node_span();
 
                 let ty = if *return_last {
                     if let Node::Expr(e) = nodes.last().unwrap().node() {
@@ -1227,7 +1329,8 @@ pub fn infer_type(
             }
         }
         _ => Type::Unknown,
-    }.flatten())
+    }
+    .flatten())
 }
 
 pub fn resolve_type_expr(
@@ -1252,7 +1355,7 @@ pub fn resolve_type_expr(
 
                 Type::Unknown
             }
-        }
+        },
         TypeExpr::Any => Type::Any,
         TypeExpr::Auto => Type::Unknown,
         TypeExpr::Null => Type::Null,
@@ -1421,7 +1524,11 @@ pub fn visit_node(
                     Target::Ident(s) => {
                         if let Some(entry) = ctx.lookup_var(&s) {
                             if entry.is_const() {
-                                messages.push(AnalyzerMessage::redeclared_const_variable(&s, entry.span.clone(), span));
+                                messages.push(AnalyzerMessage::redeclared_const_variable(
+                                    &s,
+                                    entry.span.clone(),
+                                    span,
+                                ));
                             }
                         }
 
@@ -1467,9 +1574,7 @@ pub fn visit_node(
                 && ctx.is_top_level()
                 && modifier == ScopeEntryModifier::Mut
             {
-                messages.push(AnalyzerMessage::global_mutable_variable(
-                    span.clone(),
-                ));
+                messages.push(AnalyzerMessage::global_mutable_variable(span.clone()));
             }
 
             let show_span = ty.node() != &TypeExpr::Auto;
@@ -1589,7 +1694,7 @@ pub fn visit_node(
         }
         Node::Expr(expr) => {
             visit_expr(analyzers, ctx, messages, expr)?;
-        },
+        }
         _ => unimplemented!(),
     }
 
