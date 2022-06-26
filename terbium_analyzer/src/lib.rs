@@ -333,6 +333,58 @@ impl AnalyzerMessage {
         )
     }
 
+    #[must_use]
+    pub fn incompatible_types(
+        span: Span,
+        expr_span: Span,
+        expr_ty: String,
+        expected_span: Option<Span>,
+        expected_ty: String,
+    ) -> Self {
+        Self::new(
+            AnalyzerMessageKind::Alert(AnalyzerKind::IncompatibleTypes),
+            span,
+            |report, color| {
+                let report = report
+                    .with_message(format!("incompatible types (expected {})", expected_ty))
+                    .with_label(Label::new(expr_span)
+                        .with_message(format!(
+                            "this is of type {}, which is incompatible with {}",
+                            expr_ty,
+                            expected_ty,
+                        ))
+                        .with_color(color)
+                        .with_order(1)
+                    )
+                    .with_help("try changing to a value that satisfies the type");
+
+                if let Some(expected_span) = expected_span {
+                    report.with_label(Label::new(expected_span)
+                        .with_message(format!("expected {} here", expected_ty))
+                        .with_color(Color::Cyan)
+                        .with_order(0)
+                    )
+                } else {
+                    report
+                }
+            }
+        )
+    }
+
+    pub fn uninferable_type(name: &str, span: Span) -> Self {
+        Self::new(
+            AnalyzerMessageKind::Alert(AnalyzerKind::UninferableTypes),
+            span.clone(),
+            |report, color| report
+                .with_message("could not infer type")
+                .with_label(Label::new(span)
+                    .with_message(format!("could not infer the type of {:?}, defined here", name))
+                    .with_color(color)
+                )
+                .with_help("explicitly specify the type")
+        )
+    }
+
     /// Write error to specified writer.
     ///
     /// # Panics
@@ -381,7 +433,7 @@ impl PrimitiveType {
 
         Some(match (op, self) {
             (Op::Not, _) => Type::Primitive(Self::Bool),
-            (Op::Add | Op::Sub, t @ Self::Int | Self::Float) => Type::Primitive(*t),
+            (Op::Add | Op::Sub, t @ (Self::Int | Self::Float)) => Type::Primitive(*t),
             (Op::BitNot, Self::Int) => Type::Primitive(Self::Int),
             _ => return None,
         })
@@ -416,13 +468,13 @@ impl PrimitiveType {
 /// A struct that stores instructions on how to resolve a type.
 pub enum DeferredType {
     /// Reference this entry and retrieve its type after it is resolved
-    TypeOf(*const MockScopeEntry),
+    TypeOf(String),
 
     /// A substitute for a known type, but when required as a deferred type.
     ///
     /// An example is having to apply a binary operator to a deferred type and a known type.
     /// Despite the known type, this type is still deferred.
-    Known(Type),
+    Known(Box<Type>),
 
     ApplyUnary(Operator, Box<Self>),
     ApplyBinary(Operator, Box<Self>, Box<Self>),
@@ -440,7 +492,7 @@ pub enum Type {
     Any,
 
     // Eventually will be resolved
-    Deferred(DeferredType),
+    Deferred(Box<DeferredType>),
     Unknown,
 }
 
@@ -448,7 +500,7 @@ impl Type {
     pub fn get_unary_op_outcome(&self, op: Operator) -> Option<Self> {
         Some(match (op, self) {
             (op, Self::Deferred(d)) => Self::Deferred(
-                DeferredType::ApplyUnary(op, Box::new(d.clone())),
+                Box::new(DeferredType::ApplyUnary(op, d.clone())),
             ),
             (op, Self::Primitive(p)) => p.get_unary_op_outcome(op)?,
             (op, Self::Union(a, b)) =>
@@ -464,9 +516,9 @@ impl Type {
     pub fn get_binary_op_outcome(&self, op: Operator, other: &Type) -> Option<Self> {
         Some(match (self, op, other) {
             (Self::Deferred(a), op, Self::Deferred(b)) => Self::Deferred(
-                DeferredType::ApplyBinary(op, Box::new(a.clone()), Box::new(b.clone()))
+                Box::new(DeferredType::ApplyBinary(op, a.clone(), b.clone()))
             ),
-            (Self::Primitive(a), op, b) => a.get_binary_op_outcome(op, b),
+            (Self::Primitive(a), op, b) => a.get_binary_op_outcome(op, b)?,
             (Self::Union(box a, box b), op, c)
             | (c, op, Self::Union(box a, box b)) => {
                 a.get_binary_op_outcome(op, c)
@@ -492,6 +544,25 @@ impl Type {
         })
     }
 
+    pub fn is_compatible_with(&self, other: &Type) -> bool {
+        match (self, other) {
+            (Self::Any, _) | (_, Self::Any) => true,
+            (Self::Primitive(a), Self::Primitive(b)) => a == b,
+            (Self::Union(box a, box b), other) => a.is_compatible_with(other) || b.is_compatible_with(other),
+            (Self::And(box a, box b), other) => a.is_compatible_with(other) && b.is_compatible_with(other),
+            (Self::Array(box a, a_len), Self::Array(box b, b_len)) =>
+                a.is_compatible_with(b)
+                    && (a_len == b_len || a_len.is_some() && b_len.is_none()),
+            (Self::Tuple(a), Self::Tuple(b)) => a.len() == b.len()
+                && a.iter().zip(b).all(|(a, b)| a.is_compatible_with(b)),
+            (Self::Func(a, a_ret), Self::Func(b, b_ret)) =>
+                a_ret.is_compatible_with(b_ret)
+                    && a.iter().zip(b).all(|(a, b)| a.is_compatible_with(b)),
+            _ => false,
+        }
+    }
+
+    // TODO: this doesn't work properly
     pub fn flatten(self) -> Self {
         match self {
             Self::Union(a, b)
@@ -499,6 +570,27 @@ impl Type {
             if a == b => a.flatten(),
             o => o,
         }
+    }
+
+    fn _is_unknown(&self, strict: bool) -> bool {
+        match self {
+            Self::Deferred(_) => !strict,
+            Self::Unknown => true,
+            Self::Union(a, b)
+            | Self::And(a, b) => a._is_unknown(strict) || b._is_unknown(strict),
+            Self::Array(t, _) => t._is_unknown(strict),
+            Self::Tuple(items) => items.iter().any(|t| t._is_unknown(strict)),
+            Self::Func(params, ty) => ty._is_unknown(strict) || params.iter().any(|t| t._is_unknown(strict)),
+            _ => false,
+        }
+    }
+
+    pub fn is_unknown(&self) -> bool {
+        self._is_unknown(false)
+    }
+
+    pub fn is_strictly_unknown(&self) -> bool {
+        self._is_unknown(true)
     }
 }
 
@@ -511,7 +603,7 @@ impl Display for Type {
             Self::Union(lhs, rhs) => write!(f, "{} | {}", lhs, rhs),
             Self::And(lhs, rhs) => write!(f, "{} & {}", lhs, rhs),
             Self::Array(ty, size) => write!(f, "{}[{}]", ty, size
-                .map(ToString::to_string)
+                .map(|s| s.to_string())
                 .unwrap_or_else(String::new)),
             Self::Tuple(items) => write!(f, "[{}]", items
                 .iter()
@@ -707,10 +799,37 @@ impl Context {
         self.scopes.push(MockScope::new());
     }
 
+    pub fn resolve_deferred_type(&self, ty: DeferredType) -> Type {
+        match ty {
+            DeferredType::Known(box t) => t,
+            DeferredType::TypeOf(s) => self.lookup_var(&s).unwrap().ty.clone(),
+            DeferredType::ApplyUnary(op, box t) => self
+                .resolve_deferred_type(t)
+                .get_unary_op_outcome(op)
+                .expect("deferred spanned messages WIP"), // TODO
+            DeferredType::ApplyBinary(op, box a, box b) => self
+                .resolve_deferred_type(a)
+                .get_binary_op_outcome(op, &self.resolve_deferred_type(b))
+                .expect("deferred spanned messages WIP"), // TODO
+        }
+    }
+
     pub fn exit_scope(&mut self, analyzers: &AnalyzerSet, messages: &mut Vec<AnalyzerMessage>) {
         let scope = self.scopes.pop().unwrap_or_else(|| unreachable!());
 
         for entry in scope.0.into_values() {
+            let previously_unknown = &entry.ty == &Type::Unknown;
+
+            let ty = if let Type::Deferred(box d) = &entry.ty {
+                self.resolve_deferred_type(d.clone())
+            } else {
+                entry.ty.clone()
+            };
+
+            if ty.is_strictly_unknown() && !previously_unknown {
+                messages.push(AnalyzerMessage::uninferable_type(&entry.name, entry.span.clone()));
+            }
+
             if analyzers.contains(&AnalyzerKind::UnnecessaryMutVariables)
                 && entry.is_mut()
                 && !entry.is_mutated()
@@ -930,6 +1049,7 @@ impl Default for AnalyzerSet {
 }
 
 pub fn infer_type(
+    analyzers: &AnalyzerSet,
     ctx: &Context,
     messages: &mut Vec<AnalyzerMessage>,
     expr: &Spanned<Expr>,
@@ -943,7 +1063,7 @@ pub fn infer_type(
         Expr::Bool(_) => Type::Primitive(PrimitiveType::Bool),
         Expr::UnaryExpr { operator, value } => {
             let (op, op_span) = operator.node_span();
-            let t = infer_type(ctx, messages, value)?;
+            let t = infer_type(analyzers, ctx, messages, value)?;
 
             match t.get_unary_op_outcome(*op) {
                 Some(ty) => ty,
@@ -962,8 +1082,8 @@ pub fn infer_type(
         }
         Expr::BinaryExpr { operator, lhs, rhs } => {
             let (op, op_span) = operator.node_span();
-            let lhs_t = infer_type(ctx, messages, lhs)?;
-            let rhs_t = infer_type(ctx, messages, rhs)?;
+            let lhs_t = infer_type(analyzers, ctx, messages, lhs)?;
+            let rhs_t = infer_type(analyzers, ctx, messages, rhs)?;
 
             match lhs_t.get_binary_op_outcome(*op, &rhs_t) {
                 Some(ty) => ty,
@@ -990,15 +1110,17 @@ pub fn infer_type(
                 bodies.push(else_body)
             }
 
-            let mut types = bodies.into_iter().map(|s| {
+            let mut types = Vec::new();
+
+            for s in bodies {
                 let (
                     Body(nodes, return_last),
                     body_span
                 ) = s.node_span();
 
-                let ty = if return_last {
-                    if let Node::Expr(e) = nodes.last().unwrap() {
-                        infer_type(ctx, messages, e)?
+                let ty = if *return_last {
+                    if let Node::Expr(e) = nodes.last().unwrap().node() {
+                        infer_type(analyzers, ctx, messages, e)?
                     } else {
                         Type::Null
                     }
@@ -1006,17 +1128,168 @@ pub fn infer_type(
                     Type::Null
                 };
 
-                (ty, body_span)
-            });
+                types.push((ty, body_span));
+            }
 
-            let (target_type, first_span) = types.next().unwrap();
-            let accumulator = target_type.clone();
+            let (target_type, first_span) = types.remove(0);
+
+            if analyzers.contains(&AnalyzerKind::UnbalancedIfStatements)
+                && else_body.is_none()
+                && target_type != Type::Null
+            {
+                messages.push(AnalyzerMessage::unbalanced_if_statement_no_else(
+                    span.clone(),
+                    first_span.clone(),
+                    target_type.to_string(),
+                ));
+
+                return Ok(Type::Union(Box::new(target_type), Box::new(Type::Null)));
+            }
+
+            let mut accumulator = target_type.clone();
+            let mut unbalanced = false;
 
             for (subject_type, subject_span) in types {
+                if analyzers.contains(&AnalyzerKind::UnbalancedIfStatements)
+                    && !unbalanced
+                    && !target_type.is_compatible_with(&subject_type)
+                {
+                    messages.push(AnalyzerMessage::unbalanced_if_statement(
+                        span.clone(),
+                        first_span.clone(),
+                        target_type.to_string(),
+                        subject_span.clone(),
+                        subject_type.to_string(),
+                    ));
+                    unbalanced = true;
+                }
 
+                accumulator = Type::Union(Box::new(accumulator), Box::new(subject_type));
+            }
+
+            accumulator
+        }
+        Expr::While { .. } => {
+            // TODO: break statements
+            Type::Null
+        }
+        Expr::Array(items) => {
+            if items.is_empty() {
+                return Ok(Type::Array(Box::new(Type::Any), None));
+            }
+
+            if items.len() == 1 {
+                let first = items.first().unwrap();
+                let ty = infer_type(analyzers, ctx, messages, first)?;
+
+                return Ok(Type::Array(Box::new(ty), Some(1)));
+            }
+
+            let mut items_iter = items.iter();
+            let first_ty = infer_type(analyzers, ctx, messages, items_iter.next().unwrap())?;
+
+            let mut tuple_types = vec![first_ty.clone()];
+
+            for (i, item) in items_iter.enumerate() {
+                let inferred = infer_type(analyzers, ctx, messages, item)?;
+
+                if inferred.is_unknown() {
+                    return Ok(Type::Array(Box::new(Type::Any), None));
+                }
+
+                tuple_types.push(inferred.clone());
+
+                if !first_ty.is_compatible_with(&inferred) {
+                    let rest = items.iter().skip(i + 2);
+
+                    for expr in rest {
+                        let inferred = infer_type(analyzers, ctx, messages, expr)?;
+
+                        tuple_types.push(inferred);
+                    }
+
+                    return Ok(Type::Tuple(tuple_types));
+                }
+            }
+
+            Type::Array(Box::new(first_ty), Some(items.len() as u32))
+        }
+        Expr::Ident(s) => {
+            if let Some(entry) = ctx.lookup_var(s) {
+                if entry.ty.is_unknown() {
+                    Type::Deferred(Box::new(DeferredType::TypeOf(entry.name.clone())))
+                } else {
+                    entry.ty.clone()
+                }
+            } else {
+                // Let the analyzer catch the unresolved ident
+                Type::Unknown
             }
         }
-    })
+        _ => Type::Unknown,
+    }.flatten())
+}
+
+pub fn resolve_type_expr(
+    ctx: &Context,
+    messages: &mut Vec<AnalyzerMessage>,
+    ty: Spanned<TypeExpr>,
+) -> (Type, Span) {
+    let (ty, span) = ty.into_node_span();
+
+    let resolved = match ty {
+        TypeExpr::Ident(s) => match s.as_str() {
+            "int" => Type::Primitive(PrimitiveType::Int),
+            "float" => Type::Primitive(PrimitiveType::Float),
+            "bool" => Type::Primitive(PrimitiveType::Bool),
+            "string" => Type::Primitive(PrimitiveType::String),
+            _ => {
+                messages.push(AnalyzerMessage::unresolved_identifier(
+                    &*s,
+                    None,
+                    span.clone(),
+                ));
+
+                Type::Unknown
+            }
+        }
+        TypeExpr::Any => Type::Any,
+        TypeExpr::Auto => Type::Unknown,
+        TypeExpr::Null => Type::Null,
+        TypeExpr::Union(lhs, rhs) => {
+            let lhs = resolve_type_expr(ctx, messages, lhs).0;
+            let rhs = resolve_type_expr(ctx, messages, rhs).0;
+
+            Type::Union(Box::new(lhs), Box::new(rhs))
+        }
+        TypeExpr::And(lhs, rhs) => {
+            let lhs = resolve_type_expr(ctx, messages, lhs).0;
+            let rhs = resolve_type_expr(ctx, messages, rhs).0;
+
+            Type::And(Box::new(lhs), Box::new(rhs))
+        }
+        TypeExpr::Nullable(ty) => {
+            let ty = resolve_type_expr(ctx, messages, ty).0;
+
+            Type::Union(Box::new(ty), Box::new(Type::Null))
+        }
+        TypeExpr::Array(ty, len) => {
+            let ty = resolve_type_expr(ctx, messages, ty).0;
+
+            Type::Array(Box::new(ty), len)
+        }
+        TypeExpr::Tuple(items) => {
+            let items = items
+                .into_iter()
+                .map(|e| resolve_type_expr(ctx, messages, e).0)
+                .collect::<Vec<_>>();
+
+            Type::Tuple(items)
+        }
+        _ => unimplemented!(),
+    };
+
+    (resolved, span)
 }
 
 #[allow(unused_variables, reason = "`analyzers` will be used later")]
@@ -1029,7 +1302,10 @@ pub fn visit_expr(
     ctx: &mut Context,
     messages: &mut Vec<AnalyzerMessage>,
     expr: Spanned<Expr>,
-) -> Result<(), &'static str> {
+) -> Result<Type, &'static str> {
+    // infer_type provides us with operator checking
+    let ty = infer_type(analyzers, ctx, messages, &expr)?;
+
     let span = expr.span();
     let expr = expr.into_node();
 
@@ -1090,10 +1366,15 @@ pub fn visit_expr(
             visit_expr(analyzers, ctx, messages, lhs)?;
             visit_expr(analyzers, ctx, messages, rhs)?;
         }
-        _ => return Ok(()),
+        Expr::Array(items) => {
+            for expr in items {
+                visit_expr(analyzers, ctx, messages, expr)?;
+            }
+        }
+        _ => return Ok(ty),
     }
 
-    Ok(())
+    Ok(ty)
 }
 
 #[allow(clippy::missing_panics_doc, reason = "todo!()")]
@@ -1124,7 +1405,7 @@ pub fn visit_node(
             r#const,
             value,
         } => {
-            type DeferEntry = (String, (), Span);
+            type DeferEntry = (String, Type, Span);
 
             fn recur(
                 ctx: &Context,
@@ -1132,6 +1413,7 @@ pub fn visit_node(
                 target: Target,
                 span: Span,
                 tgt_span: Span,
+                ty: Type,
                 deferred: &mut Vec<DeferEntry>,
             ) {
                 #[allow(clippy::match_wildcard_for_single_variants, reason = "todo!()")]
@@ -1143,10 +1425,10 @@ pub fn visit_node(
                             }
                         }
 
-                        deferred.push((s, (), tgt_span));
+                        deferred.push((s, ty, tgt_span));
                     }
                     Target::Array(targets) => {
-                        for target in targets {
+                        for (i, target) in targets.into_iter().enumerate() {
                             let (target, tgt_span) = target.into_node_span();
 
                             recur(
@@ -1155,6 +1437,11 @@ pub fn visit_node(
                                 target,
                                 span.clone(),
                                 tgt_span.clone(),
+                                match &ty {
+                                    Type::Tuple(items) => items[i].clone(),
+                                    Type::Array(box ty, _) => ty.clone(),
+                                    _ => Type::Any,
+                                },
                                 deferred,
                             );
                         }
@@ -1185,6 +1472,28 @@ pub fn visit_node(
                 ));
             }
 
+            let show_span = ty.node() != &TypeExpr::Auto;
+            let (ty, ty_span) = resolve_type_expr(ctx, messages, ty);
+
+            let value_span = value.span();
+            let inferred = visit_expr(analyzers, ctx, messages, value)?;
+
+            let ty = if ty.is_unknown() {
+                inferred
+            } else {
+                if !inferred.is_compatible_with(&ty) {
+                    messages.push(AnalyzerMessage::incompatible_types(
+                        span.clone(),
+                        value_span,
+                        inferred.to_string(),
+                        if show_span { Some(ty_span) } else { None },
+                        ty.to_string(),
+                    ));
+                }
+
+                ty
+            };
+
             let mut deferred = Vec::<DeferEntry>::new();
 
             recur(
@@ -1193,6 +1502,7 @@ pub fn visit_node(
                 target.clone(),
                 span.clone(),
                 tgt_span.clone(),
+                ty,
                 &mut deferred,
             );
 
@@ -1215,7 +1525,7 @@ pub fn visit_node(
                 );
             }
         }
-        Node::Assign { targets, .. } => {
+        Node::Assign { targets, value } => {
             // Assume there can only be one target
             let (target, tgt_span) = targets
                 .first()
@@ -1225,38 +1535,61 @@ pub fn visit_node(
             #[allow(clippy::match_wildcard_for_single_variants, reason = "todo!()")]
             match target {
                 Target::Ident(s) => {
-                    let entry = ctx.lookup_var_mut(s);
+                    let has_entry = ctx.lookup_var(s).is_some();
 
-                    match entry {
-                        Some(entry) => {
-                            entry.mutated = true;
+                    if has_entry {
+                        {
+                            let entry = ctx.lookup_var(s).unwrap();
 
                             if entry.is_const() || !entry.is_mut() {
                                 messages.push(AnalyzerMessage::reassigned_immutable_variable(
                                     s,
                                     entry.span.clone(),
-                                    span,
+                                    span.clone(),
                                     entry.is_const(),
                                 ));
                             }
                         }
-                        None => {
-                            let close_match = ctx.close_var_match(s);
 
-                            messages.push(AnalyzerMessage::unresolved_identifier(
-                                s,
-                                close_match,
-                                tgt_span.clone(),
-                            ));
-                            return Ok(());
+                        let value_span = value.span();
+                        let ty = visit_expr(analyzers, ctx, messages, value)?;
+                        let entry = ctx.lookup_var_mut(s).unwrap();
+
+                        entry.mutated = true;
+
+                        if !ty.is_unknown() {
+                            if entry.ty.is_unknown() {
+                                entry.ty = ty;
+                            } else {
+                                if !ty.is_compatible_with(&entry.ty) {
+                                    messages.push(AnalyzerMessage::incompatible_types(
+                                        span,
+                                        value_span,
+                                        ty.to_string(),
+                                        None,
+                                        entry.ty.to_string(),
+                                    ));
+                                }
+                            }
                         }
+                    } else {
+                        let close_match = ctx.close_var_match(s);
+
+                        messages.push(AnalyzerMessage::unresolved_identifier(
+                            s,
+                            close_match,
+                            tgt_span.clone(),
+                        ));
+                        return Ok(());
                     }
                 }
                 Target::Array(_) => return Err("array assignments unsupported"),
                 _ => todo!(),
             }
         }
-        Node::Expr(expr) => visit_expr(analyzers, ctx, messages, expr)?,
+        Node::Expr(expr) => {
+            visit_expr(analyzers, ctx, messages, expr)?;
+        },
         _ => unimplemented!(),
     }
 
