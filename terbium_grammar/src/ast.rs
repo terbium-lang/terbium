@@ -901,9 +901,9 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
             .then_ignore(just::<_, Token, _>(Token::Semicolon))
             .or(e
                 .clone()
-                .try_map(|e, _| match e.node() {
+                .try_map(|e, span| match e.node() {
                     Expr::If { .. } | Expr::While { .. } => Ok(e),
-                    _ => Err(Error::placeholder()),
+                    _ => Err(Error::custom(span, "missing semicolon")),
                 })
                 .then_ignore(none_of(Token::EndBracket(Bracket::Brace)).rewind()))
             .map_with_span(|e, span| Spanned::new(Node::Expr(e), span));

@@ -1,11 +1,12 @@
 #![feature(lint_reasons)]
 #![feature(stmt_expr_attributes)]
+#![feature(box_patterns)]
 
 pub mod util;
 
 use std::collections::{HashMap, HashSet};
-use std::fmt::Formatter;
-use terbium_grammar::{Expr, Node, ParseInterface, Source, Span, Spanned, Target, Token, TypeExpr};
+use std::fmt::{Display, Formatter, Result as FmtResult};
+use terbium_grammar::{Body, Expr, Node, Operator, ParseInterface, Source, Span, Spanned, Target, Token, TypeExpr};
 use util::to_snake_case;
 
 use crate::util::get_levenshtein_distance;
@@ -211,18 +212,142 @@ impl AnalyzerMessage {
         )
     }
 
+    #[must_use]
+    pub fn unsupported_unary_operator(
+        span: Span,
+        val_ty: String,
+        val_span: Span,
+        op: Operator,
+        op_span: Span,
+    ) -> Self {
+        Self::new(
+            AnalyzerMessageKind::Alert(AnalyzerKind::UnsupportedOperators),
+            span.clone(),
+            |report, color| report
+                .with_message(format!("type does not support unary {:?} operator", op.to_string()))
+                .with_label(Label::new(val_span)
+                    .with_message(format!("this is of type {}", val_ty))
+                    .with_color(Color::Cyan)
+                    .with_order(0)
+                )
+                .with_label(Label::new(op_span)
+                    .with_message(format!(
+                        "cannot use operator {:?} on {}",
+                        op.to_string(),
+                        val_ty,
+                    ))
+                    .with_color(color)
+                    .with_order(1)
+                )
+                .with_help("try casting to a supported type")
+        )
+    }
+
+    #[must_use]
+    pub fn unsupported_binary_operator(
+        span: Span,
+        lhs_ty: String,
+        lhs_span: Span,
+        rhs_ty: String,
+        rhs_span: Span,
+        op: Operator,
+        op_span: Span,
+    ) -> Self {
+        Self::new(
+            AnalyzerMessageKind::Alert(AnalyzerKind::UnsupportedOperators),
+            span.clone(),
+            |report, color| report
+                .with_message(format!("these types do not support {:?} operator", op.to_string()))
+                .with_label(Label::new(lhs_span)
+                    .with_message(format!("this is of type {}", lhs_ty))
+                    .with_color(Color::Cyan)
+                    .with_order(0)
+                )
+                .with_label(Label::new(rhs_span)
+                    .with_message(format!("this is of type {}", rhs_ty))
+                    .with_color(Color::Cyan)
+                    .with_order(1)
+                )
+                .with_label(Label::new(op_span)
+                    .with_message(format!(
+                        "cannot use operator {:?} on {} and {}",
+                        op.to_string(),
+                        lhs_ty,
+                        rhs_ty,
+                    ))
+                    .with_color(color)
+                    .with_order(2)
+                )
+                .with_help("try casting to supported types")
+        )
+    }
+
+    #[must_use]
+    pub fn unbalanced_if_statement(
+        span: Span,
+        first_span: Span,
+        first_ty: String,
+        second_span: Span,
+        second_ty: String,
+    ) -> Self {
+        Self::new(
+            AnalyzerMessageKind::Alert(AnalyzerKind::UnbalancedIfStatements),
+            span.clone(),
+            |report, color| report
+                .with_message("return types of if-statement are unbalanced")
+                .with_label(Label::new(first_span)
+                    .with_message(format!("this resolves to {}", first_ty))
+                    .with_color(Color::Cyan)
+                    .with_order(0)
+                )
+                .with_label(Label::new(second_span)
+                    .with_message(format!("this resolves to {}, which is incompatible with {}", second_ty, first_ty))
+                    .with_color(color)
+                    .with_order(1)
+                )
+                .with_help("try adding semicolons or balancing the types")
+        )
+    }
+
+    #[must_use]
+    pub fn unbalanced_if_statement_no_else(
+        span: Span,
+        first_span: Span,
+        first_ty: String,
+    ) -> Self {
+        Self::new(
+            AnalyzerMessageKind::Alert(AnalyzerKind::UnbalancedIfStatements),
+            span.clone(),
+            |report, color| report
+                .with_message("return types of if-statement are unbalanced")
+                .with_label(Label::new(first_span)
+                    .with_message(format!("this resolves to {}, which is not null", first_ty))
+                    .with_color(color)
+                    .with_order(0)
+                )
+                .with_label(Label::new(span)
+                    .with_message("note that the lack of an `else` causes the possibility of null")
+                    .with_color(color)
+                    .with_order(1))
+                .with_help("try adding semicolons")
+        )
+    }
+
     /// Write error to specified writer.
     ///
     /// # Panics
     /// * Panic when writing to writer failed.
     pub fn write<C: Cache<Source>>(self, cache: C, writer: impl Write) {
         let report = if let AnalyzerMessageKind::Alert(k) = self.kind {
-            self.report.with_note(format!(
-               "view this {} in the error index: https://github.com/TerbiumLang/standard/blob/main/error_index.md#{}{:0>3}",
-               if k.is_error() { "error" } else { "warning" },
-               if k.is_error() { "E" } else { "W" },
-               k.code(),
-           ))
+            self.report
+                .with_code(k.code())
+                .with_note(format!(
+                   "view this {} in the error index: \
+                   https://github.com/TerbiumLang/standard/blob/main/error_index.md#{}{:0>3}",
+                   if k.is_error() { "error" } else { "warning" },
+                   if k.is_error() { "E" } else { "W" },
+                   k.code(),
+               ))
         } else {
             self.report
         };
@@ -231,7 +356,7 @@ impl AnalyzerMessage {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum PrimitiveType {
     Int,
     Float,
@@ -239,10 +364,176 @@ pub enum PrimitiveType {
     Bool,
 }
 
+impl Display for PrimitiveType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        match self {
+            Self::Int => write!(f, "int"),
+            Self::Float => write!(f, "float"),
+            Self::String => write!(f, "string"),
+            Self::Bool => write!(f, "bool"),
+        }
+    }
+}
+
+impl PrimitiveType {
+    pub fn get_unary_op_outcome(&self, op: Operator) -> Option<Type> {
+        type Op = Operator;
+
+        Some(match (op, self) {
+            (Op::Not, _) => Type::Primitive(Self::Bool),
+            (Op::Add | Op::Sub, t @ Self::Int | Self::Float) => Type::Primitive(*t),
+            (Op::BitNot, Self::Int) => Type::Primitive(Self::Int),
+            _ => return None,
+        })
+    }
+
+    pub fn get_binary_op_outcome(&self, op: Operator, other: &Type) -> Option<Type> {
+        type Op = Operator;
+
+        Some(match (self, op, other) {
+            (
+                Self::Int,
+                Op::Add | Op::Sub | Op::Mul | Op::Div | Op::Pow | Op::Mod | Op::BitOr | Op::BitAnd | Op::BitXor | Op::BitLShift | Op::BitRShift,
+                Type::Primitive(Self::Int),
+            ) => Type::Primitive(Self::Int),
+            (
+                Self::Float | Self::Int,
+                Op::Add | Op::Sub | Op::Mul | Op::Div | Op::Pow | Op::Mod,
+                Type::Primitive(Self::Float | Self::Int)
+            ) => Type::Primitive(Self::Float),
+            (
+                Self::Float | Self::Int,
+                Op::Lt | Op::Le | Op::Gt | Op::Ge | Op::Eq | Op::Ne,
+                Type::Primitive(Self::Float | Self::Int),
+            ) => Type::Primitive(Self::Bool),
+            (Self::String, Op::Add | Op::Mul, Type::Primitive(Self::String)) => Type::Primitive(Self::String),
+            _ => return None,
+        })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+/// A struct that stores instructions on how to resolve a type.
+pub enum DeferredType {
+    /// Reference this entry and retrieve its type after it is resolved
+    TypeOf(*const MockScopeEntry),
+
+    /// A substitute for a known type, but when required as a deferred type.
+    ///
+    /// An example is having to apply a binary operator to a deferred type and a known type.
+    /// Despite the known type, this type is still deferred.
+    Known(Type),
+
+    ApplyUnary(Operator, Box<Self>),
+    ApplyBinary(Operator, Box<Self>, Box<Self>),
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Type {
     Primitive(PrimitiveType),
-    Union(),
+    Union(Box<Self>, Box<Self>),
+    And(Box<Self>, Box<Self>),
+    Array(Box<Self>, Option<u32>),
+    Tuple(Vec<Self>),
+    Func(Vec<Type>, Box<Type>),
+    Null,
+    Any,
+
+    // Eventually will be resolved
+    Deferred(DeferredType),
+    Unknown,
+}
+
+impl Type {
+    pub fn get_unary_op_outcome(&self, op: Operator) -> Option<Self> {
+        Some(match (op, self) {
+            (op, Self::Deferred(d)) => Self::Deferred(
+                DeferredType::ApplyUnary(op, Box::new(d.clone())),
+            ),
+            (op, Self::Primitive(p)) => p.get_unary_op_outcome(op)?,
+            (op, Self::Union(a, b)) =>
+                a.get_unary_op_outcome(op).and(b.get_unary_op_outcome(op))?,
+            (op, Self::And(a, b)) =>
+                a.get_unary_op_outcome(op).or(b.get_unary_op_outcome(op))?,
+            (Operator::Not, _) => Self::Primitive(PrimitiveType::Bool),
+            (_, t @ (Self::Any | Self::Unknown)) => t.clone(),
+            _ => return None,
+        })
+    }
+
+    pub fn get_binary_op_outcome(&self, op: Operator, other: &Type) -> Option<Self> {
+        Some(match (self, op, other) {
+            (Self::Deferred(a), op, Self::Deferred(b)) => Self::Deferred(
+                DeferredType::ApplyBinary(op, Box::new(a.clone()), Box::new(b.clone()))
+            ),
+            (Self::Primitive(a), op, b) => a.get_binary_op_outcome(op, b),
+            (Self::Union(box a, box b), op, c)
+            | (c, op, Self::Union(box a, box b)) => {
+                a.get_binary_op_outcome(op, c)
+                    .and(b.get_binary_op_outcome(op, c))?
+            },
+            (Self::And(box a, box b), op, c)
+            | (c, op, Self::And(box a, box b)) => {
+                a.get_binary_op_outcome(op, c)
+                    .or(b.get_binary_op_outcome(op, c))?
+            },
+            (Self::Array(ty_a, len_a), Operator::Add, Self::Array(ty_b, len_b)) => {
+                Self::Array(
+                    Box::new(Self::Union(ty_a.clone(), ty_b.clone())),
+                    len_a.map(|l| l + len_b.unwrap_or(0)),
+                )
+            }
+            (Self::Tuple(a), Operator::Add, Self::Tuple(b)) => {
+                Self::Tuple(a.clone().into_iter().chain(b.clone()).collect())
+            }
+            (Self::Any, _, _) | (_, _, Self::Any) => Self::Any,
+            (Self::Unknown, _, _) | (_, _, Self::Unknown) => Self::Unknown,
+            _ => return None,
+        })
+    }
+
+    pub fn flatten(self) -> Self {
+        match self {
+            Self::Union(a, b)
+            | Self::And(a, b)
+            if a == b => a.flatten(),
+            o => o,
+        }
+    }
+}
+
+impl Display for Type {
+    fn fmt(&self, f: &mut Formatter<'_>) -> FmtResult {
+        match self {
+            Self::Primitive(p) => write!(f, "{}", p),
+            Self::Union(box Self::Null, ty) | Self::Union(ty, box Self::Null)
+                => write!(f, "?{}", ty),
+            Self::Union(lhs, rhs) => write!(f, "{} | {}", lhs, rhs),
+            Self::And(lhs, rhs) => write!(f, "{} & {}", lhs, rhs),
+            Self::Array(ty, size) => write!(f, "{}[{}]", ty, size
+                .map(ToString::to_string)
+                .unwrap_or_else(String::new)),
+            Self::Tuple(items) => write!(f, "[{}]", items
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(", ")),
+            Self::Func(params, ret) => write!(
+                f,
+                "({}) -> {}",
+                params
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                ret,
+            ),
+            Self::Null => write!(f, "null"),
+            Self::Any => write!(f, "any"),
+            Self::Deferred(_) => write!(f, "<unknown>"),
+            Self::Unknown => write!(f, "<unknown>"),
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -255,7 +546,7 @@ pub enum ScopeEntryModifier {
 #[derive(Clone, Debug)]
 pub struct MockScopeEntry {
     pub name: String,
-    pub ty: (), // TODO
+    pub ty: Type,
     pub modifier: ScopeEntryModifier,
     pub used: bool,
     pub mutated: bool,
@@ -264,7 +555,7 @@ pub struct MockScopeEntry {
 
 impl MockScopeEntry {
     #[must_use]
-    pub const fn new(name: String, ty: (), modifier: ScopeEntryModifier, span: Span) -> Self {
+    pub const fn new(name: String, ty: Type, modifier: ScopeEntryModifier, span: Span) -> Self {
         Self {
             name,
             ty,
@@ -454,12 +745,20 @@ pub enum AnalyzerKind {
     UnnecessaryMutVariables,
     /// [W005] Global mutable variables are highly discouraged
     GlobalMutableVariables,
+    /// [W006] Value of an if statement has unbalanced types
+    UnbalancedIfStatements,
     /// [E001] An identifier (e.g. a variable) could not be found in the current scope
     UnresolvedIdentifiers,
     /// [E002] A variable declared as `const` was redeclared later on
     RedeclaredConstVariables,
     /// [E003] An immutable variable was reassigned to
     ReassignedImmutableVariables,
+    /// [E004] The operator is not supported for the given type
+    UnsupportedOperators,
+    /// [E005] Received a type that was incompatible with what was expected
+    IncompatibleTypes,
+    /// [E006] The type could not be inferred
+    UninferableTypes,
 }
 
 impl AnalyzerKind {
@@ -480,10 +779,14 @@ impl AnalyzerKind {
         match self {
             Self::NonSnakeCase | Self::NonPascalCase | Self::NonAscii => 1,
             Self::UnusedVariables | Self::UnnecessaryMutVariables => 2,
+            Self::UnbalancedIfStatements => 3,
+            Self::GlobalMutableVariables => 4,
             Self::UnresolvedIdentifiers
             | Self::RedeclaredConstVariables
-            | Self::ReassignedImmutableVariables => 0,
-            Self::GlobalMutableVariables => 4,
+            | Self::ReassignedImmutableVariables
+            | Self::UnsupportedOperators
+            | Self::IncompatibleTypes
+            | Self::UninferableTypes => 0,
         }
     }
 
@@ -495,8 +798,9 @@ impl AnalyzerKind {
             Self::NonPascalCase | Self::UnresolvedIdentifiers => 1,
             Self::NonAscii | Self::RedeclaredConstVariables => 2,
             Self::UnusedVariables | Self::ReassignedImmutableVariables => 3,
-            Self::UnnecessaryMutVariables => 4,
-            Self::GlobalMutableVariables => 5,
+            Self::UnnecessaryMutVariables | Self::UnsupportedOperators => 4,
+            Self::GlobalMutableVariables | Self::IncompatibleTypes => 5,
+            Self::UnbalancedIfStatements | Self::UninferableTypes => 6,
         }
     }
 
@@ -533,6 +837,10 @@ impl FromStr for AnalyzerKind {
             "redeclared-const-variables" => Self::RedeclaredConstVariables,
             "reassigned-immutable-variables" => Self::ReassignedImmutableVariables,
             "global-mutable-variables" => Self::GlobalMutableVariables,
+            "unsupported-operators" => Self::UnsupportedOperators,
+            "incompatible-types" => Self::IncompatibleTypes,
+            "uninferable-types" => Self::UninferableTypes,
+            "unbalanced-if-statements" => Self::UnbalancedIfStatements,
             _ => return Err(format!("invalid analyzer {:?}", s)),
         })
     }
@@ -550,6 +858,10 @@ impl std::fmt::Display for AnalyzerKind {
             Self::RedeclaredConstVariables => "redeclared-const-variables",
             Self::ReassignedImmutableVariables => "reassigned-immutable-variables",
             Self::GlobalMutableVariables => "global-mutable-variables",
+            Self::UnsupportedOperators => "unsupported-operators",
+            Self::IncompatibleTypes => "incompatible-types",
+            Self::UninferableTypes => "uninferable-types",
+            Self::UnbalancedIfStatements => "unbalanced-if-statements",
         })
     }
 }
@@ -582,6 +894,10 @@ impl AnalyzerSet {
             A::RedeclaredConstVariables,
             A::ReassignedImmutableVariables,
             A::GlobalMutableVariables,
+            A::UnsupportedOperators,
+            A::IncompatibleTypes,
+            A::UninferableTypes,
+            A::UnbalancedIfStatements,
         ]))
     }
 
@@ -611,6 +927,96 @@ impl Default for AnalyzerSet {
     fn default() -> Self {
         Self::all()
     }
+}
+
+pub fn infer_type(
+    ctx: &Context,
+    messages: &mut Vec<AnalyzerMessage>,
+    expr: &Spanned<Expr>,
+) -> Result<Type, &'static str> {
+    let (expr, span) = expr.node_span();
+
+    Ok(match expr {
+        Expr::Integer(_) => Type::Primitive(PrimitiveType::Int),
+        Expr::Float(_) => Type::Primitive(PrimitiveType::Float),
+        Expr::String(_) => Type::Primitive(PrimitiveType::String),
+        Expr::Bool(_) => Type::Primitive(PrimitiveType::Bool),
+        Expr::UnaryExpr { operator, value } => {
+            let (op, op_span) = operator.node_span();
+            let t = infer_type(ctx, messages, value)?;
+
+            match t.get_unary_op_outcome(*op) {
+                Some(ty) => ty,
+                None => {
+                    messages.push(AnalyzerMessage::unsupported_unary_operator(
+                        span.clone(),
+                        t.to_string(),
+                        value.span(),
+                        *op,
+                        op_span.clone(),
+                    ));
+
+                    Type::Unknown
+                }
+            }
+        }
+        Expr::BinaryExpr { operator, lhs, rhs } => {
+            let (op, op_span) = operator.node_span();
+            let lhs_t = infer_type(ctx, messages, lhs)?;
+            let rhs_t = infer_type(ctx, messages, rhs)?;
+
+            match lhs_t.get_binary_op_outcome(*op, &rhs_t) {
+                Some(ty) => ty,
+                None => {
+                    messages.push(AnalyzerMessage::unsupported_binary_operator(
+                        span.clone(),
+                        lhs_t.to_string(),
+                        lhs.span(),
+                        rhs_t.to_string(),
+                        rhs.span(),
+                        *op,
+                        op_span.clone(),
+                    ));
+
+                    Type::Unknown
+                }
+            }
+        }
+        Expr::If { body, else_if_bodies, else_body, .. } => {
+            let mut bodies = else_if_bodies.iter().map(|b| &b.1).collect::<Vec<_>>();
+            bodies.insert(0, body);
+
+            if let Some(else_body) = else_body {
+                bodies.push(else_body)
+            }
+
+            let mut types = bodies.into_iter().map(|s| {
+                let (
+                    Body(nodes, return_last),
+                    body_span
+                ) = s.node_span();
+
+                let ty = if return_last {
+                    if let Node::Expr(e) = nodes.last().unwrap() {
+                        infer_type(ctx, messages, e)?
+                    } else {
+                        Type::Null
+                    }
+                } else {
+                    Type::Null
+                };
+
+                (ty, body_span)
+            });
+
+            let (target_type, first_span) = types.next().unwrap();
+            let accumulator = target_type.clone();
+
+            for (subject_type, subject_span) in types {
+
+            }
+        }
+    })
 }
 
 #[allow(unused_variables, reason = "`analyzers` will be used later")]
@@ -713,9 +1119,10 @@ pub fn visit_node(
         }
         Node::Declare {
             targets,
+            ty,
             r#mut,
             r#const,
-            ..
+            value,
         } => {
             type DeferEntry = (String, (), Span);
 

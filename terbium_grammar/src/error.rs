@@ -79,18 +79,6 @@ pub struct Error {
 
 impl Error {
     #[must_use]
-    pub fn placeholder() -> Self {
-        Self {
-            kind: ErrorKind::Custom,
-            span: Span::default(),
-            expected: HashSet::new(),
-            label: None,
-            message: String::new(),
-            hint: None,
-        }
-    }
-
-    #[must_use]
     pub fn custom(span: Span, message: impl Display) -> Self {
         Self {
             kind: ErrorKind::Custom,
