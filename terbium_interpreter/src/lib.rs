@@ -238,6 +238,11 @@ impl<const STACK_SIZE: usize> Context<STACK_SIZE> {
         self.stack.pop()
     }
 
+    /// Return `true` if the stack is empty
+    pub fn stack_is_empty(&self) -> bool {
+        self.stack.ptr == 0
+    }
+
     /// Pops the last object from the stack and returns a tuple containing
     /// the location of the object in field 0 and a reference to the resolved
     /// object in field 1.
