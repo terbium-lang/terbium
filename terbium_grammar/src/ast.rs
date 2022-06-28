@@ -354,15 +354,15 @@ pub fn get_body_parser<'a>() -> RecursiveParser<'a, SpannedBody> {
                 .map_with_span(|a, span| Spanned::new(TypeExpr::Tuple(a), span));
 
             let atom = choice((
-                ident,
-                array,
                 tuple,
+                ident,
                 ty.clone()
                     .delimited_by(
                         just(Token::StartBracket(Bracket::Paren)),
                         just(Token::EndBracket(Bracket::Paren)),
                     )
                     .boxed(),
+                array,
             ));
 
             let attr = atom
