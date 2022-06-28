@@ -18,6 +18,24 @@ jobs:
             toolchain: nightly
             override: true
 
+      - name: Cache LLVM and Clang
+        id: cache-llvm
+        uses: actions/cache@v2
+        with:
+          path: |
+            C:/Program Files/LLVM
+            ./llvm
+          key: llvm-14.0
+
+      - name: Install LLVM and Clang
+        uses: KyleMayes/install-llvm-action@v1
+        with:
+          version: "14.0"
+          cached: ${{ steps.cache-llvm.outputs.cache-hit }}
+
+      - name: Setup cache
+        uses: Swatinem/rust-cache@v1
+
       - run: cargo doc --all-features --workspace --no-deps
       - run: echo "<meta http-equiv=\"refresh\" content=\"0; url=terbium\">" > target/doc/index.html
       - run: cp -r target/doc ./docs
