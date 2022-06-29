@@ -80,10 +80,10 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                 self.ctx.const_string(s.as_bytes(), false).as_any_value_enum()
             }
             Expr::Bool(b) => {
-                if b {
-                    self.ctx.bool_type().const_all_ones()
+                if *b {
+                    self.ctx.bool_type().const_all_ones().as_any_value_enum()
                 } else {
-                    self.ctx.bool_type().const_zero()
+                    self.ctx.bool_type().const_zero().as_any_value_enum()
                 }
             }
             Expr::UnaryExpr { operator, value } => {
@@ -150,34 +150,34 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                     _ => unreachable!(),
                 }
             }
-            Expr::Array(e) => {
-                VectorType::const_vector(
-                    e.into_iter().map(
-                        |e| self.eval_expr(e)?
-                    ).collect::<&[T]>()
-                )
-            }
             Expr::BinaryExpr{ operator, lhs, rhs } => {
-                let left: impl AnyValue<'ctx> = self.eval_expr(lhs)?;
-                let right: impl AnyValue<'ctx> = self.eval_expr(rhs)?;
+                let (operator, span) = operator.node_span();
+
+                let left = self.eval_expr(lhs)?;
+                let right = self.eval_expr(rhs)?;
 
                 match operator {
                     Operator::Add => {
                         match (left.as_any_value_enum(), right.as_any_value_enum()) {
                             (AnyValueEnum::IntValue(lhs), AnyValueEnum::IntValue(rhs)) => {
-                                self.builder.build_int_add(lhs, rhs, "addint")
+                                self.builder.build_int_add(lhs, rhs, "tmpintadd")
+                                    .as_any_value_enum()
                             }
                             (AnyValueEnum::FloatValue(lhs), AnyValueEnum::FloatValue(rhs)) => {
-                                self.builder.build_float_add(lhs, rhs, "addfloat")
+                                self.builder.build_float_add(lhs, rhs, "tmpfloatadd")
+                                    .as_any_value_enum()
                             }
-                            (AnyValueEnum::FloatValue(f), AnyValueEnum::IntValue(i)) |
-                            (AnyValueEnum::IntValue(i), AnyValueEnum::FloatValue(f)) => {
-                                let int = self.builder.build_signed_int_to_float(i, FloatMathType, "inttofloat");
-                                self.builder.build_float_add(int, f, "addfloat")
+                            (AnyValueEnum::FloatValue(f), AnyValueEnum::IntValue(i))
+                            | (AnyValueEnum::IntValue(i), AnyValueEnum::FloatValue(f)) => {
+                                let int = self.builder.build_signed_int_to_float(i, self.ctx.f64_type(), "tmpintfloatconv");
+
+                                self.builder.build_float_add(int, f, "tmpfloatadd")
+                                    .as_any_value_enum()
                             }
                             _ => todo!()
                         }
                     }
+                    _ => todo!(),
                 }
             }
             _ => todo!(),
