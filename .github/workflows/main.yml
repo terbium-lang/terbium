@@ -38,42 +38,27 @@ jobs:
           toolchain: nightly
           override: true
           components: clippy
-
-      - name: Clippy lint
-        run: cargo clippy --workspace --all-features -- -D clippy::all -D clippy::pedantic -D clippy::nursery -D clippy::cargo
-
-  compile_debug:
-    name: Compile in debug mode
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-latest
-          - os: ubuntu-latest
-          - os: windows-latest
-            ext: ".exe"
-
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Install latest nightly
-        uses: actions-rs/toolchain@v1
+      
+      - name: Cache LLVM and Clang
+        id: cache-llvm
+        uses: actions/cache@v2
         with:
-          toolchain: nightly
-          override: true
+          path: |
+            C:/Program Files/LLVM
+            ./llvm
+          key: llvm-14.0
+
+      - name: Install LLVM and Clang
+        uses: KyleMayes/install-llvm-action@v1
+        with:
+          version: "14.0"
+          cached: ${{ steps.cache-llvm.outputs.cache-hit }}
 
       - name: Setup cache
         uses: Swatinem/rust-cache@v1
 
-      - name: Build
-        run: cargo build --verbose
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: ${{ matrix.os }}-debug
-          path: target/debug/terbium${{ matrix.ext }}
+      - name: Clippy lint
+        run: cargo clippy --workspace --all-features -- -D clippy::all -D clippy::pedantic -D clippy::nursery -D clippy::cargo
 
   compile_release:
     name: Compile in release mode
@@ -95,6 +80,21 @@ jobs:
         with:
           toolchain: nightly
           override: true
+
+      - name: Cache LLVM and Clang
+        id: cache-llvm
+        uses: actions/cache@v2
+        with:
+          path: |
+            C:/Program Files/LLVM
+            ./llvm
+          key: llvm-14.0
+
+      - name: Install LLVM and Clang
+        uses: KyleMayes/install-llvm-action@v1
+        with:
+          version: "14.0"
+          cached: ${{ steps.cache-llvm.outputs.cache-hit }}
 
       - name: Setup cache
         uses: Swatinem/rust-cache@v1
@@ -125,11 +125,32 @@ jobs:
           toolchain: nightly
           override: true
 
+      - name: Cache LLVM and Clang
+        id: cache-llvm
+        uses: actions/cache@v2
+        with:
+          path: |
+            C:/Program Files/LLVM
+            ./llvm
+          key: llvm-14.0
+
+      - name: Install LLVM and Clang
+        uses: KyleMayes/install-llvm-action@v1
+        with:
+          version: "14.0"
+          cached: ${{ steps.cache-llvm.outputs.cache-hit }}
+
       - name: Setup cache
         uses: Swatinem/rust-cache@v1
 
       - name: Run tests
         run: cargo test --verbose --workspace
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.os }}-debug
+          path: target/debug/terbium*
 
   miri_test:
     name: Miri Test
@@ -144,6 +165,21 @@ jobs:
           toolchain: nightly
           override: true
           components: miri
+
+      - name: Cache LLVM and Clang
+        id: cache-llvm
+        uses: actions/cache@v2
+        with:
+          path: |
+            C:/Program Files/LLVM
+            ./llvm
+          key: llvm-14.0
+
+      - name: Install LLVM and Clang
+        uses: KyleMayes/install-llvm-action@v1
+        with:
+          version: "14.0"
+          cached: ${{ steps.cache-llvm.outputs.cache-hit }}
 
       - name: Setup cache
         uses: Swatinem/rust-cache@v1
@@ -166,6 +202,21 @@ jobs:
           toolchain: nightly
           override: true
           target: wasm32-unknown-unknown
+
+      - name: Cache LLVM and Clang
+        id: cache-llvm
+        uses: actions/cache@v2
+        with:
+          path: |
+            C:/Program Files/LLVM
+            ./llvm
+          key: llvm-14.0
+
+      - name: Install LLVM and Clang
+        uses: KyleMayes/install-llvm-action@v1
+        with:
+          version: "14.0"
+          cached: ${{ steps.cache-llvm.outputs.cache-hit }}
 
       - name: Setup cache
         uses: Swatinem/rust-cache@v1
