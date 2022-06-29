@@ -1,12 +1,12 @@
 use inkwell::context::Context;
 use inkwell::passes::PassManager;
-use terbium_grammar::{Node, Source, ParseInterface, Spanned, Span};
+use terbium_grammar::{Source, ParseInterface, Spanned, Span, Body};
 use terbium::Compiler;
 
 #[test]
 fn test_compiler() {
     let sample = String::from("-1");
-    let node = Node::from_string(Source::default(), sample).unwrap();
+    let body = Body::from_string(Source::default(), sample).unwrap();
 
     let ctx = Context::create();
     let module = ctx.create_module("tmp");
@@ -29,7 +29,7 @@ fn test_compiler() {
         &builder,
         &fpm,
         &module,
-        &Spanned::new(node, Span::default()),
+        body,
     ).unwrap();
 
     func.print_to_stderr();
