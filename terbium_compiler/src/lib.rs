@@ -227,7 +227,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
 pub type EntrypointFunction = unsafe extern "C" fn() -> i32;
 
-//#[cfg(tests)]
+#[cfg(tests)]
 mod tests {
     use inkwell::context::Context;
     use inkwell::passes::PassManager;
