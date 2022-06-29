@@ -1294,15 +1294,15 @@
                 .<span class="ident">map_with_span</span>(<span class="op">|</span><span class="ident">a</span>, <span class="ident">span</span><span class="op">|</span> <span class="ident">Spanned::new</span>(<span class="ident">TypeExpr::Tuple</span>(<span class="ident">a</span>), <span class="ident">span</span>));
 
             <span class="kw">let</span> <span class="ident">atom</span> <span class="op">=</span> <span class="ident">choice</span>((
-                <span class="ident">ident</span>,
-                <span class="ident">array</span>,
                 <span class="ident">tuple</span>,
+                <span class="ident">ident</span>,
                 <span class="ident">ty</span>.<span class="ident">clone</span>()
                     .<span class="ident">delimited_by</span>(
                         <span class="ident">just</span>(<span class="ident">Token::StartBracket</span>(<span class="ident">Bracket::Paren</span>)),
                         <span class="ident">just</span>(<span class="ident">Token::EndBracket</span>(<span class="ident">Bracket::Paren</span>)),
                     )
                     .<span class="ident">boxed</span>(),
+                <span class="ident">array</span>,
             ));
 
             <span class="kw">let</span> <span class="ident">attr</span> <span class="op">=</span> <span class="ident">atom</span>
@@ -1873,5 +1873,5 @@
 
 <span class="comment">// TODO: write tests</span>
 </code></pre></div>
-</section></div></main><div id="rustdoc-vars" data-root-path="../../" data-current-crate="terbium_grammar" data-themes="ayu,dark,light" data-resource-suffix="" data-rustdoc-version="1.64.0-nightly (c80c4b8fd 2022-06-26)" ></div>
+</section></div></main><div id="rustdoc-vars" data-root-path="../../" data-current-crate="terbium_grammar" data-themes="ayu,dark,light" data-resource-suffix="" data-rustdoc-version="1.64.0-nightly (830880640 2022-06-28)" ></div>
 </body></html>
