@@ -86,12 +86,12 @@ enum Command {
     },
 }
 
-type ParseError = Vec<(Source, String)>;
+type PartialCache = Vec<(Source, String)>;
 
 fn run_ast<N>(
     file: Option<PathBuf>,
     code: Option<String>,
-) -> Result<(N, ParseError), Box<dyn std::error::Error>>
+) -> Result<(N, PartialCache), Box<dyn std::error::Error>>
 where
     N: ParseInterface,
 {
