@@ -23,6 +23,7 @@ members = ["terbium_analyzer", "terbium_bytecode", "terbium_compiler", "terbium_
 [dependencies]
 ariadne = "^0.1.5"
 clap = { version = "3.1", features = ["derive"] }
+inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm14-0"] }
 terbium_analyzer = { version = "0", path = "terbium_analyzer" }
 terbium_bytecode = { version = "0", path = "terbium_bytecode" }
 terbium_compiler = { version = "0", path = "terbium_compiler" }
