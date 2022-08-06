@@ -12,5 +12,5 @@ keywords = ["terbium", "language", "lang", "interpreter", "compiler", "parser", 
 categories = ["compilers", "parsing"]
 
 [dependencies]
-inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "master", features = ["llvm14-0"] }
+inkwell = { git = "https://github.com/jay3332/inkwell", branch = "master", features = ["llvm14-0"] }
 terbium_grammar = { version = "0", path = "../terbium_grammar" }

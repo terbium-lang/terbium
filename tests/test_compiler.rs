@@ -5,7 +5,7 @@ use terbium::Compiler;
 
 #[test]
 fn test_compiler() {
-    let sample = String::from("-1");
+    let sample = String::from("2 + 2 + 3");
     let body = Body::from_string(Source::default(), sample).unwrap();
 
     let ctx = Context::create();

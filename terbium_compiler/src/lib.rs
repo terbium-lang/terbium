@@ -153,7 +153,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                     _ => unreachable!(),
                 }
             }
-            Expr::BinaryExpr{ operator, lhs, rhs } => {
+            Expr::BinaryExpr { operator, lhs, rhs } => {
                 let (operator, span) = operator.node_span();
 
                 let left = self.eval_expr(lhs)?;
@@ -161,7 +161,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
                 match operator {
                     Operator::Add => {
-                        match (left.as_basic_value_enum(), right.as_basic_value_enum()) {
+                        match (left, right) {
                             (BasicValueEnum::IntValue(lhs), BasicValueEnum::IntValue(rhs)) => {
                                 self.builder.build_int_add(lhs, rhs, "tmpintadd")
                                     .as_basic_value_enum()
@@ -237,7 +237,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
     }
 
     pub fn prepare(&mut self) {
-        let fn_type = self.ctx.i32_type().fn_type(&[], false);
+        let fn_type = self.ctx.i64_type().fn_type(&[], false);
 
         self.fn_val = Some(
             self.module.add_function(Self::ENTRYPOINT_FN_NAME, fn_type, None)
