@@ -1,3 +1,5 @@
+mod token;
+
 /// Represents the span of a token or a node in the AST. Can be represented as [start, end).
 #[derive(Copy, Clone, Debug)]
 pub struct Span {
