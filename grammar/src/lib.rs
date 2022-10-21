@@ -1,3 +1,5 @@
+#![feature(const_trait_impl)]
+
 mod token;
 
 /// Represents the span of a token or a node in the AST. Can be represented as [start, end).

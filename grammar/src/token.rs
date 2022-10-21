@@ -1,13 +1,13 @@
 use super::Span;
 use std::str::Chars;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Default)]
 pub struct StringLiteralFlags(pub u8);
 
 impl StringLiteralFlags {
     pub const RAW: Self = Self(1 << 0);
     pub const INTERPOLATED: Self = Self(1 << 1);
-    pub const RAW_INTERPOLATED: Self = Self(Self::RAW.bits() | Self::INTERPOLATED.bits());
+    pub const RAW_INTERPOLATED: Self = Self::RAW | Self::INTERPOLATED;
 
     pub const fn bits(self) -> u8 {
         self.0
@@ -19,6 +19,20 @@ impl StringLiteralFlags {
 
     pub const fn is_interpolated(self) -> bool {
         self.bits() & Self::INTERPOLATED.bits() != 0
+    }
+}
+
+impl const std::ops::BitOr for StringLiteralFlags {
+    type Output = Self;
+
+    fn bitor(self, other: Self) -> Self {
+        Self(self.bits() | other.bits())
+    }
+}
+
+impl std::ops::BitOrAssign for StringLiteralFlags {
+    fn bitor_assign(&mut self, rhs: Self) {
+        *self = *self | rhs;
     }
 }
 
@@ -296,7 +310,39 @@ impl<'a> TokenReader<'a> {
     /// Assuming that the cursor is on " or ', consume the raw contents of a string.
     /// If the string is invalid, return None.
     fn consume_string_content(&mut self, hashes: u8, target: char) -> Option<String> {
+        let mut content = String::new();
+        loop {
+            while let Some(c) = self.cursor.advance() {
+                if self.cursor.is_eof() {
+                    // TODO: this could be an error
+                    return None;
+                }
 
+                if c == target {
+                    break;
+                }
+
+                content.push(c);
+            }
+
+            let mut ending = 0;
+            // Check if hashes match starting hashes
+            while self.cursor.peek() == Some('#') && ending < hashes {
+                ending += 1;
+                self.cursor.advance();
+            }
+
+            if ending != hashes {
+                // Re-add the quote and hashes to the contents of the string
+                content.push(target);
+                std::iter::repeat('#')
+                    .take(hashes as usize)
+                    .for_each(|c| content.push(c));
+                continue;
+            }
+
+            break Some(content);
+        }
     }
 
     /// Possibly consumes a string literal. Returns None if no string was found.
@@ -349,7 +395,18 @@ impl<'a> TokenReader<'a> {
             }
         };
 
-        let flags = StringLiteralFlags(0);
+        let mut flags = StringLiteralFlags::default();
+        if is_raw {
+            flags |= StringLiteralFlags::RAW;
+        }
+        if is_interpolated {
+            flags |= StringLiteralFlags::INTERPOLATED;
+        }
+
+        Some(Token {
+            info: TokenInfo::StringLiteral(content, flags),
+            span: Span::new(start, self.pos()),
+        })
     }
 }
 
@@ -375,6 +432,9 @@ impl Iterator for TokenReader<'_> {
             }};
         }
 
+        if let Some(token) = self.consume_string_literal() {
+            return Some(token);
+        }
         match self.cursor.advance()? {
             '(' => token!(TokenInfo::LeftParen),
             ')' => token!(TokenInfo::RightParen),
@@ -399,12 +459,8 @@ impl Iterator for TokenReader<'_> {
             '&' => token!(TokenInfo::And),
             '|' => token!(TokenInfo::Or),
             '%' => token!(TokenInfo::Modulus),
-            '0'..='9' => {
-
-            },
-            'a'..='z' | 'A'..='Z' | '_' => {
-
-            },
+            '0'..='9' => {}
+            'a'..='z' | 'A'..='Z' | '_' => {}
             _ => todo!(),
         }
 
