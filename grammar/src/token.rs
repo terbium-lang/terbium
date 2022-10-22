@@ -1,22 +1,28 @@
 use super::Span;
 use std::str::Chars;
+use unicode_xid::UnicodeXID;
 
+/// Bitflags representing extra flags about a string (i.e. interpolated, raw).
 #[derive(Copy, Clone, Debug, Default)]
 pub struct StringLiteralFlags(pub u8);
 
 impl StringLiteralFlags {
+    /// The string is a raw string - do not unescape any characters.
     pub const RAW: Self = Self(1 << 0);
+    /// The string is an interpolated string.
     pub const INTERPOLATED: Self = Self(1 << 1);
-    pub const RAW_INTERPOLATED: Self = Self::RAW | Self::INTERPOLATED;
 
+    /// The bitflags represented as bits.
     pub const fn bits(self) -> u8 {
         self.0
     }
 
+    /// If the first bit is set.
     pub const fn is_raw(self) -> bool {
         self.bits() & Self::RAW.bits() != 0
     }
 
+    /// If the second bit is set.
     pub const fn is_interpolated(self) -> bool {
         self.bits() & Self::INTERPOLATED.bits() != 0
     }
@@ -34,6 +40,20 @@ impl std::ops::BitOrAssign for StringLiteralFlags {
     fn bitor_assign(&mut self, rhs: Self) {
         *self = *self | rhs;
     }
+}
+
+/// Radix of an integer literal.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+pub enum Radix {
+    /// Normal, base 10 integer.
+    #[default]
+    Decimal,
+    /// Represented in hexadecimal: 0x1a3d.
+    Hexadecimal,
+    /// Represented in octal: 0o1234.
+    Octal,
+    /// Represented in binary: 0b1010.
+    Binary,
 }
 
 /// Represents information about a lexical token in the source code.
@@ -58,7 +78,7 @@ pub enum TokenInfo {
     /// and even ~$#"combinations of them all"#.
     StringLiteral(String, StringLiteralFlags),
     /// An integer literal, such as 123, 0, or 0x123.
-    IntLiteral(String),
+    IntLiteral(String, Radix),
     /// A float literal, such as 1.23, 0.0, or 1e-10.
     FloatLiteral(String),
     /// Left parenthesis, `(`.
@@ -204,6 +224,11 @@ fn is_whitespace(c: char) -> bool {
         | '\u{2028}' // LINE SEPARATOR
         | '\u{2029}' // PARAGRAPH SEPARATOR
     )
+}
+
+// Modified function to allow underscores
+fn is_ident_start(c: char) -> bool {
+    c == '_' || c.is_xid_start()
 }
 
 impl<'a> TokenReader<'a> {
@@ -408,6 +433,131 @@ impl<'a> TokenReader<'a> {
             span: Span::new(start, self.pos()),
         })
     }
+
+    /// Consumes a number (integer/float literal), returning None if no number was found.
+    /// This assumes the cursor is before the first digit.
+    fn consume_number(&mut self) -> Option<Token> {
+        let next = self.cursor.peek()?;
+        if !matches!(next, '0'..='9' | '.') {
+            return None;
+        }
+
+        let start = self.cursor.pos() + 1;
+        let mut content = String::new();
+
+        macro_rules! advance_then {
+            ($p:pat => $e:expr) => {{
+                self.cursor.advance();
+                self.cursor.advance();
+
+                loop {
+                    match self.cursor.peek()? {
+                        '_' => {
+                            self.cursor.advance();
+                        }
+                        $p => {
+                            content.push(self.cursor.advance()?);
+                        }
+                        _ => break,
+                    }
+                }
+
+                $e
+            }};
+        }
+
+        let radix = if next == '0' {
+            match self.cursor.peek_second()? {
+                'x' | 'X' => advance_then!('0'..='9' | 'a'..='f' | 'A'..='F' => Radix::Hexadecimal),
+                'o' | 'O' => advance_then!('0'..='7' => Radix::Octal),
+                'b' | 'B' => advance_then!('0' | '1' => Radix::Binary),
+                _ => Radix::Decimal,
+            }
+        } else {
+            Radix::Decimal
+        };
+
+        let mut is_float = false;
+
+        if radix == Radix::Decimal {
+            macro_rules! consume_ignore_underscore {
+            ($p:pat) => {{
+                    while let Some(c @ $p) = self.cursor.peek() {
+                        self.cursor.advance();
+                        if c != '_' {
+                            content.push(c);
+                        }
+                    }
+                }};
+            }
+
+            let mut try_exponent = true;
+            // Consume digits until the first .
+            while let Some(c @ ('0'..='9' | '_' | '.')) = self.cursor.peek() {
+                if c == '.' {
+                    match self.cursor.peek_second() {
+                        // After the ., only allow digits 0 through 9. Not even underscores, since
+                        // that could be an identifier.
+                        Some('0'..='9') => {
+                            // Consume the . and any digits after it
+                            is_float = true;
+                            content.push(self.cursor.advance()?);
+                            consume_ignore_underscore!('0'..='9' | '_');
+                        }
+                        // On the event of a consecutive dot, this is probably a range operator, so
+                        // treat this as an integer. On the event of an identifier starter, this is
+                        // probably an attribute access.
+                        Some(c) if c == '.' || is_ident_start(c) => try_exponent = false,
+                        // Otherwise, this is a float with a trailing dot, consume that dot and
+                        // move on.
+                        _ => {
+                            self.cursor.advance();
+                            is_float = true;
+                            // Don't allow E notation since this could conflict with attribute
+                            // access.
+                            try_exponent = false;
+                        }
+                    }
+                    break;
+                }
+
+                self.cursor.advance();
+                if c != '_' {
+                    content.push(c);
+                }
+            }
+
+            // Attempt to consume an exponent if it is safe to do so
+            if try_exponent {
+                if let Some('e' | 'E') = self.cursor.peek() {
+                    match self.cursor.peek_second() {
+                        Some('+' | '-') => {
+                            content.push(self.cursor.advance()?);
+                            content.push(self.cursor.advance()?);
+                        }
+                        _ => {
+                            content.push(self.cursor.advance()?);
+                        }
+                    }
+
+                    consume_ignore_underscore!('0'..='9' | '_');
+                    is_float = true;
+                }
+            }
+        }
+
+        Some(if is_float {
+            Token {
+                info: TokenInfo::FloatLiteral(content),
+                span: Span::new(start, self.pos()),
+            }
+        } else {
+            Token {
+                info: TokenInfo::IntLiteral(content, radix),
+                span: Span::new(start, self.pos()),
+            }
+        })
+    }
 }
 
 impl Iterator for TokenReader<'_> {
@@ -432,9 +582,17 @@ impl Iterator for TokenReader<'_> {
             }};
         }
 
-        if let Some(token) = self.consume_string_literal() {
-            return Some(token);
+        macro_rules! consider {
+            ($e:expr) => {{
+                if let Some(token) = $e {
+                    return Some(token);
+                }
+            }};
         }
+
+        consider!(self.consume_string_literal());
+        consider!(self.consume_number());
+
         match self.cursor.advance()? {
             '(' => token!(TokenInfo::LeftParen),
             ')' => token!(TokenInfo::RightParen),
@@ -459,7 +617,6 @@ impl Iterator for TokenReader<'_> {
             '&' => token!(TokenInfo::And),
             '|' => token!(TokenInfo::Or),
             '%' => token!(TokenInfo::Modulus),
-            '0'..='9' => {}
             'a'..='z' | 'A'..='Z' | '_' => {}
             _ => todo!(),
         }
