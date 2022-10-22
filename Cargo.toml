@@ -18,6 +18,9 @@ categories = ["compilers", "command-line-interface", "parsing", "wasm"]
 [workspace]
 members = ["grammar"]
 
+[dependencies]
+grammar = { path = "grammar" }
+
 [profile.dev]
 opt-level = 2
 split-debuginfo = "unpacked"

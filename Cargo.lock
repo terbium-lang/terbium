@@ -12,6 +12,9 @@ dependencies = [
 [[package]]
 name = "terbium"
 version = "0.0.1"
+dependencies = [
+ "grammar",
+]
 
 [[package]]
 name = "unicode-xid"

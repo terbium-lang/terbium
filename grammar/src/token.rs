@@ -3,7 +3,7 @@ use std::str::Chars;
 use unicode_xid::UnicodeXID;
 
 /// Bitflags representing extra flags about a string (i.e. interpolated, raw).
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub struct StringLiteralFlags(pub u8);
 
 impl StringLiteralFlags {
@@ -57,7 +57,7 @@ pub enum Radix {
 }
 
 /// Represents information about a lexical token in the source code.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TokenInfo {
     /// Any sequence of whitespace.
     Whitespace,
@@ -100,7 +100,7 @@ pub enum TokenInfo {
     /// Colon, `:`.
     Colon,
     /// Period, `.`.
-    Period,
+    Dot,
     /// Less than, `<`.
     LessThan,
     /// Greater than, `>`.
@@ -130,7 +130,7 @@ pub enum TokenInfo {
 }
 
 /// Represents a lexical token in the source code.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Token {
     /// Information and classification of the token.
     pub info: TokenInfo,
@@ -334,7 +334,7 @@ impl<'a> TokenReader<'a> {
 
     /// Assuming that the cursor is on " or ', consume the raw contents of a string.
     /// If the string is invalid, return None.
-    fn consume_string_content(&mut self, hashes: u8, target: char) -> Option<String> {
+    fn consume_string_content(&mut self, hashes: u8, target: char, raw: bool) -> Option<String> {
         let mut content = String::new();
         loop {
             while let Some(c) = self.cursor.advance() {
@@ -343,6 +343,11 @@ impl<'a> TokenReader<'a> {
                     return None;
                 }
 
+                if c == '\\' && !raw {
+                    content.push('\\');
+                    content.push(self.cursor.advance()?);
+                    continue;
+                }
                 if c == target {
                     break;
                 }
@@ -361,7 +366,7 @@ impl<'a> TokenReader<'a> {
                 // Re-add the quote and hashes to the contents of the string
                 content.push(target);
                 std::iter::repeat('#')
-                    .take(hashes as usize)
+                    .take(ending as usize)
                     .for_each(|c| content.push(c));
                 continue;
             }
@@ -391,7 +396,7 @@ impl<'a> TokenReader<'a> {
         // Advance the cursor to avoid infinite recursion
         original.advance();
 
-        let start = self.cursor.pos() + 1;
+        let start = self.cursor.pos();
         // Advance to hashes or quote
         if is_raw {
             self.cursor.advance();
@@ -412,7 +417,7 @@ impl<'a> TokenReader<'a> {
             return None;
         }
 
-        let content = match self.consume_string_content(hashes, quote) {
+        let content = match self.consume_string_content(hashes, quote, is_raw) {
             Some(content) => content,
             None => {
                 self.cursor = original;
@@ -438,11 +443,17 @@ impl<'a> TokenReader<'a> {
     /// This assumes the cursor is before the first digit.
     fn consume_number(&mut self) -> Option<Token> {
         let next = self.cursor.peek()?;
-        if !matches!(next, '0'..='9' | '.') {
+        // For now, let's not allow float literals to start with . due to ambiguities. Allowing .
+        // to come first will result in weird ambiguities during tokenizing, even though the syntax
+        // is invalid. Take the range expression 1..2, should this be tokenized as (1) (..) (2) or
+        // should it be tokenized as (1.) (.2)? Obviously, we prefer the first one, however if we
+        // were to allow . to come first, the current implementation will actually output the second
+        // result, which is invaid syntax.
+        if !matches!(next, '0'..='9') {
             return None;
         }
 
-        let start = self.cursor.pos() + 1;
+        let start = self.cursor.pos();
         let mut content = String::new();
 
         macro_rules! advance_then {
@@ -451,11 +462,11 @@ impl<'a> TokenReader<'a> {
                 self.cursor.advance();
 
                 loop {
-                    match self.cursor.peek()? {
-                        '_' => {
+                    match self.cursor.peek() {
+                        Some('_') => {
                             self.cursor.advance();
                         }
-                        $p => {
+                        Some($p) => {
                             content.push(self.cursor.advance()?);
                         }
                         _ => break,
@@ -481,7 +492,7 @@ impl<'a> TokenReader<'a> {
 
         if radix == Radix::Decimal {
             macro_rules! consume_ignore_underscore {
-            ($p:pat) => {{
+                ($p:pat) => {{
                     while let Some(c @ $p) = self.cursor.peek() {
                         self.cursor.advance();
                         if c != '_' {
@@ -558,6 +569,31 @@ impl<'a> TokenReader<'a> {
             }
         })
     }
+
+    /// Consumes the next identifier and returns it as a token, but returns None if no identifier
+    /// was found immediately after the cursor.
+    fn consume_ident(&mut self) -> Option<Token> {
+        if !is_ident_start(self.cursor.peek()?) {
+            return None;
+        }
+
+        let start = self.cursor.pos();
+        let mut content = String::from(self.cursor.advance()?);
+
+        while let Some(c) = self.cursor.peek() {
+            if c.is_xid_continue() {
+                self.cursor.advance();
+                content.push(c);
+            } else {
+                break;
+            }
+        }
+
+        Some(Token {
+            info: TokenInfo::Ident(content),
+            span: Span::new(start, self.pos()),
+        })
+    }
 }
 
 impl Iterator for TokenReader<'_> {
@@ -588,10 +624,16 @@ impl Iterator for TokenReader<'_> {
                     return Some(token);
                 }
             }};
+            ($($e:expr),*) => {{
+                $(consider!($e);)*
+            }};
         }
 
-        consider!(self.consume_string_literal());
-        consider!(self.consume_number());
+        consider! {
+            self.consume_string_literal(),
+            self.consume_number(),
+            self.consume_ident()
+        }
 
         match self.cursor.advance()? {
             '(' => token!(TokenInfo::LeftParen),
@@ -603,7 +645,7 @@ impl Iterator for TokenReader<'_> {
             ',' => token!(TokenInfo::Comma),
             ';' => token!(TokenInfo::Semicolon),
             ':' => token!(TokenInfo::Colon),
-            '.' => token!(TokenInfo::Period),
+            '.' => token!(TokenInfo::Dot),
             '<' => token!(TokenInfo::LessThan),
             '>' => token!(TokenInfo::GreaterThan),
             '=' => token!(TokenInfo::Equals),
@@ -617,10 +659,7 @@ impl Iterator for TokenReader<'_> {
             '&' => token!(TokenInfo::And),
             '|' => token!(TokenInfo::Or),
             '%' => token!(TokenInfo::Modulus),
-            'a'..='z' | 'A'..='Z' | '_' => {}
-            _ => todo!(),
+            _ => todo!("unknown character/token"),
         }
-
-        None
     }
 }
