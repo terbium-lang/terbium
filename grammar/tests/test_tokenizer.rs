@@ -10,11 +10,11 @@ impl Iterator for WhitespaceDiscarder<'_> {
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             match self.inner.next() {
-                Some(Token {
+                Some(Ok(Token {
                     info: TokenInfo::Whitespace,
                     ..
-                }) => continue,
-                other => return other,
+                })) => continue,
+                other => return other.map(|r| r.unwrap()),
             }
         }
     }
@@ -39,7 +39,7 @@ fn test_tokenizer_simple() {
         TokenInfo::LeftParen => 6..7,
         TokenInfo::RightParen => 7..8,
         TokenInfo::Minus => 9..10,
-        TokenInfo::GreaterThan => 10..11,
+        TokenInfo::Gt => 10..11,
         TokenInfo::Ident("b".into()) => 12..13,
         TokenInfo::LeftBrace => 14..15,
         TokenInfo::IntLiteral("1".into(), Radix::Decimal) => 16..17,

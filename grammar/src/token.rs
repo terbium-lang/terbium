@@ -102,9 +102,9 @@ pub enum TokenInfo {
     /// Period, `.`.
     Dot,
     /// Less than, `<`.
-    LessThan,
+    Lt,
     /// Greater than, `>`.
-    GreaterThan,
+    Gt,
     /// Equals, `=`.
     Equals,
     /// Not, `!`.
@@ -143,6 +143,22 @@ impl Token {
     pub fn split(self) -> (TokenInfo, Span) {
         (self.info, self.span)
     }
+}
+
+/// Information about a tokenization error.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ErrorKind {
+    /// Unexpected character.
+    UnexpectedCharacter(char),
+}
+
+/// An error that occured during tokenization.
+#[derive(Clone, Debug)]
+pub struct Error {
+    /// The span of the error in the source code.
+    pub span: Span,
+    /// The kind of error this is.
+    pub kind: ErrorKind,
 }
 
 /// A wrapped iterator over a `Char` iterator.
@@ -597,31 +613,22 @@ impl<'a> TokenReader<'a> {
 }
 
 impl Iterator for TokenReader<'_> {
-    type Item = Token;
+    type Item = Result<Token, Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let start = self.pos();
 
         if self.consume_whitespace() {
-            return Some(Token {
+            return Some(Ok(Token {
                 info: TokenInfo::Whitespace,
                 span: Span::new(start, self.pos()),
-            });
-        }
-
-        macro_rules! token {
-            ($info:expr) => {{
-                return Some(Token {
-                    info: $info,
-                    span: Span::new(start, self.pos()),
-                });
-            }};
+            }));
         }
 
         macro_rules! consider {
             ($e:expr) => {{
                 if let Some(token) = $e {
-                    return Some(token);
+                    return Some(Ok(token));
                 }
             }};
             ($($e:expr),*) => {{
@@ -635,31 +642,46 @@ impl Iterator for TokenReader<'_> {
             self.consume_ident()
         }
 
-        match self.cursor.advance()? {
-            '(' => token!(TokenInfo::LeftParen),
-            ')' => token!(TokenInfo::RightParen),
-            '[' => token!(TokenInfo::LeftBracket),
-            ']' => token!(TokenInfo::RightBracket),
-            '{' => token!(TokenInfo::LeftBrace),
-            '}' => token!(TokenInfo::RightBrace),
-            ',' => token!(TokenInfo::Comma),
-            ';' => token!(TokenInfo::Semicolon),
-            ':' => token!(TokenInfo::Colon),
-            '.' => token!(TokenInfo::Dot),
-            '<' => token!(TokenInfo::LessThan),
-            '>' => token!(TokenInfo::GreaterThan),
-            '=' => token!(TokenInfo::Equals),
-            '!' => token!(TokenInfo::Not),
-            '+' => token!(TokenInfo::Plus),
-            '-' => token!(TokenInfo::Minus),
-            '*' => token!(TokenInfo::Asterisk),
-            '/' => return self.consume_comment_or_divide().or_else(|| self.next()),
-            '\\' => token!(TokenInfo::Backslash),
-            '^' => token!(TokenInfo::Caret),
-            '&' => token!(TokenInfo::And),
-            '|' => token!(TokenInfo::Or),
-            '%' => token!(TokenInfo::Modulus),
-            _ => todo!("unknown character/token"),
-        }
+        let info = match self.cursor.advance()? {
+            '(' => TokenInfo::LeftParen,
+            ')' => TokenInfo::RightParen,
+            '[' => TokenInfo::LeftBracket,
+            ']' => TokenInfo::RightBracket,
+            '{' => TokenInfo::LeftBrace,
+            '}' => TokenInfo::RightBrace,
+            ',' => TokenInfo::Comma,
+            ';' => TokenInfo::Semicolon,
+            ':' => TokenInfo::Colon,
+            '.' => TokenInfo::Dot,
+            '<' => TokenInfo::Lt,
+            '>' => TokenInfo::Gt,
+            '=' => TokenInfo::Equals,
+            '!' => TokenInfo::Not,
+            '+' => TokenInfo::Plus,
+            '-' => TokenInfo::Minus,
+            '*' => TokenInfo::Asterisk,
+            '/' => {
+                return self
+                    .consume_comment_or_divide()
+                    .map(Ok)
+                    .or_else(|| self.next())
+            }
+            '\\' => TokenInfo::Backslash,
+            '^' => TokenInfo::Caret,
+            '&' => TokenInfo::And,
+            '|' => TokenInfo::Or,
+            '%' => TokenInfo::Modulus,
+            c => {
+                return Some(Err(Error {
+                    span: Span::new(start, self.pos()),
+                    kind: ErrorKind::UnexpectedCharacter(c),
+                }))
+            }
+        };
+
+        Some(Ok(Token {
+            info,
+            span: Span::new(start, self.pos()),
+        }))
     }
 }
