@@ -20,13 +20,9 @@ impl Iterator for WhitespaceDiscarder<'_> {
     }
 }
 
-fn discard_whitespace(tokens: TokenReader) -> WhitespaceDiscarder {
-    WhitespaceDiscarder { inner: tokens }
-}
-
 macro_rules! assert_tokens {
     ($tokens:expr, $($info:expr => $start:literal .. $end:literal),* $(,)?) => {
-        let mut tokens = discard_whitespace(TokenReader::new($tokens));
+        let mut tokens = WhitespaceDiscarder { inner: TokenReader::new($tokens) };
         $(
             assert_eq!(tokens.next(), Some(Token { info: $info, span: Span::new($start, $end) }));
         )*
