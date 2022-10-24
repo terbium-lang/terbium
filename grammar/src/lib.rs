@@ -1,7 +1,7 @@
 #![feature(const_trait_impl)]
 
 pub mod ast;
-mod parser;
+pub mod parser;
 mod token;
 
 pub use parser::Parser;
