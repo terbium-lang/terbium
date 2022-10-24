@@ -213,6 +213,7 @@ impl<'a> Cursor<'a> {
 }
 
 /// A reader over a source string that can be used to lex tokens.
+#[derive(Clone)]
 pub struct TokenReader<'a> {
     cursor: Cursor<'a>,
 }

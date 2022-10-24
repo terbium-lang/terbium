@@ -1,8 +1,13 @@
 #![feature(const_trait_impl)]
 
+pub mod ast;
+mod parser;
 mod token;
 
-pub use token::{Radix, StringLiteralFlags, Token, TokenInfo, TokenReader};
+pub use parser::Parser;
+pub use token::{
+    Error as TokenizationError, Radix, StringLiteralFlags, Token, TokenInfo, TokenReader,
+};
 
 /// Represents the span of a token or a node in the AST. Can be represented as [start, end).
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
