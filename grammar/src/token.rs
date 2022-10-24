@@ -44,16 +44,17 @@ impl std::ops::BitOrAssign for StringLiteralFlags {
 
 /// Radix of an integer literal.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+#[repr(u8)]
 pub enum Radix {
     /// Normal, base 10 integer.
     #[default]
-    Decimal,
+    Decimal = 10,
     /// Represented in hexadecimal: 0x1a3d.
-    Hexadecimal,
+    Hexadecimal = 16,
     /// Represented in octal: 0o1234.
-    Octal,
+    Octal = 8,
     /// Represented in binary: 0b1010.
-    Binary,
+    Binary = 2,
 }
 
 /// Represents information about a lexical token in the source code.
@@ -76,7 +77,7 @@ pub enum TokenInfo {
     ///
     /// This accounts for all strings, i.e. "normal", ~"raw", #"multiline"#, $"interpolated",
     /// and even ~$#"combinations of them all"#.
-    StringLiteral(String, StringLiteralFlags),
+    StringLiteral(String, StringLiteralFlags, Span),
     /// An integer literal, such as 123, 0, or 0x123.
     IntLiteral(String, Radix),
     /// A float literal, such as 1.23, 0.0, or 1e-10.
@@ -351,8 +352,14 @@ impl<'a> TokenReader<'a> {
 
     /// Assuming that the cursor is on " or ', consume the raw contents of a string.
     /// If the string is invalid, return None.
-    fn consume_string_content(&mut self, hashes: u8, target: char, raw: bool) -> Option<String> {
+    fn consume_string_content(
+        &mut self,
+        hashes: u8,
+        target: char,
+        raw: bool,
+    ) -> Option<(String, Span)> {
         let mut content = String::new();
+        let start = self.cursor.pos();
         loop {
             while let Some(c) = self.cursor.advance() {
                 if self.cursor.is_eof() {
@@ -372,6 +379,7 @@ impl<'a> TokenReader<'a> {
                 content.push(c);
             }
 
+            let end = self.cursor.pos() - 1;
             let mut ending = 0;
             // Check if hashes match starting hashes
             while self.cursor.peek() == Some('#') && ending < hashes {
@@ -388,7 +396,7 @@ impl<'a> TokenReader<'a> {
                 continue;
             }
 
-            break Some(content);
+            break Some((content, Span::new(start, end)));
         }
     }
 
@@ -434,7 +442,7 @@ impl<'a> TokenReader<'a> {
             return None;
         }
 
-        let content = match self.consume_string_content(hashes, quote, is_raw) {
+        let (content, content_span) = match self.consume_string_content(hashes, quote, is_raw) {
             Some(content) => content,
             None => {
                 self.cursor = original;
@@ -451,7 +459,7 @@ impl<'a> TokenReader<'a> {
         }
 
         Some(Token {
-            info: TokenInfo::StringLiteral(content, flags),
+            info: TokenInfo::StringLiteral(content, flags, content_span),
             span: Span::new(start, self.pos()),
         })
     }

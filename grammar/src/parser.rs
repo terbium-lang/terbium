@@ -1,9 +1,12 @@
-use super::{ast::Expr, Token, TokenReader, TokenizationError};
+use super::{ast::*, Span, Token, TokenInfo, TokenReader, TokenizationError};
+use crate::parser::Error::UnmatchedDelimiter;
+use crate::StringLiteralFlags;
 use std::collections::VecDeque;
 use std::ops::{Deref, DerefMut};
+use std::result::Result as StdResult;
 
-type TokenResult = std::result::Result<Token, TokenizationError>;
-type Result<T> = std::result::Result<T, Error>;
+type TokenResult = StdResult<Token, TokenizationError>;
+type Result<T> = StdResult<T, Error>;
 
 /// Represents an error that occured during parsing.
 #[derive(Clone, Debug)]
@@ -12,6 +15,15 @@ pub enum Error {
     Tokenization(TokenizationError),
     /// An unexpected token was encountered.
     UnexpectedToken(Token),
+    /// Encountered the end of the input.
+    UnexpectedEof,
+    /// An unmatched closing parenthesis was encountered.
+    /// The span is the span of the starting delimiter.
+    UnmatchedDelimiter(Delimiter, Span),
+    /// Unknown escape sequence encountered.
+    UnknownEscapeSequence(char, Span),
+    /// Invalid hex escape sequence encountered.
+    InvalidHexEscapeSequence(String, Span),
 }
 
 /// A token peeker that saves all token peeks.
@@ -102,24 +114,221 @@ pub struct Parser<I: Iterator<Item = TokenResult> + Clone> {
     tokens: Peeker<I>,
 }
 
+trait ResultExt<T> {
+    fn map_token<U>(self, f: impl FnOnce(T, Span) -> U) -> Result<U>;
+    fn and_then_token<U>(self, f: impl FnOnce(T, Span) -> Result<U>) -> Result<U>;
+}
+
+impl ResultExt<TokenInfo> for Result<Token> {
+    fn map_token<U>(self, f: impl FnOnce(TokenInfo, Span) -> U) -> Result<U> {
+        self.map(|token| f(token.info, token.span))
+    }
+
+    fn and_then_token<U>(self, f: impl FnOnce(TokenInfo, Span) -> Result<U>) -> Result<U> {
+        self.and_then(|token| f(token.info, token.span))
+    }
+}
+
+impl<T> ResultExt<T> for Result<Spanned<T>> {
+    fn map_token<U>(self, f: impl FnOnce(T, Span) -> U) -> Result<U> {
+        self.map(|Spanned(value, span)| f(value, span))
+    }
+
+    fn and_then_token<U>(self, f: impl FnOnce(T, Span) -> Result<U>) -> Result<U> {
+        self.and_then(|Spanned(value, span)| f(value, span))
+    }
+}
+
+macro_rules! consume_token {
+    (@no_ws $self:expr, $p:pat) => {{
+        loop {
+            match $self.tokens.peek() {
+                Some(Ok(t @ Token { info: $p, .. })) => {
+                    $self.tokens.next();
+                    break Ok(t);
+                }
+                Some(Ok(other)) => break Err(Error::UnexpectedToken(other)),
+                Some(Err(e)) => break Err(Error::Tokenization(e)),
+                None => break Err(Error::UnexpectedEof),
+            }
+        }
+    }};
+    ($self:expr, $p:pat) => {{
+        loop {
+            match $self.tokens.peek() {
+                Some(Ok(Token {
+                    info: TokenInfo::Whitespace,
+                    ..
+                })) => {
+                    $self.tokens.next();
+                }
+                Some(Ok(t @ Token { info: $p, .. })) => {
+                    $self.tokens.next();
+                    break Ok(t);
+                }
+                Some(Ok(other)) => break Err(Error::UnexpectedToken(other)),
+                Some(Err(e)) => break Err(Error::Tokenization(e)),
+                None => break Err(Error::UnexpectedEof),
+            }
+        }
+    }};
+}
+
+macro_rules! assert_token {
+    ($info:ident: $p:pat => $out:expr) => {{
+        match $info {
+            $p => $out,
+            _ => unreachable!("should not have encountered this token"),
+        }
+    }};
+    (@unsafe $info:ident: $p:pat => $out:expr) => {{
+        match $info {
+            $p => $out,
+            // SAFETY: upheld by the user
+            _ => unsafe { std::hint::unreachable_unchecked() },
+        }
+    }};
+}
+
 impl<I: Iterator<Item = TokenResult> + Clone> Parser<I> {
-    /// Peeks at the next token.
-    fn peek(&mut self) -> Option<Token> {
-        self.tokens.clone().next().transpose().unwrap()
+    /// Skips all whitespace tokens.
+    pub fn skip_ws(&mut self) {
+        while let Some(Ok(Token {
+            info: TokenInfo::Whitespace,
+            ..
+        })) = self.tokens.peek()
+        {
+            self.tokens.next();
+        }
     }
 
-    /// Peeks at the next nth token, where when n = 1, it is the same as peek().
-    fn peek_nth(&mut self, n: usize) -> Option<Token> {
-        self.tokens.clone().skip(n - 1).next().transpose().unwrap()
+    /// Resolves the string after escaping all escape sequences.
+    pub fn resolve_string(
+        content: String,
+        flags: StringLiteralFlags,
+        span: Span,
+    ) -> Result<String> {
+        if flags.is_raw() {
+            return Ok(content);
+        }
+
+        let mut result = String::with_capacity(content.len());
+        let mut chars = content.chars().peekable();
+        let mut pos = span.start;
+
+        while let Some(c) = chars.next() {
+            if c == '\\' {
+                pos += 1;
+
+                macro_rules! hex_sequence {
+                    ($length:literal) => {{
+                        let sequence = chars.by_ref().take($length).collect::<String>();
+                        let value = u32::from_str_radix(&sequence, 16).map_err(|_| {
+                            Error::InvalidHexEscapeSequence(
+                                sequence.clone(),
+                                Span::new(pos - 1, pos + 1 + $length),
+                            )
+                        })?;
+
+                        pos += $length;
+                        char::from_u32(value).ok_or(Error::InvalidHexEscapeSequence(
+                            sequence,
+                            Span::new(pos - 1, pos + 1 + $length),
+                        ))?
+                    }};
+                }
+
+                let resolved = match chars.next().ok_or(Error::UnexpectedEof)? {
+                    'n' => '\n',
+                    'r' => '\r',
+                    't' => '\t',
+                    'b' => '\x08',
+                    'f' => '\x0c',
+                    '0' => '\0',
+                    '\'' => '\'',
+                    '"' => '"',
+                    '\\' => '\\',
+                    'x' => hex_sequence!(2),
+                    'u' => hex_sequence!(4),
+                    'U' => hex_sequence!(8),
+                    c => return Err(Error::UnknownEscapeSequence(c, Span::new(pos - 1, pos + 1))),
+                };
+
+                result.push(resolved);
+            }
+
+            result.push(c);
+            pos += 1;
+        }
+
+        Ok(result)
     }
 
-    /// Consumes the next integer literal.
-    pub fn consume_int_literal(&mut self) -> Option<Token> {
-        todo!()
+    /// Parses and consumes the next atom. An atom is the most basic unit of an expression that
+    /// cannot be broken down into other expressions any further.
+    ///
+    /// For example, 1 is an atom, as is "hello" - but 1 + 1 is not, since that can be further
+    /// broken down into two expressions.
+    pub fn consume_atom(&mut self) -> Result<Spanned<Atom>> {
+        consume_token!(self, TokenInfo::IntLiteral(..)).map_token(|info, span| {
+            Spanned(
+                {
+                    let (val, radix) =
+                        assert_token!(@unsafe info: TokenInfo::IntLiteral(i, radix) => (i, radix));
+                    Atom::Int(val, radix)
+                },
+                span,
+            )
+        })
+        .or_else(|_| {
+            consume_token!(self, TokenInfo::FloatLiteral(_))
+                .map_token(|info, span| Spanned(
+                    Atom::Float(assert_token!(@unsafe info: TokenInfo::FloatLiteral(i) => i)),
+                    span,
+                ))
+        })
+        .or_else(|_| {
+            consume_token!(self, TokenInfo::StringLiteral(..))
+                .and_then_token(|info, span| Ok(Spanned(
+                    Atom::String(assert_token!(
+                        @unsafe info: TokenInfo::StringLiteral(s, flags, content_span)
+                            => Self::resolve_string(s, flags, content_span)?
+                    )),
+                    span,
+                )))
+        })
+        .or_else(|_| {
+            consume_token!(self, TokenInfo::Ident(..))
+                .map_token(|info, span| Spanned(
+                    match assert_token!(@unsafe info: TokenInfo::Ident(i) => i).as_str() {
+                        "true" => Atom::Bool(true),
+                        "false" => Atom::Bool(false),
+                        i => Atom::Ident(i.to_string()),
+                    },
+                    span,
+                ))
+        })
     }
 
-    /// Parses and returns the next expression.
-    pub fn consume_expr(&mut self) -> Result<Expr> {
+    /// Parses and consumes the next expression.
+    pub fn consume_expr(&mut self) -> Result<Spanned<Expr>> {
+        self.consume_atom()
+            .map_token(|atom, span| Spanned(Expr::Atom(atom), span))
+            .or_else(|_| {
+                // Parenthesized expression
+                consume_token!(self, TokenInfo::LeftParen).and_then_token(|_, span| {
+                    let expr = self.consume_expr()?;
+                    consume_token!(self, TokenInfo::RightParen)
+                        .map_err(|_| UnmatchedDelimiter(Delimiter::Paren, span))?;
+
+                    Ok(expr)
+                })
+            })
+    }
+
+    /// Parses and consumes the next node.
+    pub fn consume_node(&mut self) -> Result<Spanned<Node>> {
+        self.skip_ws();
         todo!()
     }
 }

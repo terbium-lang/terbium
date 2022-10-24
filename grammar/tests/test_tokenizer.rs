@@ -78,28 +78,28 @@ fn test_tokenizer_strings() {
             ~"raw string"
             ~"raw \ string"
             ~#"raw multi-line string"#
-            #"raw multi-line "quotes inside" string"#
+            #"multi-line "quotes inside" string 123"#
             ###"multiple #"hashes"#"###
             $"interpolated string"
             $#"interpolated multi-line string"#
             ~$"raw interpolated string"
             ~$#"raw interpolated multi-line string"#
         "####,
-        TokenInfo::StringLiteral("single-quoted string".into(), StringLiteralFlags(0)) => 13..35,
-        TokenInfo::StringLiteral("double-quoted string".into(), StringLiteralFlags(0)) => 48..70,
-        TokenInfo::StringLiteral("'nested' string".into(), StringLiteralFlags(0)) => 83..100,
-        TokenInfo::StringLiteral("\\\"escaped quotes\\\"".into(), StringLiteralFlags(0)) => 113..133,
-        TokenInfo::StringLiteral("escaped backslash \\\\".into(), StringLiteralFlags(0)) => 146..168,
-        TokenInfo::StringLiteral("multi-line string".into(), StringLiteralFlags(0)) => 181..202,
-        TokenInfo::StringLiteral("raw string".into(), StringLiteralFlags(1)) => 215..228,
-        TokenInfo::StringLiteral("raw \\ string".into(), StringLiteralFlags(1)) => 241..256,
-        TokenInfo::StringLiteral("raw multi-line string".into(), StringLiteralFlags(1)) => 269..295,
-        TokenInfo::StringLiteral("raw multi-line \"quotes inside\" string".into(), StringLiteralFlags(0)) => 308..349,
-        TokenInfo::StringLiteral("multiple #\"hashes\"#".into(), StringLiteralFlags(0)) => 362..389,
-        TokenInfo::StringLiteral("interpolated string".into(), StringLiteralFlags(2)) => 402..424,
-        TokenInfo::StringLiteral("interpolated multi-line string".into(), StringLiteralFlags(2)) => 437..472,
-        TokenInfo::StringLiteral("raw interpolated string".into(), StringLiteralFlags(3)) => 485..512,
-        TokenInfo::StringLiteral("raw interpolated multi-line string".into(), StringLiteralFlags(3)) => 525..565,
+        TokenInfo::StringLiteral("single-quoted string".into(), StringLiteralFlags(0), Span::new(14, 34)) => 13..35,
+        TokenInfo::StringLiteral("double-quoted string".into(), StringLiteralFlags(0), Span::new(49, 69)) => 48..70,
+        TokenInfo::StringLiteral("'nested' string".into(), StringLiteralFlags(0), Span::new(84, 99)) => 83..100,
+        TokenInfo::StringLiteral("\\\"escaped quotes\\\"".into(), StringLiteralFlags(0), Span::new(114, 132)) => 113..133,
+        TokenInfo::StringLiteral("escaped backslash \\\\".into(), StringLiteralFlags(0), Span::new(147, 167)) => 146..168,
+        TokenInfo::StringLiteral("multi-line string".into(), StringLiteralFlags(0), Span::new(183, 200)) => 181..202,
+        TokenInfo::StringLiteral("raw string".into(), StringLiteralFlags(1), Span::new(217, 227)) => 215..228,
+        TokenInfo::StringLiteral("raw \\ string".into(), StringLiteralFlags(1), Span::new(243, 255)) => 241..256,
+        TokenInfo::StringLiteral("raw multi-line string".into(), StringLiteralFlags(1), Span::new(272, 293)) => 269..295,
+        TokenInfo::StringLiteral("multi-line \"quotes inside\" string 123".into(), StringLiteralFlags(0), Span::new(310, 347)) => 308..349,
+        TokenInfo::StringLiteral("multiple #\"hashes\"#".into(), StringLiteralFlags(0), Span::new(366, 385)) => 362..389,
+        TokenInfo::StringLiteral("interpolated string".into(), StringLiteralFlags(2), Span::new(404, 423)) => 402..424,
+        TokenInfo::StringLiteral("interpolated multi-line string".into(), StringLiteralFlags(2), Span::new(440, 470)) => 437..472,
+        TokenInfo::StringLiteral("raw interpolated string".into(), StringLiteralFlags(3), Span::new(488, 511)) => 485..512,
+        TokenInfo::StringLiteral("raw interpolated multi-line string".into(), StringLiteralFlags(3), Span::new(529, 563)) => 525..565,
     }
 }
 
