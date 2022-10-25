@@ -286,16 +286,6 @@ impl<I: Iterator<Item = TokenResult> + Clone> Parser<I> {
                 ))
         })
         .or_else(|_| {
-            consume_token!(self, TokenInfo::StringLiteral(..))
-                .and_then_token(|info, span| Ok(Spanned(
-                    Atom::String(assert_token!(
-                        @unsafe info: TokenInfo::StringLiteral(s, flags, content_span)
-                            => Self::resolve_string(s, flags, content_span)?
-                    )),
-                    span,
-                )))
-        })
-        .or_else(|_| {
             consume_token!(self, TokenInfo::Ident(..))
                 .map_token(|info, span| Spanned(
                     match assert_token!(@unsafe info: TokenInfo::Ident(i) => i).as_str() {
@@ -305,6 +295,16 @@ impl<I: Iterator<Item = TokenResult> + Clone> Parser<I> {
                     },
                     span,
                 ))
+        })
+        .or_else(|_| {
+            consume_token!(self, TokenInfo::StringLiteral(..))
+                .and_then_token(|info, span| Ok(Spanned(
+                    Atom::String(assert_token!(
+                        @unsafe info: TokenInfo::StringLiteral(s, flags, content_span)
+                            => Self::resolve_string(s, flags, content_span)?
+                    )),
+                    span,
+                )))
         })
     }
 
