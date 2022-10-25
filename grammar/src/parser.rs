@@ -213,10 +213,10 @@ impl<I: Iterator<Item = TokenResult> + Clone> Parser<I> {
         }
 
         let mut result = String::with_capacity(content.len());
-        let mut chars = content.chars().peekable();
+        let mut chars = content.chars();
         let mut pos = span.start;
 
-        while let Some(c) = chars.next() {
+        while let Some(mut c) = chars.next() {
             if c == '\\' {
                 pos += 1;
 
@@ -238,7 +238,7 @@ impl<I: Iterator<Item = TokenResult> + Clone> Parser<I> {
                     }};
                 }
 
-                let resolved = match chars.next().ok_or(Error::UnexpectedEof)? {
+                c = match chars.next().ok_or(Error::UnexpectedEof)? {
                     'n' => '\n',
                     'r' => '\r',
                     't' => '\t',
@@ -253,8 +253,6 @@ impl<I: Iterator<Item = TokenResult> + Clone> Parser<I> {
                     'U' => hex_sequence!(8),
                     c => return Err(Error::UnknownEscapeSequence(c, Span::new(pos - 1, pos + 1))),
                 };
-
-                result.push(resolved);
             }
 
             result.push(c);
@@ -310,19 +308,48 @@ impl<I: Iterator<Item = TokenResult> + Clone> Parser<I> {
         })
     }
 
+    /// Parses and consumes the next unary expression.
+    pub fn consume_unary(&mut self) -> Result<Spanned<Expr>> {
+        #[allow(unused_parens, reason = "parenthesis are needed here")]
+        consume_token!(self, (TokenInfo::Plus | TokenInfo::Minus | TokenInfo::Not)).and_then_token(
+            |info, span| {
+                Ok(Spanned(
+                    Expr::UnaryOp {
+                        op: Spanned(
+                            match info {
+                                TokenInfo::Plus => UnaryOp::Plus,
+                                TokenInfo::Minus => UnaryOp::Minus,
+                                TokenInfo::Not => UnaryOp::Not,
+                                // SAFETY: checked above in macro call
+                                _ => unsafe { std::hint::unreachable_unchecked() },
+                            },
+                            span,
+                        ),
+                        expr: box self.consume_expr()?,
+                    },
+                    span,
+                ))
+            },
+        )
+    }
+
     /// Parses and consumes the next expression.
     pub fn consume_expr(&mut self) -> Result<Spanned<Expr>> {
-        self.consume_atom()
-            .map_token(|atom, span| Spanned(Expr::Atom(atom), span))
-            .or_else(|_| {
-                // Parenthesized expression
-                consume_token!(self, TokenInfo::LeftParen).and_then_token(|_, span| {
-                    let expr = self.consume_expr()?;
-                    consume_token!(self, TokenInfo::RightParen)
-                        .map_err(|_| UnmatchedDelimiter(Delimiter::Paren, span))?;
+        // Parenthesized expression
+        consume_token!(self, TokenInfo::LeftParen)
+            .and_then_token(|_, span| {
+                let expr = self.consume_expr()?;
+                consume_token!(self, TokenInfo::RightParen)
+                    .map_err(|_| UnmatchedDelimiter(Delimiter::Paren, span))?;
 
-                    Ok(expr)
-                })
+                Ok(expr)
+            })
+            // Unary expression
+            .or_else(|_| self.consume_unary())
+            // Atom
+            .or_else(|_| {
+                self.consume_atom()
+                    .map_token(|atom, span| Spanned(Expr::Atom(atom), span))
             })
     }
 

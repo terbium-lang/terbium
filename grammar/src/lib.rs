@@ -1,4 +1,6 @@
 #![feature(const_trait_impl)]
+#![feature(box_syntax)]
+#![feature(lint_reasons)]
 
 pub mod ast;
 pub mod parser;

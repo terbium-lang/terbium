@@ -360,44 +360,39 @@ impl<'a> TokenReader<'a> {
     ) -> Option<(String, Span)> {
         let mut content = String::new();
         let start = self.cursor.pos();
-        loop {
-            while let Some(c) = self.cursor.advance() {
-                if self.cursor.is_eof() {
-                    // TODO: this could be an error
-                    return None;
-                }
 
-                if c == '\\' && !raw {
-                    content.push('\\');
-                    content.push(self.cursor.advance()?);
-                    continue;
-                }
-                if c == target {
-                    break;
-                }
-
-                content.push(c);
-            }
-
-            let end = self.cursor.pos() - 1;
-            let mut ending = 0;
-            // Check if hashes match starting hashes
-            while self.cursor.peek() == Some('#') && ending < hashes {
-                ending += 1;
-                self.cursor.advance();
-            }
-
-            if ending != hashes {
-                // Re-add the quote and hashes to the contents of the string
-                content.push(target);
-                std::iter::repeat('#')
-                    .take(ending as usize)
-                    .for_each(|c| content.push(c));
+        while let Some(c) = self.cursor.advance() {
+            if c == '\\' && !raw {
+                content.push('\\');
+                content.push(self.cursor.advance()?);
                 continue;
             }
 
-            break Some((content, Span::new(start, end)));
+            if c == target {
+                let end = self.cursor.pos() - 1;
+                let mut ending = 0;
+                // Check if hashes match starting hashes
+                while self.cursor.peek() == Some('#') && ending < hashes {
+                    ending += 1;
+                    self.cursor.advance();
+                }
+
+                if ending != hashes {
+                    // Re-add the quote and hashes to the contents of the string
+                    content.push(target);
+                    std::iter::repeat('#')
+                        .take(ending as usize)
+                        .for_each(|c| content.push(c));
+                    continue;
+                }
+
+                return Some((content, Span::new(start, end)));
+            }
+
+            content.push(c);
         }
+
+        None
     }
 
     /// Possibly consumes a string literal. Returns None if no string was found.
