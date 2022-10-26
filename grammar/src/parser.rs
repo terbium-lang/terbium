@@ -1,4 +1,7 @@
-use super::{ast::*, Span, Token, TokenInfo, TokenReader, TokenizationError};
+use super::{
+    ast::{Atom, Delimiter, Expr, Node, Spanned, UnaryOp},
+    Span, Token, TokenInfo, TokenReader, TokenizationError,
+};
 use crate::parser::Error::UnmatchedDelimiter;
 use crate::StringLiteralFlags;
 use std::collections::VecDeque;
@@ -155,16 +158,6 @@ trait ResultExt<T> {
     fn and_then_span<U>(self, f: impl FnOnce(T, Span) -> Result<U>) -> Result<U>;
 }
 
-impl ResultExt<TokenInfo> for Result<Token> {
-    fn map_span<U>(self, f: impl FnOnce(TokenInfo, Span) -> U) -> Result<U> {
-        self.map(|token| f(token.info, token.span))
-    }
-
-    fn and_then_span<U>(self, f: impl FnOnce(TokenInfo, Span) -> Result<U>) -> Result<U> {
-        self.and_then(|token| f(token.info, token.span))
-    }
-}
-
 impl<T> ResultExt<T> for Result<Spanned<T>> {
     fn map_span<U>(self, f: impl FnOnce(T, Span) -> U) -> Result<U> {
         self.map(|Spanned(value, span)| f(value, span))
@@ -192,13 +185,10 @@ macro_rules! consume_token {
     ($self:expr, $p:pat) => {{
         loop {
             match $self.tokens.peek() {
-                Some(Ok(Token {
-                    info: TokenInfo::Whitespace,
-                    ..
-                })) => {
+                Some(Ok(Spanned(TokenInfo::Whitespace, _))) => {
                     $self.tokens.next();
                 }
-                Some(Ok(t @ Token { info: $p, .. })) => {
+                Some(Ok(t @ Spanned($p, _))) => {
                     $self.tokens.next();
                     break Ok(t);
                 }
@@ -229,11 +219,7 @@ macro_rules! assert_token {
 impl<I: Iterator<Item = TokenResult> + Clone> Parser<I> {
     /// Skips all whitespace tokens.
     pub fn skip_ws(&mut self) {
-        while let Some(Ok(Token {
-            info: TokenInfo::Whitespace,
-            ..
-        })) = self.tokens.peek()
-        {
+        while let Some(Ok(Spanned(TokenInfo::Whitespace, _))) = self.tokens.peek() {
             self.tokens.next();
         }
     }
@@ -366,27 +352,30 @@ impl<I: Iterator<Item = TokenResult> + Clone> Parser<I> {
     /// Parses the next attribute access expression.
     pub fn consume_attr_access(&mut self) -> Result<Spanned<Expr>> {
         let original = self.consume_unambiguous_expr()?;
-        let mut current = original;
 
-        while let Ok(token) = consume_token!(self, TokenInfo::Dot) {
-            let (ident, span) = consume_token!(self, TokenInfo::Ident(_))?.split();
+        Ok(std::iter::repeat_with(|| {
+            consume_token!(self, TokenInfo::Dot).and_then_span(|_, dot| {
+                consume_token!(self, TokenInfo::Ident(_)).map_span(|token, span| (token, span, dot))
+            })
+        })
+        .map_while(Result::ok)
+        .fold(original, |current, (attr, span, dot)| {
             let span = current.span().merge(span);
 
-            current = Spanned(
+            Spanned(
                 Expr::Attr {
                     subject: box current,
-                    dot: token.span,
-                    attr: assert_token!(@unsafe ident: TokenInfo::Ident(i) => i),
+                    dot,
+                    attr: assert_token!(@unsafe attr: TokenInfo::Ident(i) => i),
                 },
                 span,
             )
-        }
-
-        Ok(current)
+        }))
     }
 
     /// Parses and consumes the next unary expression.
     pub fn consume_unary(&mut self) -> Result<Spanned<Expr>> {
+        #[allow(clippy::needless_collect, reason = "see comment below")]
         #[allow(unused_parens, reason = "parentheses are required as per macro rules")]
         let tokens = std::iter::repeat_with(|| {
             consume_token!(
@@ -399,10 +388,10 @@ impl<I: Iterator<Item = TokenResult> + Clone> Parser<I> {
 
         // We must collect then re-iterate over the tokens since otherwise there will be two
         // mutable borrows of self.
-        tokens
+        Ok(tokens
             .into_iter()
-            .rfold(self.consume_attr_access(), |expr, op| {
-                let (op, op_span) = op.split();
+            .rfold(self.consume_attr_access()?, |expr, op| {
+                let (op, op_span) = op.into_inner();
                 let op = match op {
                     TokenInfo::Plus => UnaryOp::Plus,
                     TokenInfo::Minus => UnaryOp::Minus,
@@ -411,16 +400,16 @@ impl<I: Iterator<Item = TokenResult> + Clone> Parser<I> {
                     // SAFETY: checked when op token was consumed
                     _ => unsafe { std::hint::unreachable_unchecked() },
                 };
-                let (expr, span) = expr?.into_inner();
+                let (expr, span) = expr.into_inner();
 
-                Ok(Spanned(
+                Spanned(
                     Expr::UnaryOp {
                         op: Spanned(op, op_span),
                         expr: box Spanned(expr, span),
                     },
                     op_span.merge(span),
-                ))
-            })
+                )
+            }))
     }
 
     /// Parses and consumes the next expression.
@@ -438,7 +427,7 @@ impl<I: Iterator<Item = TokenResult> + Clone> Parser<I> {
 impl<'a> Parser<TokenReader<'a>> {
     /// Creates a new parser from a string slice.
     #[must_use]
-    pub fn from_str(source: &'a str) -> Self {
+    pub fn new(source: &'a str) -> Self {
         Self::from(TokenReader::new(source))
     }
 }

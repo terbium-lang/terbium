@@ -1,4 +1,4 @@
-use super::Span;
+use super::{Span, Spanned};
 use std::str::Chars;
 use unicode_xid::UnicodeXID;
 
@@ -13,16 +13,19 @@ impl StringLiteralFlags {
     pub const INTERPOLATED: Self = Self(1 << 1);
 
     /// The bitflags represented as bits.
+    #[must_use]
     pub const fn bits(self) -> u8 {
         self.0
     }
 
     /// If the first bit is set.
+    #[must_use]
     pub const fn is_raw(self) -> bool {
         self.bits() & Self::RAW.bits() != 0
     }
 
     /// If the second bit is set.
+    #[must_use]
     pub const fn is_interpolated(self) -> bool {
         self.bits() & Self::INTERPOLATED.bits() != 0
     }
@@ -133,20 +136,7 @@ pub enum TokenInfo {
 }
 
 /// Represents a lexical token in the source code.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Token {
-    /// Information and classification of the token.
-    pub info: TokenInfo,
-    /// The span of the token in the source code.
-    pub span: Span,
-}
-
-impl Token {
-    /// Splits this token into a tuple (info, span).
-    pub fn split(self) -> (TokenInfo, Span) {
-        (self.info, self.span)
-    }
-}
+pub type Token = Spanned<TokenInfo>;
 
 /// Information about a tokenization error.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -222,7 +212,7 @@ pub struct TokenReader<'a> {
 }
 
 // Copied from rustc-lexer
-fn is_whitespace(c: char) -> bool {
+const fn is_whitespace(c: char) -> bool {
     matches!(
         c,
         // Usual ASCII suspects
@@ -253,6 +243,7 @@ fn is_ident_start(c: char) -> bool {
 
 impl<'a> TokenReader<'a> {
     /// Creates a token reader over the given source string.
+    #[must_use = "token readers are lazy and do nothing unless iterated"]
     pub fn new(source: &'a str) -> Self {
         Self {
             cursor: Cursor::new(source),
@@ -328,13 +319,13 @@ impl<'a> TokenReader<'a> {
                 if let Some(c @ ('/' | '!')) = self.cursor.peek() {
                     self.cursor.advance();
                     let line = self.consume_line();
-                    Some(Token {
-                        info: TokenInfo::DocComment {
+                    Some(Spanned(
+                        TokenInfo::DocComment {
                             content: line,
                             is_inner: c == '!',
                         },
-                        span: Span::new(start, self.cursor.pos()),
-                    })
+                        Span::new(start, self.cursor.pos()),
+                    ))
                 } else {
                     self.discard_line();
                     None
@@ -345,10 +336,7 @@ impl<'a> TokenReader<'a> {
                 self.discard_block_comment();
                 None
             }
-            _ => Some(Token {
-                info: TokenInfo::Divide,
-                span: Span::single(start),
-            }),
+            _ => Some(Spanned(TokenInfo::Divide, Span::single(start))),
         }
     }
 
@@ -437,12 +425,9 @@ impl<'a> TokenReader<'a> {
             return None;
         }
 
-        let (content, content_span) = match self.consume_string_content(hashes, quote, is_raw) {
-            Some(content) => content,
-            None => {
-                self.cursor = original;
-                return None;
-            }
+        let Some((content, content_span)) = self.consume_string_content(hashes, quote, is_raw) else {
+            self.cursor = original;
+            return None;
         };
 
         let mut flags = StringLiteralFlags::default();
@@ -453,14 +438,15 @@ impl<'a> TokenReader<'a> {
             flags |= StringLiteralFlags::INTERPOLATED;
         }
 
-        Some(Token {
-            info: TokenInfo::StringLiteral(content, flags, content_span),
-            span: Span::new(start, self.pos()),
-        })
+        Some(Spanned(
+            TokenInfo::StringLiteral(content, flags, content_span),
+            Span::new(start, self.pos()),
+        ))
     }
 
     /// Consumes a number (integer/float literal), returning None if no number was found.
     /// This assumes the cursor is before the first digit.
+    #[allow(clippy::cognitive_complexity)]
     fn consume_number(&mut self) -> Option<Token> {
         let next = self.cursor.peek()?;
         // For now, let's not allow float literals to start with . due to ambiguities. Allowing .
@@ -578,18 +564,17 @@ impl<'a> TokenReader<'a> {
         }
 
         Some(if is_float {
-            Token {
-                info: TokenInfo::FloatLiteral(content),
-                span: Span::new(start, self.pos()),
-            }
+            Spanned(
+                TokenInfo::FloatLiteral(content),
+                Span::new(start, self.pos()),
+            )
         } else {
-            Token {
-                info: TokenInfo::IntLiteral(content, radix),
-                span: Span::new(start, self.pos()),
-            }
+            Spanned(
+                TokenInfo::IntLiteral(content, radix),
+                Span::new(start, self.pos()),
+            )
         })
     }
-
     /// Consumes the next identifier and returns it as a token, but returns None if no identifier
     /// was found immediately after the cursor.
     fn consume_ident(&mut self) -> Option<Token> {
@@ -609,10 +594,10 @@ impl<'a> TokenReader<'a> {
             }
         }
 
-        Some(Token {
-            info: TokenInfo::Ident(content),
-            span: Span::new(start, self.pos()),
-        })
+        Some(Spanned(
+            TokenInfo::Ident(content),
+            Span::new(start, self.pos()),
+        ))
     }
 }
 
@@ -623,10 +608,10 @@ impl Iterator for TokenReader<'_> {
         let start = self.pos();
 
         if self.consume_whitespace() {
-            return Some(Ok(Token {
-                info: TokenInfo::Whitespace,
-                span: Span::new(start, self.pos()),
-            }));
+            return Some(Ok(Spanned(
+                TokenInfo::Whitespace,
+                Span::new(start, self.pos()),
+            )));
         }
 
         macro_rules! consider {
@@ -684,9 +669,6 @@ impl Iterator for TokenReader<'_> {
             }
         };
 
-        Some(Ok(Token {
-            info,
-            span: Span::new(start, self.pos()),
-        }))
+        Some(Ok(Spanned(info, Span::new(start, self.pos()))))
     }
 }

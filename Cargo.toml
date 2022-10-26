@@ -22,10 +22,11 @@ members = ["grammar"]
 grammar = { path = "grammar" }
 
 [profile.dev]
-opt-level = 2
+opt-level = 0
 split-debuginfo = "unpacked"
 
 [profile.release]
 lto = "fat"
 strip = true
 codegen-units = 1
+opt-level = 3

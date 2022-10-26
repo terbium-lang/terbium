@@ -4,36 +4,42 @@ use super::{Radix, Span};
 use std::fmt::{self, Formatter};
 
 /// A compound of a span and a value.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Spanned<T>(pub T, pub Span);
 
 impl<T> Spanned<T> {
     /// Returns the value.
     #[must_use]
-    pub fn value(&self) -> &T {
+    pub const fn value(&self) -> &T {
         &self.0
     }
 
     /// Returns the span.
     #[must_use]
-    pub fn span(&self) -> Span {
+    pub const fn span(&self) -> Span {
         self.1
     }
 
     /// Consumes and maps the inner value.
+    #[must_use]
+    #[allow(
+        clippy::missing_const_for_fn,
+        reason = "closure is not supposed to be const"
+    )]
     pub fn map<U>(self, f: impl FnOnce(T) -> U) -> Spanned<U> {
         Spanned(f(self.0), self.1)
     }
 
     /// Returns a tuple (value, span).
     #[must_use]
+    #[allow(clippy::missing_const_for_fn, reason = "destructors can't be const")]
     pub fn into_inner(self) -> (T, Span) {
         (self.0, self.1)
     }
 
     /// Returns a tuple (&value, span).
     #[must_use]
-    pub fn as_inner(&self) -> (&T, Span) {
+    pub const fn as_inner(&self) -> (&T, Span) {
         (&self.0, self.1)
     }
 }
@@ -150,7 +156,7 @@ pub enum Delimiter {
 impl Delimiter {
     /// Returns the opening delimiter.
     #[must_use]
-    pub fn open(self) -> char {
+    pub const fn open(self) -> char {
         match self {
             Self::Paren => '(',
             Self::Bracket => '[',
@@ -161,7 +167,7 @@ impl Delimiter {
 
     /// Returns the closing delimiter.
     #[must_use]
-    pub fn close(self) -> char {
+    pub const fn close(self) -> char {
         match self {
             Self::Paren => ')',
             Self::Bracket => ']',

@@ -1,4 +1,4 @@
-use grammar::{Radix, Span, StringLiteralFlags, Token, TokenInfo, TokenReader};
+use grammar::{Radix, Span, Spanned, StringLiteralFlags, Token, TokenInfo, TokenReader};
 
 pub struct WhitespaceDiscarder<'a> {
     inner: TokenReader<'a>,
@@ -10,10 +10,7 @@ impl Iterator for WhitespaceDiscarder<'_> {
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             match self.inner.next() {
-                Some(Ok(Token {
-                    info: TokenInfo::Whitespace,
-                    ..
-                })) => continue,
+                Some(Ok(Spanned(TokenInfo::Whitespace, _))) => continue,
                 other => return other.map(|r| r.unwrap()),
             }
         }
@@ -24,7 +21,7 @@ macro_rules! assert_tokens {
     ($tokens:expr, $($info:expr => $start:literal .. $end:literal),* $(,)?) => {
         let mut tokens = WhitespaceDiscarder { inner: TokenReader::new($tokens) };
         $(
-            assert_eq!(tokens.next(), Some(Token { info: $info, span: Span::new($start, $end) }));
+            assert_eq!(tokens.next(), Some(Spanned($info, Span::new($start, $end))));
         )*
         assert_eq!(tokens.next(), None);
     };
