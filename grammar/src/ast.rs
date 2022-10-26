@@ -53,6 +53,8 @@ pub enum UnaryOp {
     Minus,
     /// The `!` operator.
     Not,
+    /// The `~` operator.
+    BitNot,
 }
 
 impl fmt::Display for UnaryOp {
@@ -61,6 +63,7 @@ impl fmt::Display for UnaryOp {
             Self::Plus => write!(f, "+"),
             Self::Minus => write!(f, "-"),
             Self::Not => write!(f, "!"),
+            Self::BitNot => write!(f, "~"),
         }
     }
 }

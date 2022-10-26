@@ -128,6 +128,8 @@ pub enum TokenInfo {
     Or,
     /// Modulus, `%`.
     Modulus,
+    /// Tilde, `~`.
+    Tilde,
 }
 
 /// Represents a lexical token in the source code.
@@ -167,7 +169,7 @@ pub struct Error {
 struct Cursor<'a> {
     inner: Chars<'a>,
     pos: usize,
-    len: usize,
+    // len: usize,
 }
 
 impl<'a> Cursor<'a> {
@@ -175,7 +177,7 @@ impl<'a> Cursor<'a> {
         Self {
             inner: source.chars(),
             pos: 0,
-            len: source.len(),
+            // len: source.len(),
         }
     }
 
@@ -207,10 +209,10 @@ impl<'a> Cursor<'a> {
         self.inner.next()
     }
 
-    /// Whether the cursor is at the end of the source.
-    fn is_eof(&self) -> bool {
-        self.pos >= self.len
-    }
+    // /// Whether the cursor is at the end of the source.
+    // fn is_eof(&self) -> bool {
+    //     self.pos >= self.len
+    // }
 }
 
 /// A reader over a source string that can be used to lex tokens.
@@ -412,9 +414,7 @@ impl<'a> TokenReader<'a> {
         // Capture the current state so we can still recover later tokens.
         // Note that when propagating .advance()? or .peek()? we don't need to restore the cursor
         // since there is nothing else for the cursor to read nevertheless.
-        let mut original = self.cursor.clone();
-        // Advance the cursor to avoid infinite recursion
-        original.advance();
+        let original = self.cursor.clone();
 
         let start = self.cursor.pos();
         // Advance to hashes or quote
@@ -675,6 +675,7 @@ impl Iterator for TokenReader<'_> {
             '&' => TokenInfo::And,
             '|' => TokenInfo::Or,
             '%' => TokenInfo::Modulus,
+            '~' => TokenInfo::Tilde,
             c => {
                 return Some(Err(Error {
                     span: Span::new(start, self.pos()),
