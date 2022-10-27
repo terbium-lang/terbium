@@ -2,7 +2,7 @@ name: Main
 
 on:
   push:
-    branches: [main, staging, try]
+    branches: ['**']
   pull_request:
     branches: ['**']
 
@@ -14,13 +14,12 @@ jobs:
     name: Rustfmt
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Install latest nightly with rustfmt
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: nightly
-          override: true
           components: rustfmt
 
       - name: Check format
@@ -33,115 +32,35 @@ jobs:
       - uses: actions/checkout@v2
 
       - name: Install latest nightly with clippy
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: nightly
-          override: true
           components: clippy
-      
-      - name: Cache LLVM and Clang
-        id: cache-llvm
-        uses: actions/cache@v2
-        with:
-          path: |
-            C:/Program Files/LLVM
-            ./llvm
-          key: llvm-14.0
-
-      - name: Install LLVM and Clang
-        uses: KyleMayes/install-llvm-action@v1
-        with:
-          version: "14.0"
-          cached: ${{ steps.cache-llvm.outputs.cache-hit }}
 
       - name: Setup cache
-        uses: Swatinem/rust-cache@v1
+        uses: Swatinem/rust-cache@v2
 
       - name: Clippy lint
-        run: cargo clippy --workspace --all-features -- -D clippy::all -D clippy::pedantic -D clippy::nursery -D clippy::cargo
-
-  compile_release:
-    name: Compile in release mode
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-latest
-          - os: ubuntu-latest
-          - os: windows-latest
-            ext: ".exe"
-
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Install latest nightly
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: nightly
-          override: true
-
-      - name: Cache LLVM and Clang
-        id: cache-llvm
-        uses: actions/cache@v2
-        with:
-          path: |
-            C:/Program Files/LLVM
-            ./llvm
-          key: llvm-14.0
-
-      - name: Install LLVM and Clang
-        uses: KyleMayes/install-llvm-action@v1
-        with:
-          version: "14.0"
-          cached: ${{ steps.cache-llvm.outputs.cache-hit }}
-
-      - name: Setup cache
-        uses: Swatinem/rust-cache@v1
-
-      - name: Build
-        run: cargo build --verbose --release
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: ${{ matrix.os }}-release
-          path: target/release/terbium${{ matrix.ext }}
+        run: cargo clippy --workspace --all-features -- -D clippy::all -D clippy::pedantic -D clippy::nursery
 
   test:
-    name: Test
     strategy:
       fail-fast: false
       matrix:
         os: [macos-latest, ubuntu-latest, windows-latest]
 
     runs-on: ${{ matrix.os }}
+
     steps:
       - uses: actions/checkout@v3
 
       - name: Install latest nightly
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: nightly
-          override: true
-
-      - name: Cache LLVM and Clang
-        id: cache-llvm
-        uses: actions/cache@v2
-        with:
-          path: |
-            C:/Program Files/LLVM
-            ./llvm
-          key: llvm-14.0
-
-      - name: Install LLVM and Clang
-        uses: KyleMayes/install-llvm-action@v1
-        with:
-          version: "14.0"
-          cached: ${{ steps.cache-llvm.outputs.cache-hit }}
 
       - name: Setup cache
-        uses: Swatinem/rust-cache@v1
+        uses: Swatinem/rust-cache@v2
 
       - name: Run tests
         run: cargo test --verbose --workspace
@@ -153,36 +72,19 @@ jobs:
           path: target/debug/terbium*
 
   miri_test:
-    name: Miri Test
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Install latest nightly with miri
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: nightly
-          override: true
           components: miri
 
-      - name: Cache LLVM and Clang
-        id: cache-llvm
-        uses: actions/cache@v2
-        with:
-          path: |
-            C:/Program Files/LLVM
-            ./llvm
-          key: llvm-14.0
-
-      - name: Install LLVM and Clang
-        uses: KyleMayes/install-llvm-action@v1
-        with:
-          version: "14.0"
-          cached: ${{ steps.cache-llvm.outputs.cache-hit }}
-
       - name: Setup cache
-        uses: Swatinem/rust-cache@v1
+        uses: Swatinem/rust-cache@v2
 
       - name: Setup miri
         run: cargo miri setup
@@ -190,36 +92,21 @@ jobs:
       - name: Run miri test
         run: cargo miri test --verbose --workspace
   
-  wasm:
-    name: Wasm Test
+  wasm_test:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v3
       
       - name: Install latest nightly
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: nightly
           override: true
           target: wasm32-unknown-unknown
 
-      - name: Cache LLVM and Clang
-        id: cache-llvm
-        uses: actions/cache@v2
-        with:
-          path: |
-            C:/Program Files/LLVM
-            ./llvm
-          key: llvm-14.0
-
-      - name: Install LLVM and Clang
-        uses: KyleMayes/install-llvm-action@v1
-        with:
-          version: "14.0"
-          cached: ${{ steps.cache-llvm.outputs.cache-hit }}
-
       - name: Setup cache
-        uses: Swatinem/rust-cache@v1
+        uses: Swatinem/rust-cache@v2
       
       - name: Build WASM
         run: cargo build --verbose --target wasm32-unknown-unknown
@@ -229,3 +116,64 @@ jobs:
         with:
           name: wasm-debug
           path: target/wasm32-unknown-unknown/debug/terbium.wasm
+
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            name: "x86-64-apple-darwin"
+          - os: ubuntu-latest
+            name: "x86_64-unknown-linux-gnu"
+          - os: windows-latest
+            name: "x86-64-pc-windows-msvc"
+            ext: ".exe"
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install latest nightly
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: nightly
+
+      - name: Setup cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --verbose --release
+
+      - name: Rename bin
+        run: mv target/release/terbium${{ matrix.ext }} ./${{ matrix.name }}${{ matrix.ext }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: releases
+          path: ${{ matrix.name }}${{ matrix.ext }}
+
+  nightly-release:
+    runs-on: ubuntu-latest
+    needs: [build]
+
+    steps:
+      - name: Retrieve artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: releases
+          path: releases
+
+      - name: GitHub nightly release
+        run: |
+          git tag -d nightly || true
+          git push origin --delete nightly || true
+          git tag nightly
+          git push origin nightly
+          gh release delete ${{ env.VERSION }} -y || true
+          gh release create ${{ env.VERSION }} -t "Nightly" -n "$(git rev-parse HEAD | cut -c 1-7) | $(git log -1 --pretty=%B)" ${{ env.FILES }}
+        env:
+          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
+          VERSION: 'nightly'
+          FILES: releases/*
