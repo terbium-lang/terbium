@@ -87,6 +87,8 @@ pub enum BinaryOp {
     Div,
     /// The `%` operator.
     Mod,
+    /// The `**` operator.
+    Pow,
     /// The `==` operator.
     Eq,
     /// The `!=` operator.
@@ -123,6 +125,7 @@ impl fmt::Display for BinaryOp {
             Self::Mul => write!(f, "*"),
             Self::Div => write!(f, "/"),
             Self::Mod => write!(f, "%"),
+            Self::Pow => write!(f, "**"),
             Self::Eq => write!(f, "=="),
             Self::Ne => write!(f, "!="),
             Self::Lt => write!(f, "<"),
