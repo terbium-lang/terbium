@@ -142,6 +142,9 @@ jobs:
       - name: Setup cache
         uses: Swatinem/rust-cache@v2
 
+      - name: Install target
+        run: rustup target add ${{ matrix.target }}
+
       - name: Build
         run: cargo build --verbose --release --target ${{ matrix.target }}
 
