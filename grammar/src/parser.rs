@@ -2,11 +2,8 @@ use super::{
     ast::{Atom, BinaryOp, Delimiter, Expr, Node, Spanned, UnaryOp},
     Span, StringLiteralFlags, Token, TokenInfo, TokenReader, TokenizationError,
 };
-use std::collections::VecDeque;
-use std::ops::{Deref, DerefMut};
 use std::result::Result as StdResult;
 
-type TokenResult = StdResult<Token, TokenizationError>;
 type Result<T> = StdResult<T, Error>;
 
 /// Represents an error that occured during parsing.
@@ -27,128 +24,42 @@ pub enum Error {
     InvalidHexEscapeSequence(String, Span),
 }
 
-/// A token peeker that saves all token peeks.
-#[derive(Clone)]
-pub struct Peeker<I: Iterator + Clone>
-where
-    I::Item: Clone,
-{
-    /// The iterator that is being peeked.
-    iter: I, // Honestly, immediately having a Vec of tokens might become more efficient than this in the long run.
-    /// A clone of the original iterator to peek tokens.
-    peeker: I,
-    /// The peeked tokens.
-    peeked: VecDeque<I::Item>,
-    // /// A `Vec` of items starting from the previous checkpoint.
-    // checkpoint: Option<VecDeque<I::Item>>,
-    // /// Whether the peeker is actively consuming the checkpoint.
-    // consuming_checkpoint: bool,
+/// A cursor over a collection of tokens.
+#[derive(Clone, Default)]
+pub struct TokenCursor {
+    tokens: Vec<Token>,
+    pos: usize,
 }
 
-impl<I: Iterator + Clone> Peeker<I>
-where
-    I::Item: Clone,
-{
-    /// Creates a new peeker from the given iterator.
-    pub fn new(iter: I) -> Self {
+impl TokenCursor {
+    fn new(tokens: Vec<Token>) -> Self {
         Self {
-            peeker: iter.clone(),
-            peeked: VecDeque::new(),
-            iter,
-            // checkpoint: None,
-            // consuming_checkpoint: false,
+            tokens,
+            ..Default::default()
         }
     }
 
-    /// Peeks the next token.
-    pub fn peek(&mut self) -> Option<I::Item> {
-        self.peeked.get(0).cloned().or_else(|| {
-            let value = self.peeker.next()?;
-            self.peeked.push_back(value.clone());
-            Some(value)
-        })
+    /// Peeks at the next token.
+    #[must_use]
+    pub fn peek(&self) -> Option<Token> {
+        self.tokens.get(self.pos).cloned()
     }
-
-    /// Peeks the nth token, where for n = 1 this is the same as peek().
-    pub fn peek_nth(&mut self, n: usize) -> Option<I::Item> {
-        if n == 1 {
-            return self.peek();
-        }
-        if self.peeked.len() >= n {
-            return self.peeked.get(n - 1).cloned();
-        }
-        for _ in 0..n - self.peeked.len() {
-            self.peeked.push_back(self.peeker.next()?);
-        }
-        self.peeked.back().cloned()
-    }
-
-    // /// Sets the current position as a checkpoint.
-    // pub fn checkpoint(&mut self) {
-    //     self.checkpoint = Some(VecDeque::new());
-    // }
-    //
-    // /// Reverts to the last checkpoint.
-    // pub fn revert(&mut self) {
-    //     self.consuming_checkpoint = true;
-    // }
 }
 
-impl<I: Iterator + Clone> Iterator for Peeker<I>
-where
-    I::Item: Clone,
-{
-    type Item = I::Item;
+impl Iterator for TokenCursor {
+    type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.peeked.pop_front().or_else(|| self.iter.next())
-
-        // if let Some(checkpoint) = &mut self.checkpoint {
-        //     if self.consuming_checkpoint {
-        //         if let Some(value) = checkpoint.pop_front() {
-        //             return Some(value);
-        //         } else {
-        //             self.consuming_checkpoint = false;
-        //             self.checkpoint = None;
-        //         }
-        //     }
-        // }
-        //
-        // let value = self.peeked.pop_front().or_else(|| self.iter.next())?;
-        // if !self.consuming_checkpoint {
-        //     if let Some(checkpoint) = &mut self.checkpoint {
-        //         checkpoint.push_back(value.clone());
-        //     }
-        // }
-        //
-        // Some(value)
-    }
-}
-
-impl<I: Iterator + Clone> Deref for Peeker<I>
-where
-    I::Item: Clone,
-{
-    type Target = I;
-
-    fn deref(&self) -> &Self::Target {
-        &self.iter
-    }
-}
-
-impl<I: Iterator + Clone> DerefMut for Peeker<I>
-where
-    I::Item: Clone,
-{
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.iter
+        let token = self.tokens.get(self.pos)?;
+        self.pos += 1;
+        Some(token.clone())
     }
 }
 
 /// Parses a token stream into an AST.
 #[derive(Clone)]
-pub struct Parser<I: Iterator<Item = TokenResult> + Clone> {
-    tokens: Peeker<I>,
+pub struct Parser {
+    tokens: TokenCursor,
 }
 
 trait ResultExt<T> {
@@ -170,12 +81,11 @@ macro_rules! consume_token {
     (@no_ws $self:expr, $p:pat) => {{
         loop {
             match $self.tokens.peek() {
-                Some(Ok(t @ Spanned($p, _))) => {
+                Some(t @ Spanned($p, _)) => {
                     $self.tokens.next();
                     break Ok(t);
                 }
-                Some(Ok(other)) => break Err(Error::UnexpectedToken(other)),
-                Some(Err(e)) => break Err(Error::Tokenization(e)),
+                Some(other) => break Err(Error::UnexpectedToken(other)),
                 None => break Err(Error::UnexpectedEof),
             }
         }
@@ -183,15 +93,14 @@ macro_rules! consume_token {
     ($self:expr, $p:pat) => {{
         loop {
             match $self.tokens.peek() {
-                Some(Ok(Spanned(TokenInfo::Whitespace, _))) => {
+                Some(Spanned(TokenInfo::Whitespace, _)) => {
                     $self.tokens.next();
                 }
-                Some(Ok(t @ Spanned($p, _))) => {
+                Some(t @ Spanned($p, _)) => {
                     $self.tokens.next();
                     break Ok(t);
                 }
-                Some(Ok(other)) => break Err(Error::UnexpectedToken(other)),
-                Some(Err(e)) => break Err(Error::Tokenization(e)),
+                Some(other) => break Err(Error::UnexpectedToken(other)),
                 None => break Err(Error::UnexpectedEof),
             }
         }
@@ -214,10 +123,10 @@ macro_rules! assert_token {
     }};
 }
 
-impl<I: Iterator<Item = TokenResult> + Clone> Parser<I> {
+impl Parser {
     /// Skips all whitespace tokens.
     pub fn skip_ws(&mut self) {
-        while let Some(Ok(Spanned(TokenInfo::Whitespace, _))) = self.tokens.peek() {
+        while let Some(Spanned(TokenInfo::Whitespace, _)) = self.tokens.peek() {
             self.tokens.next();
         }
     }
@@ -415,8 +324,7 @@ impl<I: Iterator<Item = TokenResult> + Clone> Parser<I> {
         #[allow(clippy::needless_collect, reason = "see comment in consume_unary")]
         // This case is a bit special, since this operator is right-associative.
         let tokens = std::iter::repeat_with(|| {
-            // TODO: this recovery system is inefficient
-            let fallback = self.tokens.clone();
+            let fallback = self.tokens.pos;
 
             // To conform to right-associtivity, we must immediately begin consuming tokens
             self.consume_unary()
@@ -428,7 +336,7 @@ impl<I: Iterator<Item = TokenResult> + Clone> Parser<I> {
                 // ...however, if there is a problem consuming, reset the token stream to the
                 // previous position.
                 .map_err(|e| {
-                    self.tokens = fallback;
+                    self.tokens.pos = fallback;
                     e
                 })
         })
@@ -466,21 +374,11 @@ impl<I: Iterator<Item = TokenResult> + Clone> Parser<I> {
     }
 }
 
-impl<'a> Parser<TokenReader<'a>> {
+impl Parser {
     /// Creates a new parser from a string slice.
-    #[must_use]
-    pub fn new(source: &'a str) -> Self {
-        Self::from(TokenReader::new(source))
-    }
-}
-
-impl<I: IntoIterator<Item = TokenResult>> From<I> for Parser<I::IntoIter>
-where
-    I::IntoIter: Clone,
-{
-    fn from(tokens: I) -> Self {
-        Self {
-            tokens: Peeker::new(tokens.into_iter()),
-        }
+    pub fn new(source: &str) -> StdResult<Self, TokenizationError> {
+        Ok(Self {
+            tokens: TokenCursor::new(TokenReader::new(source).collect::<StdResult<Vec<_>, _>>()?),
+        })
     }
 }
