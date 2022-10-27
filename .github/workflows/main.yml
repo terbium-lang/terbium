@@ -121,13 +121,13 @@ jobs:
       matrix:
         include:
           - os: macos-latest
-            target: "x86-64-apple-darwin"
+            target: "x86_64-apple-darwin"
           - os: macos-latest
             target: "aarch64-apple-darwin"
           - os: ubuntu-latest
             target: "x86_64-unknown-linux-gnu"
           - os: windows-latest
-            target: "x86-64-pc-windows-msvc"
+            target: "x86_64-pc-windows-msvc"
             ext: ".exe"
 
     runs-on: ${{ matrix.os }}
@@ -149,7 +149,7 @@ jobs:
         run: cargo build --verbose --release --target ${{ matrix.target }}
 
       - name: Rename bin
-        run: mv target/release/terbium${{ matrix.ext }} ./${{ matrix.target }}${{ matrix.ext }}
+        run: mv target/${{ matrix.target }}/terbium${{ matrix.ext }} ./${{ matrix.target }}${{ matrix.ext }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v3
