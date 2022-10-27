@@ -1,0 +1,177 @@
+name: Main
+
+on:
+  push:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rustfmt:
+    name: Rustfmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install latest nightly with rustfmt
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: nightly
+          components: rustfmt
+
+      - name: Check format
+        run: cargo fmt --all -- --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install latest nightly with clippy
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: nightly
+          components: clippy
+
+      - name: Setup cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Clippy lint
+        run: cargo clippy --workspace --all-features -- -D clippy::all -D clippy::pedantic -D clippy::nursery
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install latest nightly
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: nightly
+
+      - name: Setup cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run tests
+        run: cargo test --verbose --workspace
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.os }}-debug
+          path: target/debug/terbium*
+
+  miri_test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install latest nightly with miri
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: nightly
+          components: miri
+
+      - name: Setup cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Setup miri
+        run: cargo miri setup
+
+      - name: Run miri test
+        run: cargo miri test --verbose --workspace
+  
+  wasm_test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Install latest nightly
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: nightly
+          override: true
+          target: wasm32-unknown-unknown
+
+      - name: Setup cache
+        uses: Swatinem/rust-cache@v2
+      
+      - name: Build WASM
+        run: cargo build --verbose --target wasm32-unknown-unknown
+        
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: wasm-debug
+          path: target/wasm32-unknown-unknown/debug/terbium.wasm
+
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            name: "x86-64-apple-darwin"
+          - os: ubuntu-latest
+            name: "x86_64-unknown-linux-gnu"
+          - os: windows-latest
+            name: "x86-64-pc-windows-msvc"
+            ext: ".exe"
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install latest nightly
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: nightly
+
+      - name: Setup cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --verbose --release
+
+      - name: Rename bin
+        run: mv target/release/terbium${{ matrix.ext }} ./${{ matrix.name }}${{ matrix.ext }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: releases
+          path: ${{ matrix.name }}${{ matrix.ext }}
+
+  nightly-release:
+    runs-on: ubuntu-latest
+    needs: [build]
+
+    steps:
+      - name: Retrieve artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: releases
+          path: releases
+
+      - name: GitHub nightly release
+        run: |
+          git tag -d nightly || true
+          git push origin --delete nightly || true
+          git tag nightly
+          git push origin nightly
+          gh release delete ${{ env.VERSION }} -y || true
+          gh release create ${{ env.VERSION }} -t "Nightly" -n "$(git rev-parse HEAD | cut -c 1-7) | $(git log -1 --pretty=%B)" ${{ env.FILES }}
+        env:
+          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
+          VERSION: 'nightly'
+          FILES: releases/*
