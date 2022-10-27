@@ -23,7 +23,6 @@ grammar = { path = "grammar" }
 
 [profile.dev]
 opt-level = 0
-split-debuginfo = "unpacked"
 
 [profile.release]
 lto = "fat"
