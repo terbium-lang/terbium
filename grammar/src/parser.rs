@@ -1,9 +1,7 @@
 use super::{
-    ast::{Atom, Delimiter, Expr, Node, Spanned, UnaryOp},
-    Span, Token, TokenInfo, TokenReader, TokenizationError,
+    ast::{Atom, BinaryOp, Delimiter, Expr, Node, Spanned, UnaryOp},
+    Span, StringLiteralFlags, Token, TokenInfo, TokenReader, TokenizationError,
 };
-use crate::parser::Error::UnmatchedDelimiter;
-use crate::StringLiteralFlags;
 use std::collections::VecDeque;
 use std::ops::{Deref, DerefMut};
 use std::result::Result as StdResult;
@@ -36,7 +34,7 @@ where
     I::Item: Clone,
 {
     /// The iterator that is being peeked.
-    iter: I,
+    iter: I, // Honestly, immediately having a Vec of tokens might become more efficient than this in the long run.
     /// A clone of the original iterator to peek tokens.
     peeker: I,
     /// The peeked tokens.
@@ -172,7 +170,7 @@ macro_rules! consume_token {
     (@no_ws $self:expr, $p:pat) => {{
         loop {
             match $self.tokens.peek() {
-                Some(Ok(t @ Token { info: $p, .. })) => {
+                Some(Ok(t @ Spanned($p, _))) => {
                     $self.tokens.next();
                     break Ok(t);
                 }
@@ -338,7 +336,7 @@ impl<I: Iterator<Item = TokenResult> + Clone> Parser<I> {
             .and_then_span(|_, span| {
                 let expr = self.consume_expr()?;
                 consume_token!(self, TokenInfo::RightParen)
-                    .map_err(|_| UnmatchedDelimiter(Delimiter::Paren, span))?;
+                    .map_err(|_| Error::UnmatchedDelimiter(Delimiter::Paren, span))?;
 
                 Ok(expr)
             })
@@ -412,9 +410,53 @@ impl<I: Iterator<Item = TokenResult> + Clone> Parser<I> {
             }))
     }
 
+    /// Parses and consumes the next binary power expression.
+    pub fn consume_pow(&mut self) -> Result<Spanned<Expr>> {
+        #[allow(clippy::needless_collect, reason = "see comment in consume_unary")]
+        // This case is a bit special, since this operator is right-associative.
+        let tokens = std::iter::repeat_with(|| {
+            // TODO: this recovery system is inefficient
+            let fallback = self.tokens.clone();
+
+            // To conform to right-associtivity, we must immediately begin consuming tokens
+            self.consume_unary()
+                .and_then(|expr| {
+                    let op_span = consume_token!(self, TokenInfo::Asterisk)?.span();
+                    Ok((expr, op_span))
+                })
+                .and_then(|o| consume_token!(@no_ws self, TokenInfo::Asterisk).map(|_| o))
+                // ...however, if there is a problem consuming, reset the token stream to the
+                // previous position.
+                .map_err(|e| {
+                    self.tokens = fallback;
+                    e
+                })
+        })
+        .map_while(Result::ok)
+        .collect::<Vec<_>>();
+
+        Ok(tokens
+            .into_iter()
+            .rfold(self.consume_unary()?, |current, (expr, mut op_span)| {
+                let (expr, expr_span) = expr.into_inner();
+                let (current, current_span) = current.into_inner();
+                // This accounts for the second asterisk
+                op_span.end += 1;
+
+                Spanned(
+                    Expr::BinaryOp {
+                        left: box Spanned(expr, expr_span),
+                        op: Spanned(BinaryOp::Pow, op_span),
+                        right: box Spanned(current, current_span),
+                    },
+                    current_span.merge(expr_span),
+                )
+            }))
+    }
+
     /// Parses and consumes the next expression.
     pub fn consume_expr(&mut self) -> Result<Spanned<Expr>> {
-        self.consume_unary()
+        self.consume_pow()
     }
 
     /// Parses and consumes the next node.
