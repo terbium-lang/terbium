@@ -149,7 +149,7 @@ jobs:
         run: cargo build --verbose --release --target ${{ matrix.target }}
 
       - name: Rename bin
-        run: mv target/${{ matrix.target }}/terbium${{ matrix.ext }} ./${{ matrix.target }}${{ matrix.ext }}
+        run: mv target/${{ matrix.target }}/release/terbium${{ matrix.ext }} ./${{ matrix.target }}${{ matrix.ext }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v3
