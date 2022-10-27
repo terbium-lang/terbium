@@ -1,3 +1,3 @@
-(function() {var implementors = {};
-implementors["terbium_bytecode"] = [{"text":"impl <a class=\"trait\" href=\"https://doc.rust-lang.org/nightly/core/cmp/trait.PartialOrd.html\" title=\"trait core::cmp::PartialOrd\">PartialOrd</a>&lt;<a class=\"enum\" href=\"terbium_bytecode/enum.Addr.html\" title=\"enum terbium_bytecode::Addr\">Addr</a>&gt; for <a class=\"enum\" href=\"terbium_bytecode/enum.Addr.html\" title=\"enum terbium_bytecode::Addr\">Addr</a>","synthetic":false,"types":["terbium_bytecode::Addr"]}];
-if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()
+(function() {var implementors = {
+"terbium_bytecode":[["impl <a class=\"trait\" href=\"https://doc.rust-lang.org/nightly/core/cmp/trait.PartialOrd.html\" title=\"trait core::cmp::PartialOrd\">PartialOrd</a>&lt;<a class=\"enum\" href=\"terbium_bytecode/enum.Addr.html\" title=\"enum terbium_bytecode::Addr\">Addr</a>&gt; for <a class=\"enum\" href=\"terbium_bytecode/enum.Addr.html\" title=\"enum terbium_bytecode::Addr\">Addr</a>"]]
+};if (window.register_implementors) {window.register_implementors(implementors);} else {window.pending_implementors = implementors;}})()

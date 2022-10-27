@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `terbium_bytecode/src/interpreter.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>interpreter.rs - source</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceSerif4-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../FiraSans-Regular.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../FiraSans-Medium.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceCodePro-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceSerif4-Bold.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceCodePro-Semibold.ttf.woff2"><link rel="stylesheet" type="text/css" href="../../normalize.css"><link rel="stylesheet" type="text/css" href="../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" type="text/css" href="../../ayu.css" disabled><link rel="stylesheet" type="text/css" href="../../dark.css" disabled><link rel="stylesheet" type="text/css" href="../../light.css" id="themeStyle"><script id="default-settings" ></script><script src="../../storage.js"></script><script defer src="../../source-script.js"></script><script defer src="../../source-files.js"></script><script defer src="../../main.js"></script><noscript><link rel="stylesheet" href="../../noscript.css"></noscript><link rel="alternate icon" type="image/png" href="../../favicon-16x16.png"><link rel="alternate icon" type="image/png" href="../../favicon-32x32.png"><link rel="icon" type="image/svg+xml" href="../../favicon.svg"></head><body class="rustdoc source"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle">&#9776;</button><a class="sidebar-logo" href="../../terbium_bytecode/index.html"><div class="logo-container"><img class="rust-logo" src="../../rust-logo.svg" alt="logo"></div></a><h2 class="location"></h2></nav><nav class="sidebar"><a class="sidebar-logo" href="../../terbium_bytecode/index.html"><div class="logo-container"><img class="rust-logo" src="../../rust-logo.svg" alt="logo"></div></a></nav><main><div class="width-limiter"><div class="sub-container"><a class="sub-logo-container" href="../../terbium_bytecode/index.html"><img class="rust-logo" src="../../rust-logo.svg" alt="logo"></a><nav class="sub"><form class="search-form"><div class="search-container"><span></span><input class="search-input" name="search" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" title="help" tabindex="-1"><button type="button">?</button></div><div id="settings-menu" tabindex="-1"><a href="../../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../../wheel.svg"></a></div></div></form></nav></div><section id="main-content" class="content"><div class="example-wrap"><pre class="line-numbers"><span id="1">1</span>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `terbium_bytecode/src/interpreter.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>interpreter.rs - source</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceSerif4-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../FiraSans-Regular.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../FiraSans-Medium.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceCodePro-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceSerif4-Bold.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceCodePro-Semibold.ttf.woff2"><link rel="stylesheet" href="../../normalize.css"><link rel="stylesheet" href="../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" href="../../ayu.css" disabled><link rel="stylesheet" href="../../dark.css" disabled><link rel="stylesheet" href="../../light.css" id="themeStyle"><script id="default-settings" ></script><script src="../../storage.js"></script><script defer src="../../source-script.js"></script><script defer src="../../source-files.js"></script><script defer src="../../main.js"></script><noscript><link rel="stylesheet" href="../../noscript.css"></noscript><link rel="alternate icon" type="image/png" href="../../favicon-16x16.png"><link rel="alternate icon" type="image/png" href="../../favicon-32x32.png"><link rel="icon" type="image/svg+xml" href="../../favicon.svg"></head><body class="rustdoc source"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"></nav><main><div class="width-limiter"><nav class="sub"><a class="sub-logo-container" href="../../terbium_bytecode/index.html"><img class="rust-logo" src="../../rust-logo.svg" alt="logo"></a><form class="search-form"><div class="search-container"><span></span><input class="search-input" name="search" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" title="help" tabindex="-1"><a href="../../help.html">?</a></div><div id="settings-menu" tabindex="-1"><a href="../../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../../wheel.svg"></a></div></div></form></nav><section id="main-content" class="content"><div class="example-wrap"><pre class="src-line-numbers"><span id="1">1</span>
 <span id="2">2</span>
 <span id="3">3</span>
 <span id="4">4</span>
@@ -368,375 +368,375 @@
 <span id="368">368</span>
 <span id="369">369</span>
 <span id="370">370</span>
-</pre><pre class="rust"><code><span class="doccomment">//! Interprets Terbium AST into Bytecode.</span>
-<span class="comment">// TODO: utilize #![feature(box_patterns)] for this module</span>
+</pre><pre class="rust"><code><span class="doccomment">//! Interprets Terbium AST into Bytecode.
+</span><span class="comment">// TODO: utilize #![feature(box_patterns)] for this module
 
-<span class="kw">use</span> <span class="ident">std::collections::HashMap</span>;
+</span><span class="kw">use </span>std::collections::HashMap;
 
-<span class="kw">use</span> <span class="kw">super</span>::{<span class="ident">Addr</span>, <span class="ident">AddrRepr</span>, <span class="ident">Instruction</span>, <span class="ident">Program</span>, <span class="ident">RichInstruction</span>};
-<span class="kw">use</span> <span class="ident">terbium_grammar::ast::Target</span>;
-<span class="kw">use</span> <span class="ident">terbium_grammar</span>::{<span class="ident">Body</span>, <span class="ident">Expr</span>, <span class="ident">Node</span>, <span class="ident">Operator</span>, <span class="ident">Span</span>, <span class="ident">Spanned</span>};
+<span class="kw">use super</span>::{Addr, AddrRepr, Instruction, Program, RichInstruction};
+<span class="kw">use </span>terbium_grammar::ast::Target;
+<span class="kw">use </span>terbium_grammar::{Body, Expr, Node, Operator, Span, Spanned};
 
-<span class="comment">// Contrary to assumption, this does not take into account scope and in reality</span>
-<span class="comment">// it&#39;s just a super basic string-interner, in a way.</span>
-<span class="comment">//</span>
-<span class="comment">// This was made so that over multiple Programs, identifier names could be commonly mapped.</span>
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>)]</span>
-<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">IdentLookup</span> {
-    <span class="ident">inner</span>: <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">String</span>, <span class="ident">usize</span><span class="op">&gt;</span>,
-    <span class="ident">increment</span>: <span class="ident">usize</span>,
+<span class="comment">// Contrary to assumption, this does not take into account scope and in reality
+// it&#39;s just a super basic string-interner, in a way.
+//
+// This was made so that over multiple Programs, identifier names could be commonly mapped.
+</span><span class="attribute">#[derive(Debug)]
+</span><span class="kw">pub struct </span>IdentLookup {
+    inner: HashMap&lt;String, usize&gt;,
+    increment: usize,
 }
 
-<span class="kw">impl</span> <span class="ident">IdentLookup</span> {
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">new</span>() -&gt; <span class="self">Self</span> {
-        <span class="self">Self</span> {
-            <span class="ident">inner</span>: <span class="ident">HashMap::new</span>(),
-            <span class="ident">increment</span>: <span class="number">0</span>,
+<span class="kw">impl </span>IdentLookup {
+    <span class="kw">pub fn </span>new() -&gt; <span class="self">Self </span>{
+        <span class="self">Self </span>{
+            inner: HashMap::new(),
+            increment: <span class="number">0</span>,
         }
     }
 
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">get</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">ident</span>: <span class="ident">String</span>) -&gt; <span class="ident">usize</span> {
-        <span class="kw-2">*</span><span class="self">self</span>.<span class="ident">inner</span>.<span class="ident">entry</span>(<span class="ident">ident</span>).<span class="ident">or_insert_with</span>(<span class="op">|</span><span class="op">|</span> {
-            <span class="kw">let</span> <span class="ident">old</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">increment</span>;
-            <span class="self">self</span>.<span class="ident">increment</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>;
+    <span class="kw">pub fn </span>get(<span class="kw-2">&amp;mut </span><span class="self">self</span>, ident: String) -&gt; usize {
+        <span class="kw-2">*</span><span class="self">self</span>.inner.entry(ident).or_insert_with(|| {
+            <span class="kw">let </span>old = <span class="self">self</span>.increment;
+            <span class="self">self</span>.increment += <span class="number">1</span>;
 
-            <span class="ident">old</span>
+            old
         })
     }
 }
 
-<span class="kw">impl</span> <span class="ident">Default</span> <span class="kw">for</span> <span class="ident">IdentLookup</span> {
-    <span class="kw">fn</span> <span class="ident">default</span>() -&gt; <span class="self">Self</span> {
-        <span class="ident"><span class="self">Self</span>::new</span>()
+<span class="kw">impl </span>Default <span class="kw">for </span>IdentLookup {
+    <span class="kw">fn </span>default() -&gt; <span class="self">Self </span>{
+        <span class="self">Self</span>::new()
     }
 }
 
-<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">Interpreter</span> {
-    <span class="ident">program</span>: <span class="ident">Program</span>,
-    <span class="ident">lookup</span>: <span class="ident">IdentLookup</span>,
+<span class="kw">pub struct </span>Interpreter {
+    program: Program,
+    lookup: IdentLookup,
 }
 
-<span class="kw">type</span> <span class="ident">MaybeProc</span> <span class="op">=</span> <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">AddrRepr</span><span class="op">&gt;</span>;
+<span class="kw">type </span>MaybeProc = <span class="prelude-ty">Option</span>&lt;AddrRepr&gt;;
 
-<span class="kw">impl</span> <span class="ident">Interpreter</span> {
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">new</span>() -&gt; <span class="self">Self</span> {
-        <span class="self">Self</span> {
-            <span class="ident">program</span>: <span class="ident">Program::default</span>(),
-            <span class="ident">lookup</span>: <span class="ident">IdentLookup::default</span>(),
+<span class="kw">impl </span>Interpreter {
+    <span class="attribute">#[must_use]
+    </span><span class="kw">pub fn </span>new() -&gt; <span class="self">Self </span>{
+        <span class="self">Self </span>{
+            program: Program::default(),
+            lookup: IdentLookup::default(),
         }
     }
 
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">reset_program</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>) {
-        <span class="self">self</span>.<span class="ident">program</span> <span class="op">=</span> <span class="ident">Program::default</span>();
+    <span class="kw">pub fn </span>reset_program(<span class="kw-2">&amp;mut </span><span class="self">self</span>) {
+        <span class="self">self</span>.program = Program::default();
     }
 
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">clippy::missing_const_for_fn</span>)]</span> <span class="comment">// destructors cannot be evaluated at compile-time E0493</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">program</span>(<span class="self">self</span>) -&gt; <span class="ident">Program</span> {
-        <span class="self">self</span>.<span class="ident">program</span>
+    <span class="attribute">#[must_use]
+    #[allow(clippy::missing_const_for_fn)] </span><span class="comment">// destructors cannot be evaluated at compile-time E0493
+    </span><span class="kw">pub fn </span>program(<span class="self">self</span>) -&gt; Program {
+        <span class="self">self</span>.program
     }
 
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">push</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">procedure</span>: <span class="ident">MaybeProc</span>, <span class="ident">instr</span>: <span class="ident">Instruction</span>) {
-        <span class="self">self</span>.<span class="ident">program</span>.<span class="ident">push</span>(
-            <span class="ident">procedure</span>,
-            <span class="ident">RichInstruction</span> {
-                <span class="ident">inner</span>: <span class="ident">instr</span>,
-                <span class="ident">span</span>: <span class="prelude-val">None</span>,
-                <span class="ident">name</span>: <span class="prelude-val">None</span>,
+    <span class="kw">pub fn </span>push(<span class="kw-2">&amp;mut </span><span class="self">self</span>, procedure: MaybeProc, instr: Instruction) {
+        <span class="self">self</span>.program.push(
+            procedure,
+            RichInstruction {
+                inner: instr,
+                span: <span class="prelude-val">None</span>,
+                name: <span class="prelude-val">None</span>,
             },
         );
     }
 
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">push_rich</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">procedure</span>: <span class="ident">MaybeProc</span>, <span class="ident">instr</span>: <span class="ident">RichInstruction</span>) {
-        <span class="self">self</span>.<span class="ident">program</span>.<span class="ident">push</span>(<span class="ident">procedure</span>, <span class="ident">instr</span>);
+    <span class="kw">pub fn </span>push_rich(<span class="kw-2">&amp;mut </span><span class="self">self</span>, procedure: MaybeProc, instr: RichInstruction) {
+        <span class="self">self</span>.program.push(procedure, instr);
     }
 
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">push_spanned</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">procedure</span>: <span class="ident">MaybeProc</span>, <span class="ident">instr</span>: <span class="ident">Instruction</span>, <span class="ident">span</span>: <span class="ident">Span</span>) {
-        <span class="self">self</span>.<span class="ident">push_rich</span>(<span class="ident">procedure</span>, <span class="ident">RichInstruction::spanned</span>(<span class="ident">instr</span>, <span class="ident">span</span>));
+    <span class="kw">pub fn </span>push_spanned(<span class="kw-2">&amp;mut </span><span class="self">self</span>, procedure: MaybeProc, instr: Instruction, span: Span) {
+        <span class="self">self</span>.push_rich(procedure, RichInstruction::spanned(instr, span));
     }
 
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">push_return</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">procedure</span>: <span class="ident">AddrRepr</span>, <span class="ident">return_last</span>: <span class="ident">bool</span>) {
-        <span class="self">self</span>.<span class="ident">push</span>(
-            <span class="prelude-val">Some</span>(<span class="ident">procedure</span>),
-            <span class="kw">if</span> <span class="ident">return_last</span> {
-                <span class="ident">Instruction::Ret</span>
-            } <span class="kw">else</span> {
-                <span class="ident">Instruction::RetNull</span>
+    <span class="kw">pub fn </span>push_return(<span class="kw-2">&amp;mut </span><span class="self">self</span>, procedure: AddrRepr, return_last: bool) {
+        <span class="self">self</span>.push(
+            <span class="prelude-val">Some</span>(procedure),
+            <span class="kw">if </span>return_last {
+                Instruction::Ret
+            } <span class="kw">else </span>{
+                Instruction::RetNull
             },
         );
     }
 
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">push_enter_scope</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">procedure</span>: <span class="ident">AddrRepr</span>) {
-        <span class="self">self</span>.<span class="ident">push</span>(<span class="prelude-val">Some</span>(<span class="ident">procedure</span>), <span class="ident">Instruction::EnterScope</span>);
+    <span class="kw">pub fn </span>push_enter_scope(<span class="kw-2">&amp;mut </span><span class="self">self</span>, procedure: AddrRepr) {
+        <span class="self">self</span>.push(<span class="prelude-val">Some</span>(procedure), Instruction::EnterScope);
     }
 
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">push_exit_scope</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">procedure</span>: <span class="ident">AddrRepr</span>) {
-        <span class="self">self</span>.<span class="ident">push</span>(<span class="prelude-val">Some</span>(<span class="ident">procedure</span>), <span class="ident">Instruction::ExitScope</span>);
+    <span class="kw">pub fn </span>push_exit_scope(<span class="kw-2">&amp;mut </span><span class="self">self</span>, procedure: AddrRepr) {
+        <span class="self">self</span>.push(<span class="prelude-val">Some</span>(procedure), Instruction::ExitScope);
     }
 
-    <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">clippy::too_many_lines</span>)]</span> <span class="comment">// Should probably refactor it later</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">interpret_expr</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">proc</span>: <span class="ident">MaybeProc</span>, <span class="ident">expr</span>: <span class="ident">Spanned</span><span class="op">&lt;</span><span class="ident">Expr</span><span class="op">&gt;</span>) {
-        <span class="kw">let</span> <span class="ident">span</span> <span class="op">=</span> <span class="ident">expr</span>.<span class="ident">span</span>();
-        <span class="kw">let</span> <span class="ident">expr</span> <span class="op">=</span> <span class="ident">expr</span>.<span class="ident">into_node</span>();
+    <span class="attribute">#[allow(clippy::too_many_lines)] </span><span class="comment">// Should probably refactor it later
+    </span><span class="kw">pub fn </span>interpret_expr(<span class="kw-2">&amp;mut </span><span class="self">self</span>, proc: MaybeProc, expr: Spanned&lt;Expr&gt;) {
+        <span class="kw">let </span>span = expr.span();
+        <span class="kw">let </span>expr = expr.into_node();
 
-        <span class="kw">match</span> <span class="ident">expr</span> {
-            <span class="ident">Expr::Integer</span>(<span class="ident">i</span>) =&gt; <span class="self">self</span>.<span class="ident">push_spanned</span>(<span class="ident">proc</span>,
-                <span class="ident">Instruction::LoadInt</span>(<span class="ident">i</span>), <span class="ident">span</span>,
+        <span class="kw">match </span>expr {
+            Expr::Integer(i) =&gt; <span class="self">self</span>.push_spanned(proc,
+                Instruction::LoadInt(i), span,
             ),
-            <span class="ident">Expr::Bool</span>(<span class="ident">b</span>) =&gt; <span class="self">self</span>.<span class="ident">push_spanned</span>(<span class="ident">proc</span>, <span class="ident">Instruction::LoadBool</span>(<span class="ident">b</span>), <span class="ident">span</span>),
-            <span class="ident">Expr::String</span>(<span class="ident">s</span>) =&gt; <span class="self">self</span>.<span class="ident">push_spanned</span>(<span class="ident">proc</span>, <span class="ident">Instruction::LoadString</span>(<span class="ident">s</span>), <span class="ident">span</span>),
-            <span class="ident">Expr::Float</span>(<span class="ident">f</span>) =&gt; <span class="self">self</span>.<span class="ident">push_spanned</span>(
-                <span class="ident">proc</span>,
-                <span class="ident">Instruction::LoadFloat</span>(
-                    <span class="ident">f</span>.<span class="ident">parse</span>::<span class="op">&lt;</span><span class="ident">f64</span><span class="op">&gt;</span>()
-                        .<span class="ident">unwrap_or_else</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> {
+            Expr::Bool(b) =&gt; <span class="self">self</span>.push_spanned(proc, Instruction::LoadBool(b), span),
+            Expr::String(s) =&gt; <span class="self">self</span>.push_spanned(proc, Instruction::LoadString(s), span),
+            Expr::Float(f) =&gt; <span class="self">self</span>.push_spanned(
+                proc,
+                Instruction::LoadFloat(
+                    f.parse::&lt;f64&gt;()
+                        .unwrap_or_else(|<span class="kw">_</span>| {
                             <span class="macro">unreachable!</span>(
-                                <span class="string">&quot;Unreachable because the String provided is guaranteed to be a valid float&quot;</span>
-                            )
+                                <span class="string">&quot;Unreachable because the String provided is guaranteed to be a valid float&quot;
+                            </span>)
                         })
-                        .<span class="ident">into</span>(),
+                        .into(),
                 ),
-                <span class="ident">span</span>,
+                span,
             ),
-            <span class="ident">Expr::UnaryExpr</span> { <span class="ident">operator</span>, <span class="ident">value</span> } =&gt; {
-                <span class="self">self</span>.<span class="ident">interpret_expr</span>(<span class="ident">proc</span>, <span class="ident">value</span>);
+            Expr::UnaryExpr { operator, value } =&gt; {
+                <span class="self">self</span>.interpret_expr(proc, value);
 
-                <span class="self">self</span>.<span class="ident">push_spanned</span>(
-                    <span class="ident">proc</span>,
-                    <span class="kw">match</span> <span class="ident">operator</span>.<span class="ident">into_node</span>() {
-                        <span class="ident">Operator::Add</span> =&gt; <span class="ident">Instruction::UnOpPos</span>,
-                        <span class="ident">Operator::Sub</span> =&gt; <span class="ident">Instruction::UnOpNeg</span>,
-                        <span class="ident">Operator::Not</span> =&gt; <span class="ident">Instruction::OpLogicalNot</span>,
-                        <span class="ident">Operator::BitNot</span> =&gt; <span class="ident">Instruction::UnOpBitNot</span>,
-                        <span class="kw">_</span> =&gt; <span class="macro">unimplemented!</span>(),
+                <span class="self">self</span>.push_spanned(
+                    proc,
+                    <span class="kw">match </span>operator.into_node() {
+                        Operator::Add =&gt; Instruction::UnOpPos,
+                        Operator::Sub =&gt; Instruction::UnOpNeg,
+                        Operator::Not =&gt; Instruction::OpLogicalNot,
+                        Operator::BitNot =&gt; Instruction::UnOpBitNot,
+                        <span class="kw">_ </span>=&gt; <span class="macro">unimplemented!</span>(),
                     },
-                    <span class="ident">span</span>,
+                    span,
                 );
             }
-            <span class="ident">Expr::BinaryExpr</span> { <span class="ident">operator</span>, <span class="ident">lhs</span>, <span class="ident">rhs</span> } =&gt; {
-                <span class="self">self</span>.<span class="ident">interpret_expr</span>(<span class="ident">proc</span>, <span class="ident">lhs</span>);
-                <span class="self">self</span>.<span class="ident">interpret_expr</span>(<span class="ident">proc</span>, <span class="ident">rhs</span>);
+            Expr::BinaryExpr { operator, lhs, rhs } =&gt; {
+                <span class="self">self</span>.interpret_expr(proc, lhs);
+                <span class="self">self</span>.interpret_expr(proc, rhs);
 
-                <span class="self">self</span>.<span class="ident">push_spanned</span>(
-                    <span class="ident">proc</span>,
-                    <span class="kw">match</span> <span class="ident">operator</span>.<span class="ident">node</span>() {
-                        <span class="ident">Operator::Add</span> =&gt; <span class="ident">Instruction::BinOpAdd</span>,
-                        <span class="ident">Operator::Sub</span> =&gt; <span class="ident">Instruction::BinOpSub</span>,
-                        <span class="ident">Operator::Mul</span> =&gt; <span class="ident">Instruction::BinOpMul</span>,
-                        <span class="ident">Operator::Div</span> =&gt; <span class="ident">Instruction::BinOpDiv</span>,
-                        <span class="ident">Operator::Eq</span> =&gt; <span class="ident">Instruction::OpEq</span>,
-                        <span class="ident">Operator::Ne</span> =&gt; <span class="ident">Instruction::OpNe</span>,
-                        <span class="ident">Operator::Lt</span> =&gt; <span class="ident">Instruction::OpLt</span>,
-                        <span class="ident">Operator::Le</span> =&gt; <span class="ident">Instruction::OpLe</span>,
-                        <span class="ident">Operator::Gt</span> =&gt; <span class="ident">Instruction::OpGt</span>,
-                        <span class="ident">Operator::Ge</span> =&gt; <span class="ident">Instruction::OpGe</span>,
-                        <span class="ident">Operator::Or</span> =&gt; <span class="ident">Instruction::OpLogicalOr</span>,
-                        <span class="ident">Operator::And</span> =&gt; <span class="ident">Instruction::OpLogicalAnd</span>,
-                        <span class="ident">Operator::BitOr</span> =&gt; <span class="ident">Instruction::BinOpBitOr</span>,
-                        <span class="ident">Operator::BitXor</span> =&gt; <span class="ident">Instruction::BinOpBitXor</span>,
-                        <span class="ident">Operator::BitAnd</span> =&gt; <span class="ident">Instruction::BinOpBitAnd</span>,
-                        <span class="ident">Operator::Range</span> =&gt; <span class="macro">todo!</span>(),
-                        <span class="kw">_</span> =&gt; <span class="macro">unimplemented!</span>(),
+                <span class="self">self</span>.push_spanned(
+                    proc,
+                    <span class="kw">match </span>operator.node() {
+                        Operator::Add =&gt; Instruction::BinOpAdd,
+                        Operator::Sub =&gt; Instruction::BinOpSub,
+                        Operator::Mul =&gt; Instruction::BinOpMul,
+                        Operator::Div =&gt; Instruction::BinOpDiv,
+                        Operator::Eq =&gt; Instruction::OpEq,
+                        Operator::Ne =&gt; Instruction::OpNe,
+                        Operator::Lt =&gt; Instruction::OpLt,
+                        Operator::Le =&gt; Instruction::OpLe,
+                        Operator::Gt =&gt; Instruction::OpGt,
+                        Operator::Ge =&gt; Instruction::OpGe,
+                        Operator::Or =&gt; Instruction::OpLogicalOr,
+                        Operator::And =&gt; Instruction::OpLogicalAnd,
+                        Operator::BitOr =&gt; Instruction::BinOpBitOr,
+                        Operator::BitXor =&gt; Instruction::BinOpBitXor,
+                        Operator::BitAnd =&gt; Instruction::BinOpBitAnd,
+                        Operator::Range =&gt; <span class="macro">todo!</span>(),
+                        <span class="kw">_ </span>=&gt; <span class="macro">unimplemented!</span>(),
                     },
-                    <span class="ident">span</span>,
+                    span,
                 );
             }
-            <span class="ident">Expr::Ident</span>(<span class="ident">ident</span>) =&gt; {
-                <span class="kw">let</span> <span class="ident">var</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">lookup</span>.<span class="ident">get</span>(<span class="ident">ident</span>.<span class="ident">clone</span>());
+            Expr::Ident(ident) =&gt; {
+                <span class="kw">let </span>var = <span class="self">self</span>.lookup.get(ident.clone());
 
-                <span class="self">self</span>.<span class="ident">push_rich</span>(<span class="ident">proc</span>, <span class="ident">RichInstruction</span> {
-                    <span class="ident">inner</span>: <span class="ident">Instruction::LoadVar</span>(<span class="ident">var</span>),
-                    <span class="ident">span</span>: <span class="prelude-val">Some</span>(<span class="ident">span</span>),
-                    <span class="ident">name</span>: <span class="prelude-val">Some</span>(<span class="ident">ident</span>),
+                <span class="self">self</span>.push_rich(proc, RichInstruction {
+                    inner: Instruction::LoadVar(var),
+                    span: <span class="prelude-val">Some</span>(span),
+                    name: <span class="prelude-val">Some</span>(ident),
                 });
             }
-            <span class="ident">Expr::If</span> {
-                <span class="ident">condition</span>,
-                <span class="ident">body</span>,
-                <span class="kw-2">mut</span> <span class="ident">else_if_bodies</span>,
-                <span class="ident">else_body</span>,
+            Expr::If {
+                condition,
+                body,
+                <span class="kw-2">mut </span>else_if_bodies,
+                else_body,
             } =&gt; {
-                <span class="kw">if</span> <span class="ident">else_if_bodies</span>.<span class="ident">is_empty</span>() {
-                    <span class="self">self</span>.<span class="ident">interpret_expr</span>(<span class="ident">proc</span>, <span class="ident">condition</span>);
+                <span class="kw">if </span>else_if_bodies.is_empty() {
+                    <span class="self">self</span>.interpret_expr(proc, condition);
 
-                    <span class="kw">let</span> <span class="ident">then_proc</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">program</span>.<span class="ident">create_procedure</span>();
-                    <span class="self">self</span>.<span class="ident">interpret_body_scoped</span>(<span class="ident">then_proc</span>, <span class="ident">body</span>.<span class="ident">into_node</span>());
+                    <span class="kw">let </span>then_proc = <span class="self">self</span>.program.create_procedure();
+                    <span class="self">self</span>.interpret_body_scoped(then_proc, body.into_node());
 
-                    <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">else_body</span>) <span class="op">=</span> <span class="ident">else_body</span> {
-                        <span class="kw">let</span> <span class="ident">else_proc</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">program</span>.<span class="ident">create_procedure</span>();
-                        <span class="self">self</span>.<span class="ident">interpret_body_scoped</span>(<span class="ident">else_proc</span>, <span class="ident">else_body</span>.<span class="ident">into_node</span>());
+                    <span class="kw">if let </span><span class="prelude-val">Some</span>(else_body) = else_body {
+                        <span class="kw">let </span>else_proc = <span class="self">self</span>.program.create_procedure();
+                        <span class="self">self</span>.interpret_body_scoped(else_proc, else_body.into_node());
 
-                        <span class="self">self</span>.<span class="ident">push_spanned</span>(
-                            <span class="ident">proc</span>,
-                            <span class="ident">Instruction::JumpIfElse</span>(
-                                <span class="ident">Addr::Procedure</span>(<span class="ident">then_proc</span>),
-                                <span class="ident">Addr::Procedure</span>(<span class="ident">else_proc</span>),
+                        <span class="self">self</span>.push_spanned(
+                            proc,
+                            Instruction::JumpIfElse(
+                                Addr::Procedure(then_proc),
+                                Addr::Procedure(else_proc),
                             ),
-                            <span class="ident">span</span>,
+                            span,
                         );
                         <span class="kw">return</span>;
                     }
 
-                    <span class="self">self</span>.<span class="ident">push_spanned</span>(<span class="ident">proc</span>, <span class="ident">Instruction::JumpIf</span>(<span class="ident">Addr::Procedure</span>(<span class="ident">then_proc</span>)), <span class="ident">span</span>);
+                    <span class="self">self</span>.push_spanned(proc, Instruction::JumpIf(Addr::Procedure(then_proc)), span);
                     <span class="kw">return</span>;
                 }
 
-                <span class="ident">else_if_bodies</span>.<span class="ident">insert</span>(<span class="number">0</span>, (<span class="ident">condition</span>, <span class="ident">body</span>));
+                else_if_bodies.insert(<span class="number">0</span>, (condition, body));
 
-                <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">last_parent</span> <span class="op">=</span> <span class="ident">proc</span>;
-                <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">last_else</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">program</span>.<span class="ident">create_procedure</span>();
+                <span class="kw">let </span><span class="kw-2">mut </span>last_parent = proc;
+                <span class="kw">let </span><span class="kw-2">mut </span>last_else = <span class="self">self</span>.program.create_procedure();
 
-                <span class="kw">for</span> (<span class="ident">cond</span>, <span class="ident">body</span>) <span class="kw">in</span> <span class="ident">else_if_bodies</span> {
-                    <span class="kw">let</span> <span class="ident">Body</span>(<span class="ident">body</span>, <span class="ident">return_last</span>) <span class="op">=</span> <span class="ident">body</span>.<span class="ident">into_node</span>();
+                <span class="kw">for </span>(cond, body) <span class="kw">in </span>else_if_bodies {
+                    <span class="kw">let </span>Body(body, return_last) = body.into_node();
 
-                    <span class="self">self</span>.<span class="ident">interpret_expr</span>(<span class="ident">last_parent</span>, <span class="ident">cond</span>);
+                    <span class="self">self</span>.interpret_expr(last_parent, cond);
 
-                    <span class="kw">let</span> <span class="ident">then_proc</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">program</span>.<span class="ident">create_procedure</span>();
-                    <span class="self">self</span>.<span class="ident">interpret_body_scoped</span>(<span class="ident">then_proc</span>, <span class="ident">Body</span>(<span class="ident">body</span>, <span class="ident">return_last</span>));
+                    <span class="kw">let </span>then_proc = <span class="self">self</span>.program.create_procedure();
+                    <span class="self">self</span>.interpret_body_scoped(then_proc, Body(body, return_last));
 
-                    <span class="self">self</span>.<span class="ident">push_spanned</span>(
-                        <span class="ident">last_parent</span>,
-                        <span class="ident">Instruction::JumpIfElse</span>(
-                            <span class="ident">Addr::Procedure</span>(<span class="ident">then_proc</span>),
-                            <span class="ident">Addr::Procedure</span>(<span class="ident">last_else</span>),
+                    <span class="self">self</span>.push_spanned(
+                        last_parent,
+                        Instruction::JumpIfElse(
+                            Addr::Procedure(then_proc),
+                            Addr::Procedure(last_else),
                         ),
-                        <span class="ident">span</span>.<span class="ident">clone</span>(),
+                        span.clone(),
                     );
-                    <span class="comment">// If last_parent is None, Halt instruction should be inserted automatically.</span>
-                    <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">p</span>) <span class="op">=</span> <span class="ident">last_parent</span> {
-                        <span class="self">self</span>.<span class="ident">push_return</span>(<span class="ident">p</span>, <span class="ident">return_last</span>);
+                    <span class="comment">// If last_parent is None, Halt instruction should be inserted automatically.
+                    </span><span class="kw">if let </span><span class="prelude-val">Some</span>(p) = last_parent {
+                        <span class="self">self</span>.push_return(p, return_last);
                     }
 
-                    <span class="ident">last_parent</span> <span class="op">=</span> <span class="prelude-val">Some</span>(<span class="ident">last_else</span>);
-                    <span class="ident">last_else</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">program</span>.<span class="ident">create_procedure</span>();
+                    last_parent = <span class="prelude-val">Some</span>(last_else);
+                    last_else = <span class="self">self</span>.program.create_procedure();
                 }
-                <span class="self">self</span>.<span class="ident">program</span>.<span class="ident">pop_procedure</span>();
+                <span class="self">self</span>.program.pop_procedure();
 
-                <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">else_body</span>) <span class="op">=</span> <span class="ident">else_body</span> {
-                    <span class="self">self</span>.<span class="ident">interpret_body_scoped</span>(<span class="ident">last_parent</span>.<span class="ident">unwrap_or_else</span>(
-                        <span class="op">|</span><span class="op">|</span> <span class="macro">unreachable!</span>(<span class="string">&quot;last_parent is always an if or else if block and never the top level&quot;</span>)
-                    ), <span class="ident">else_body</span>.<span class="ident">into_node</span>());
-                } <span class="kw">else</span> {
-                    <span class="self">self</span>.<span class="ident">push</span>(<span class="ident">last_parent</span>, <span class="ident">Instruction::RetNull</span>);
+                <span class="kw">if let </span><span class="prelude-val">Some</span>(else_body) = else_body {
+                    <span class="self">self</span>.interpret_body_scoped(last_parent.unwrap_or_else(
+                        || <span class="macro">unreachable!</span>(<span class="string">&quot;last_parent is always an if or else if block and never the top level&quot;</span>)
+                    ), else_body.into_node());
+                } <span class="kw">else </span>{
+                    <span class="self">self</span>.push(last_parent, Instruction::RetNull);
                 }
             }
-            <span class="ident">Expr::While</span> { <span class="ident">condition</span>, <span class="ident">body</span> } =&gt; {
-                <span class="kw">let</span> <span class="ident">loc</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">program</span>.<span class="ident">next_addr</span>(<span class="ident">proc</span>);
-                <span class="self">self</span>.<span class="ident">interpret_expr</span>(<span class="ident">proc</span>, <span class="ident">condition</span>);
+            Expr::While { condition, body } =&gt; {
+                <span class="kw">let </span>loc = <span class="self">self</span>.program.next_addr(proc);
+                <span class="self">self</span>.interpret_expr(proc, condition);
 
-                <span class="kw">let</span> <span class="ident">body_proc</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">program</span>.<span class="ident">create_procedure</span>();
-                <span class="self">self</span>.<span class="ident">interpret_body_scoped_no_return</span>(<span class="ident">body_proc</span>, <span class="ident">body</span>);
+                <span class="kw">let </span>body_proc = <span class="self">self</span>.program.create_procedure();
+                <span class="self">self</span>.interpret_body_scoped_no_return(body_proc, body);
 
-                <span class="self">self</span>.<span class="ident">push</span>(<span class="prelude-val">Some</span>(<span class="ident">body_proc</span>), <span class="ident">Instruction::Jump</span>(<span class="ident">loc</span>));
-                <span class="self">self</span>.<span class="ident">push</span>(<span class="ident">proc</span>, <span class="ident">Instruction::JumpIf</span>(<span class="ident">Addr::Procedure</span>(<span class="ident">body_proc</span>)));
+                <span class="self">self</span>.push(<span class="prelude-val">Some</span>(body_proc), Instruction::Jump(loc));
+                <span class="self">self</span>.push(proc, Instruction::JumpIf(Addr::Procedure(body_proc)));
             }
-            <span class="kw">_</span> =&gt; <span class="macro">todo!</span>(),
+            <span class="kw">_ </span>=&gt; <span class="macro">todo!</span>(),
         }
     }
 
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">interpret_node</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">proc</span>: <span class="ident">MaybeProc</span>, <span class="ident">node</span>: <span class="ident">Spanned</span><span class="op">&lt;</span><span class="ident">Node</span><span class="op">&gt;</span>) {
-        <span class="kw">let</span> <span class="ident">span</span> <span class="op">=</span> <span class="ident">node</span>.<span class="ident">span</span>();
-        <span class="kw">let</span> <span class="ident">node</span> <span class="op">=</span> <span class="ident">node</span>.<span class="ident">into_node</span>();
+    <span class="kw">pub fn </span>interpret_node(<span class="kw-2">&amp;mut </span><span class="self">self</span>, proc: MaybeProc, node: Spanned&lt;Node&gt;) {
+        <span class="kw">let </span>span = node.span();
+        <span class="kw">let </span>node = node.into_node();
 
-        <span class="kw">match</span> <span class="ident">node</span> {
-            <span class="ident">Node::Expr</span>(<span class="ident">e</span>) =&gt; <span class="self">self</span>.<span class="ident">interpret_expr</span>(<span class="ident">proc</span>, <span class="ident">e</span>),
-            <span class="ident">Node::Module</span>(<span class="ident">m</span>) =&gt; <span class="self">self</span>.<span class="ident">interpret_body</span>(<span class="ident">proc</span>, <span class="ident">Body</span>(<span class="ident">m</span>, <span class="bool-val">false</span>)),
-            <span class="ident">Node::Return</span>(<span class="ident">e</span>) =&gt; {
-                <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">e</span>) <span class="op">=</span> <span class="ident">e</span> {
-                    <span class="self">self</span>.<span class="ident">interpret_expr</span>(<span class="ident">proc</span>, <span class="ident">e</span>);
-                    <span class="self">self</span>.<span class="ident">push_spanned</span>(<span class="ident">proc</span>, <span class="ident">Instruction::Ret</span>, <span class="ident">span</span>);
-                } <span class="kw">else</span> {
-                    <span class="self">self</span>.<span class="ident">push_spanned</span>(<span class="ident">proc</span>, <span class="ident">Instruction::RetNull</span>, <span class="ident">span</span>);
+        <span class="kw">match </span>node {
+            Node::Expr(e) =&gt; <span class="self">self</span>.interpret_expr(proc, e),
+            Node::Module(m) =&gt; <span class="self">self</span>.interpret_body(proc, Body(m, <span class="bool-val">false</span>)),
+            Node::Return(e) =&gt; {
+                <span class="kw">if let </span><span class="prelude-val">Some</span>(e) = e {
+                    <span class="self">self</span>.interpret_expr(proc, e);
+                    <span class="self">self</span>.push_spanned(proc, Instruction::Ret, span);
+                } <span class="kw">else </span>{
+                    <span class="self">self</span>.push_spanned(proc, Instruction::RetNull, span);
                 }
             }
-            <span class="comment">// TODO: maybe we can check const and mut at runtime, but those should be caught by the analyzer</span>
-            <span class="ident">Node::Declare</span> {
-                <span class="ident">targets</span>,
-                <span class="ident">value</span>,
-                <span class="ident">r#mut</span>,
-                <span class="ident">r#const</span>,
-                <span class="ident">ty</span>: <span class="kw">_</span>,
+            <span class="comment">// TODO: maybe we can check const and mut at runtime, but those should be caught by the analyzer
+            </span>Node::Declare {
+                targets,
+                value,
+                r#mut,
+                r#const,
+                ty: <span class="kw">_</span>,
             } =&gt; {
-                <span class="self">self</span>.<span class="ident">interpret_expr</span>(<span class="ident">proc</span>, <span class="ident">value</span>);
+                <span class="self">self</span>.interpret_expr(proc, value);
 
-                <span class="comment">// TODO: currently we assume only one target</span>
-                <span class="kw">let</span> <span class="ident">target</span> <span class="op">=</span> <span class="ident">targets</span>.<span class="ident">first</span>().<span class="ident">unwrap</span>();
+                <span class="comment">// TODO: currently we assume only one target
+                </span><span class="kw">let </span>target = targets.first().unwrap();
 
-                <span class="kw">if</span> <span class="kw">let</span> <span class="ident">Target::Ident</span>(<span class="ident">s</span>) <span class="op">=</span> <span class="ident">target</span>.<span class="ident">node</span>() {
-                    <span class="kw">let</span> <span class="ident">key</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">lookup</span>.<span class="ident">get</span>(<span class="ident">s</span>.<span class="ident">clone</span>());
+                <span class="kw">if let </span>Target::Ident(s) = target.node() {
+                    <span class="kw">let </span>key = <span class="self">self</span>.lookup.get(s.clone());
 
-                    <span class="self">self</span>.<span class="ident">push_rich</span>(
-                        <span class="ident">proc</span>,
-                        <span class="ident">RichInstruction</span> {
-                            <span class="ident">inner</span>: <span class="kw">if</span> <span class="ident">r#mut</span> {
-                                <span class="ident">Instruction::StoreMutVar</span>(<span class="ident">key</span>)
-                            } <span class="kw">else</span> <span class="kw">if</span> <span class="ident">r#const</span> {
-                                <span class="ident">Instruction::StoreConstVar</span>(<span class="ident">key</span>)
-                            } <span class="kw">else</span> {
-                                <span class="ident">Instruction::StoreVar</span>(<span class="ident">key</span>)
+                    <span class="self">self</span>.push_rich(
+                        proc,
+                        RichInstruction {
+                            inner: <span class="kw">if </span>r#mut {
+                                Instruction::StoreMutVar(key)
+                            } <span class="kw">else if </span>r#const {
+                                Instruction::StoreConstVar(key)
+                            } <span class="kw">else </span>{
+                                Instruction::StoreVar(key)
                             },
-                            <span class="ident">span</span>: <span class="prelude-val">Some</span>(<span class="ident">span</span>),
-                            <span class="ident">name</span>: <span class="prelude-val">Some</span>(<span class="ident">s</span>.<span class="ident">clone</span>()),
+                            span: <span class="prelude-val">Some</span>(span),
+                            name: <span class="prelude-val">Some</span>(s.clone()),
                         },
                     );
                 }
             }
-            <span class="ident">Node::Assign</span> { <span class="ident">targets</span>, <span class="ident">value</span> } =&gt; {
-                <span class="self">self</span>.<span class="ident">interpret_expr</span>(<span class="ident">proc</span>, <span class="ident">value</span>);
+            Node::Assign { targets, value } =&gt; {
+                <span class="self">self</span>.interpret_expr(proc, value);
 
-                <span class="comment">// TODO: currently we assume only one target</span>
-                <span class="kw">let</span> <span class="ident">target</span> <span class="op">=</span> <span class="ident">targets</span>.<span class="ident">first</span>().<span class="ident">unwrap</span>();
+                <span class="comment">// TODO: currently we assume only one target
+                </span><span class="kw">let </span>target = targets.first().unwrap();
 
-                <span class="kw">if</span> <span class="kw">let</span> <span class="ident">Target::Ident</span>(<span class="ident">s</span>) <span class="op">=</span> <span class="ident">target</span>.<span class="ident">node</span>() {
-                    <span class="kw">let</span> <span class="ident">key</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">lookup</span>.<span class="ident">get</span>(<span class="ident">s</span>.<span class="ident">clone</span>());
+                <span class="kw">if let </span>Target::Ident(s) = target.node() {
+                    <span class="kw">let </span>key = <span class="self">self</span>.lookup.get(s.clone());
 
-                    <span class="self">self</span>.<span class="ident">push_rich</span>(
-                        <span class="ident">proc</span>,
-                        <span class="ident">RichInstruction</span> {
-                            <span class="ident">inner</span>: <span class="ident">Instruction::AssignVar</span>(<span class="ident">key</span>),
-                            <span class="ident">span</span>: <span class="prelude-val">Some</span>(<span class="ident">span</span>),
-                            <span class="ident">name</span>: <span class="prelude-val">Some</span>(<span class="ident">s</span>.<span class="ident">clone</span>()),
+                    <span class="self">self</span>.push_rich(
+                        proc,
+                        RichInstruction {
+                            inner: Instruction::AssignVar(key),
+                            span: <span class="prelude-val">Some</span>(span),
+                            name: <span class="prelude-val">Some</span>(s.clone()),
                         },
                     );
                 }
             }
-            <span class="kw">_</span> =&gt; <span class="macro">todo!</span>(),
+            <span class="kw">_ </span>=&gt; <span class="macro">todo!</span>(),
         }
     }
 
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">interpret_body_no_return</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">proc</span>: <span class="ident">MaybeProc</span>, <span class="ident">body</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">Spanned</span><span class="op">&lt;</span><span class="ident">Node</span><span class="op">&gt;</span><span class="op">&gt;</span>) {
-        <span class="kw">for</span> <span class="ident">node</span> <span class="kw">in</span> <span class="ident">body</span> {
-            <span class="self">self</span>.<span class="ident">interpret_node</span>(<span class="ident">proc</span>, <span class="ident">node</span>);
+    <span class="kw">pub fn </span>interpret_body_no_return(<span class="kw-2">&amp;mut </span><span class="self">self</span>, proc: MaybeProc, body: Vec&lt;Spanned&lt;Node&gt;&gt;) {
+        <span class="kw">for </span>node <span class="kw">in </span>body {
+            <span class="self">self</span>.interpret_node(proc, node);
         }
     }
 
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">interpret_body</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">proc</span>: <span class="ident">MaybeProc</span>, <span class="ident">Body</span>(<span class="ident">body</span>, <span class="ident">return_last</span>): <span class="ident">Body</span>) {
-        <span class="self">self</span>.<span class="ident">interpret_body_no_return</span>(<span class="ident">proc</span>, <span class="ident">body</span>);
+    <span class="kw">pub fn </span>interpret_body(<span class="kw-2">&amp;mut </span><span class="self">self</span>, proc: MaybeProc, Body(body, return_last): Body) {
+        <span class="self">self</span>.interpret_body_no_return(proc, body);
 
-        <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">proc</span>) <span class="op">=</span> <span class="ident">proc</span> {
-            <span class="self">self</span>.<span class="ident">push_return</span>(<span class="ident">proc</span>, <span class="ident">return_last</span>);
-        } <span class="kw">else</span> {
-            <span class="self">self</span>.<span class="ident">push</span>(<span class="prelude-val">None</span>, <span class="ident">Instruction::Halt</span>);
+        <span class="kw">if let </span><span class="prelude-val">Some</span>(proc) = proc {
+            <span class="self">self</span>.push_return(proc, return_last);
+        } <span class="kw">else </span>{
+            <span class="self">self</span>.push(<span class="prelude-val">None</span>, Instruction::Halt);
         }
     }
 
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">interpret_body_scoped_no_return</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">proc</span>: <span class="ident">AddrRepr</span>, <span class="ident">body</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">Spanned</span><span class="op">&lt;</span><span class="ident">Node</span><span class="op">&gt;</span><span class="op">&gt;</span>) {
-        <span class="self">self</span>.<span class="ident">push_enter_scope</span>(<span class="ident">proc</span>);
-        <span class="self">self</span>.<span class="ident">interpret_body_no_return</span>(<span class="prelude-val">Some</span>(<span class="ident">proc</span>), <span class="ident">body</span>);
-        <span class="self">self</span>.<span class="ident">push_exit_scope</span>(<span class="ident">proc</span>);
+    <span class="kw">pub fn </span>interpret_body_scoped_no_return(<span class="kw-2">&amp;mut </span><span class="self">self</span>, proc: AddrRepr, body: Vec&lt;Spanned&lt;Node&gt;&gt;) {
+        <span class="self">self</span>.push_enter_scope(proc);
+        <span class="self">self</span>.interpret_body_no_return(<span class="prelude-val">Some</span>(proc), body);
+        <span class="self">self</span>.push_exit_scope(proc);
     }
 
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">interpret_body_scoped</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">proc</span>: <span class="ident">AddrRepr</span>, <span class="ident">Body</span>(<span class="ident">body</span>, <span class="ident">return_last</span>): <span class="ident">Body</span>) {
-        <span class="self">self</span>.<span class="ident">interpret_body_scoped_no_return</span>(<span class="ident">proc</span>, <span class="ident">body</span>);
-        <span class="self">self</span>.<span class="ident">push_return</span>(<span class="ident">proc</span>, <span class="ident">return_last</span>);
+    <span class="kw">pub fn </span>interpret_body_scoped(<span class="kw-2">&amp;mut </span><span class="self">self</span>, proc: AddrRepr, Body(body, return_last): Body) {
+        <span class="self">self</span>.interpret_body_scoped_no_return(proc, body);
+        <span class="self">self</span>.push_return(proc, return_last);
     }
 }
 
-<span class="kw">impl</span> <span class="ident">Default</span> <span class="kw">for</span> <span class="ident">Interpreter</span> {
-    <span class="kw">fn</span> <span class="ident">default</span>() -&gt; <span class="self">Self</span> {
-        <span class="ident"><span class="self">Self</span>::new</span>()
+<span class="kw">impl </span>Default <span class="kw">for </span>Interpreter {
+    <span class="kw">fn </span>default() -&gt; <span class="self">Self </span>{
+        <span class="self">Self</span>::new()
     }
 }
 </code></pre></div>
-</section></div></main><div id="rustdoc-vars" data-root-path="../../" data-current-crate="terbium_bytecode" data-themes="ayu,dark,light" data-resource-suffix="" data-rustdoc-version="1.64.0-nightly (f6f9d5e73 2022-08-04)" ></div></body></html>
+</section></div></main><div id="rustdoc-vars" data-root-path="../../" data-current-crate="terbium_bytecode" data-themes="ayu,dark,light" data-resource-suffix="" data-rustdoc-version="1.66.0-nightly (1898c34e9 2022-10-26)" ></div></body></html>

@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `terbium_grammar/src/lib.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>lib.rs - source</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceSerif4-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../FiraSans-Regular.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../FiraSans-Medium.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceCodePro-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceSerif4-Bold.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceCodePro-Semibold.ttf.woff2"><link rel="stylesheet" type="text/css" href="../../normalize.css"><link rel="stylesheet" type="text/css" href="../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" type="text/css" href="../../ayu.css" disabled><link rel="stylesheet" type="text/css" href="../../dark.css" disabled><link rel="stylesheet" type="text/css" href="../../light.css" id="themeStyle"><script id="default-settings" ></script><script src="../../storage.js"></script><script defer src="../../source-script.js"></script><script defer src="../../source-files.js"></script><script defer src="../../main.js"></script><noscript><link rel="stylesheet" href="../../noscript.css"></noscript><link rel="alternate icon" type="image/png" href="../../favicon-16x16.png"><link rel="alternate icon" type="image/png" href="../../favicon-32x32.png"><link rel="icon" type="image/svg+xml" href="../../favicon.svg"></head><body class="rustdoc source"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle">&#9776;</button><a class="sidebar-logo" href="../../terbium_grammar/index.html"><div class="logo-container"><img class="rust-logo" src="../../rust-logo.svg" alt="logo"></div></a><h2 class="location"></h2></nav><nav class="sidebar"><a class="sidebar-logo" href="../../terbium_grammar/index.html"><div class="logo-container"><img class="rust-logo" src="../../rust-logo.svg" alt="logo"></div></a></nav><main><div class="width-limiter"><div class="sub-container"><a class="sub-logo-container" href="../../terbium_grammar/index.html"><img class="rust-logo" src="../../rust-logo.svg" alt="logo"></a><nav class="sub"><form class="search-form"><div class="search-container"><span></span><input class="search-input" name="search" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" title="help" tabindex="-1"><button type="button">?</button></div><div id="settings-menu" tabindex="-1"><a href="../../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../../wheel.svg"></a></div></div></form></nav></div><section id="main-content" class="content"><div class="example-wrap"><pre class="line-numbers"><span id="1">1</span>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `terbium_grammar/src/lib.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>lib.rs - source</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceSerif4-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../FiraSans-Regular.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../FiraSans-Medium.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceCodePro-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceSerif4-Bold.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceCodePro-Semibold.ttf.woff2"><link rel="stylesheet" href="../../normalize.css"><link rel="stylesheet" href="../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" href="../../ayu.css" disabled><link rel="stylesheet" href="../../dark.css" disabled><link rel="stylesheet" href="../../light.css" id="themeStyle"><script id="default-settings" ></script><script src="../../storage.js"></script><script defer src="../../source-script.js"></script><script defer src="../../source-files.js"></script><script defer src="../../main.js"></script><noscript><link rel="stylesheet" href="../../noscript.css"></noscript><link rel="alternate icon" type="image/png" href="../../favicon-16x16.png"><link rel="alternate icon" type="image/png" href="../../favicon-32x32.png"><link rel="icon" type="image/svg+xml" href="../../favicon.svg"></head><body class="rustdoc source"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"></nav><main><div class="width-limiter"><nav class="sub"><a class="sub-logo-container" href="../../terbium_grammar/index.html"><img class="rust-logo" src="../../rust-logo.svg" alt="logo"></a><form class="search-form"><div class="search-container"><span></span><input class="search-input" name="search" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" title="help" tabindex="-1"><a href="../../help.html">?</a></div><div id="settings-menu" tabindex="-1"><a href="../../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../../wheel.svg"></a></div></div></form></nav><section id="main-content" class="content"><div class="example-wrap"><pre class="src-line-numbers"><span id="1">1</span>
 <span id="2">2</span>
 <span id="3">3</span>
 <span id="4">4</span>
@@ -279,286 +279,286 @@
 <span id="279">279</span>
 <span id="280">280</span>
 <span id="281">281</span>
-</pre><pre class="rust"><code><span class="attribute">#![<span class="ident">feature</span>(<span class="ident">trait_alias</span>)]</span>
+</pre><pre class="rust"><code><span class="attribute">#![feature(trait_alias)]
 
-<span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">ast</span>;
-<span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">error</span>;
-<span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">token</span>;
+</span><span class="kw">pub mod </span>ast;
+<span class="kw">pub mod </span>error;
+<span class="kw">pub mod </span>token;
 
-<span class="kw">pub</span> <span class="kw">use</span> <span class="ident"><span class="kw">crate</span>::ast</span>::{<span class="ident">Body</span>, <span class="ident">Expr</span>, <span class="ident">Node</span>, <span class="ident">Param</span>, <span class="ident">ParseInterface</span>, <span class="ident">Target</span>, <span class="ident">TypeExpr</span>};
-<span class="kw">pub</span> <span class="kw">use</span> <span class="ident"><span class="kw">crate</span>::error</span>::<span class="kw-2">*</span>;
-<span class="kw">pub</span> <span class="kw">use</span> <span class="ident"><span class="kw">crate</span>::token</span>::{<span class="ident">get_lexer</span> <span class="kw">as</span> <span class="ident">tokenizer</span>, <span class="ident">Operator</span>, <span class="ident">Token</span>};
-<span class="kw">pub</span> <span class="kw">use</span> <span class="ident">chumsky::Parser</span> <span class="kw">as</span> <span class="ident">ChumskyParser</span>;
-<span class="kw">pub</span> <span class="kw">use</span> <span class="ident">chumsky::Stream</span> <span class="kw">as</span> <span class="ident">ChumskyStream</span>;
+<span class="kw">pub use </span><span class="kw">crate</span>::ast::{Body, Expr, Node, Param, ParseInterface, Target, TypeExpr};
+<span class="kw">pub use </span><span class="kw">crate</span>::error::<span class="kw-2">*</span>;
+<span class="kw">pub use </span><span class="kw">crate</span>::token::{get_lexer <span class="kw">as </span>tokenizer, Operator, Token};
+<span class="kw">pub use </span>chumsky::Parser <span class="kw">as </span>ChumskyParser;
+<span class="kw">pub use </span>chumsky::Stream <span class="kw">as </span>ChumskyStream;
 
-<span class="kw">use</span> <span class="ident">std</span>::{
-    <span class="ident">cmp</span>::{<span class="ident">Eq</span>, <span class="ident">PartialEq</span>},
-    <span class="ident">fmt</span>::{<span class="ident">Debug</span>, <span class="ident">Display</span>, <span class="ident">Formatter</span>, <span class="prelude-ty">Result</span> <span class="kw">as</span> <span class="ident">FmtResult</span>},
-    <span class="ident">ops</span>::{<span class="ident">Deref</span>, <span class="ident">DerefMut</span>, <span class="ident">Range</span>},
-    <span class="ident">path</span>::{<span class="ident">Path</span>, <span class="ident">PathBuf</span>},
+<span class="kw">use </span>std::{
+    cmp::{Eq, PartialEq},
+    fmt::{Debug, Display, Formatter, <span class="prelude-ty">Result </span><span class="kw">as </span>FmtResult},
+    ops::{Deref, DerefMut, Range},
+    path::{Path, PathBuf},
 };
 
-<span class="kw">use</span> <span class="ident">ariadne::Span</span> <span class="kw">as</span> <span class="ident">AriadneSpan</span>;
-<span class="kw">use</span> <span class="ident">chumsky::Span</span> <span class="kw">as</span> <span class="ident">ChumskySpan</span>;
+<span class="kw">use </span>ariadne::Span <span class="kw">as </span>AriadneSpan;
+<span class="kw">use </span>chumsky::Span <span class="kw">as </span>ChumskySpan;
 
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">PartialEq</span>, <span class="ident">Eq</span>, <span class="ident">Hash</span>)]</span>
-<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">Source</span>(<span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span>);
+<span class="attribute">#[derive(Clone, PartialEq, Eq, Hash)]
+</span><span class="kw">pub struct </span>Source(Vec&lt;String&gt;);
 
-<span class="kw">impl</span> <span class="ident">Source</span> {
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">repl</span>() -&gt; <span class="self">Self</span> {
-        <span class="self">Self</span>(<span class="macro">vec!</span>[<span class="string">&quot;&lt;repl&gt;&quot;</span>.<span class="ident">to_string</span>()])
+<span class="kw">impl </span>Source {
+    <span class="attribute">#[must_use]
+    </span><span class="kw">pub fn </span>repl() -&gt; <span class="self">Self </span>{
+        <span class="self">Self</span>(<span class="macro">vec!</span>[<span class="string">&quot;&lt;repl&gt;&quot;</span>.to_string()])
     }
 
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">from_path</span><span class="op">&lt;</span><span class="ident">P</span><span class="op">&gt;</span>(<span class="ident">path</span>: <span class="ident">P</span>) -&gt; <span class="self">Self</span>
-    <span class="kw">where</span>
-        <span class="ident">P</span>: <span class="ident">AsRef</span><span class="op">&lt;</span><span class="ident">Path</span><span class="op">&gt;</span>,
+    <span class="attribute">#[must_use]
+    </span><span class="kw">pub fn </span>from_path&lt;P&gt;(path: P) -&gt; <span class="self">Self
+    </span><span class="kw">where
+        </span>P: AsRef&lt;Path&gt;,
     {
         <span class="self">Self</span>(
-            <span class="ident">path</span>.<span class="ident">as_ref</span>()
-                .<span class="ident">iter</span>()
-                .<span class="ident">map</span>(<span class="op">|</span><span class="ident">c</span><span class="op">|</span> <span class="ident">c</span>.<span class="ident">to_string_lossy</span>().<span class="ident">into_owned</span>())
-                .<span class="ident">collect</span>(),
+            path.as_ref()
+                .iter()
+                .map(|c| c.to_string_lossy().into_owned())
+                .collect(),
         )
     }
 
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">to_path</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident">PathBuf</span> {
-        <span class="self">self</span>.<span class="number">0</span>.<span class="ident">iter</span>().<span class="ident">map</span>(<span class="ident">ToString::to_string</span>).<span class="ident">collect</span>()
+    <span class="attribute">#[must_use]
+    </span><span class="kw">pub fn </span>to_path(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; PathBuf {
+        <span class="self">self</span>.<span class="number">0</span>.iter().map(ToString::to_string).collect()
     }
 }
 
-<span class="kw">impl</span> <span class="ident">Default</span> <span class="kw">for</span> <span class="ident">Source</span> {
-    <span class="kw">fn</span> <span class="ident">default</span>() -&gt; <span class="self">Self</span> {
-        <span class="self">Self</span>(<span class="macro">vec!</span>[<span class="string">&quot;&lt;unknown&gt;&quot;</span>.<span class="ident">to_string</span>()])
+<span class="kw">impl </span>Default <span class="kw">for </span>Source {
+    <span class="kw">fn </span>default() -&gt; <span class="self">Self </span>{
+        <span class="self">Self</span>(<span class="macro">vec!</span>[<span class="string">&quot;&lt;unknown&gt;&quot;</span>.to_string()])
     }
 }
 
-<span class="kw">impl</span> <span class="ident">Display</span> <span class="kw">for</span> <span class="ident">Source</span> {
-    <span class="kw">fn</span> <span class="ident">fmt</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">f</span>: <span class="kw-2">&amp;mut</span> <span class="ident">Formatter</span>) -&gt; <span class="ident">FmtResult</span> {
-        <span class="macro">write!</span>(<span class="ident">f</span>, <span class="string">&quot;{}&quot;</span>, <span class="self">self</span>.<span class="number">0</span>.<span class="ident">clone</span>().<span class="ident">join</span>(<span class="string">&quot;/&quot;</span>))
+<span class="kw">impl </span>Display <span class="kw">for </span>Source {
+    <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>Formatter) -&gt; FmtResult {
+        <span class="macro">write!</span>(f, <span class="string">&quot;{}&quot;</span>, <span class="self">self</span>.<span class="number">0</span>.clone().join(<span class="string">&quot;/&quot;</span>))
     }
 }
 
-<span class="kw">impl</span> <span class="ident">Debug</span> <span class="kw">for</span> <span class="ident">Source</span> {
-    <span class="kw">fn</span> <span class="ident">fmt</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">f</span>: <span class="kw-2">&amp;mut</span> <span class="ident">Formatter</span>) -&gt; <span class="ident">FmtResult</span> {
-        <span class="macro">write!</span>(<span class="ident">f</span>, <span class="string">&quot;{}&quot;</span>, <span class="self">self</span>)
+<span class="kw">impl </span>Debug <span class="kw">for </span>Source {
+    <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>Formatter) -&gt; FmtResult {
+        <span class="macro">write!</span>(f, <span class="string">&quot;{}&quot;</span>, <span class="self">self</span>)
     }
 }
 
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">PartialEq</span>, <span class="ident">Eq</span>)]</span>
-<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">Span</span> {
-    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="ident">source</span>: <span class="ident">Source</span>,
-    <span class="kw">pub</span> <span class="ident">range</span>: (<span class="ident">usize</span>, <span class="ident">usize</span>),
+<span class="attribute">#[derive(Clone, PartialEq, Eq)]
+</span><span class="kw">pub struct </span>Span {
+    <span class="kw">pub</span>(<span class="kw">crate</span>) source: Source,
+    <span class="kw">pub </span>range: (usize, usize),
 }
 
-<span class="kw">impl</span> <span class="ident">Span</span> {
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="kw">pub</span> <span class="kw">const</span> <span class="kw">fn</span> <span class="ident">single</span>(<span class="ident">source</span>: <span class="ident">Source</span>, <span class="ident">loc</span>: <span class="ident">usize</span>) -&gt; <span class="self">Self</span> {
-        <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">clippy::range_plus_one</span>)]</span> <span class="comment">// From arnge takes Range instead of RangeInclusive</span>
-        <span class="ident"><span class="self">Self</span>::from_range</span>(<span class="ident">source</span>, <span class="ident">loc</span>..<span class="ident">loc</span> <span class="op">+</span> <span class="number">1</span>)
+<span class="kw">impl </span>Span {
+    <span class="attribute">#[must_use]
+    </span><span class="kw">pub const fn </span>single(source: Source, loc: usize) -&gt; <span class="self">Self </span>{
+        <span class="attribute">#[allow(clippy::range_plus_one)] </span><span class="comment">// From arnge takes Range instead of RangeInclusive
+        </span><span class="self">Self</span>::from_range(source, loc..loc + <span class="number">1</span>)
     }
 
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="kw">pub</span> <span class="kw">const</span> <span class="kw">fn</span> <span class="ident">from_range</span>(<span class="ident">source</span>: <span class="ident">Source</span>, <span class="ident">range</span>: <span class="ident">Range</span><span class="op">&lt;</span><span class="ident">usize</span><span class="op">&gt;</span>) -&gt; <span class="self">Self</span> {
-        <span class="self">Self</span> {
-            <span class="ident">source</span>,
-            <span class="ident">range</span>: (<span class="ident">range</span>.<span class="ident">start</span>, <span class="ident">range</span>.<span class="ident">end</span>),
+    <span class="attribute">#[must_use]
+    </span><span class="kw">pub const fn </span>from_range(source: Source, range: Range&lt;usize&gt;) -&gt; <span class="self">Self </span>{
+        <span class="self">Self </span>{
+            source,
+            range: (range.start, range.end),
         }
     }
 
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">src</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident">Source</span> {
-        <span class="self">self</span>.<span class="ident">source</span>.<span class="ident">clone</span>()
+    <span class="attribute">#[must_use]
+    </span><span class="kw">pub fn </span>src(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Source {
+        <span class="self">self</span>.source.clone()
     }
 
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="kw">pub</span> <span class="kw">const</span> <span class="kw">fn</span> <span class="ident">range</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident">Range</span><span class="op">&lt;</span><span class="ident">usize</span><span class="op">&gt;</span> {
-        <span class="self">self</span>.<span class="ident">range</span>.<span class="number">0</span>..<span class="self">self</span>.<span class="ident">range</span>.<span class="number">1</span>
-    }
+    <span class="attribute">#[must_use]
+    </span><span class="kw">pub const fn </span>range(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Range&lt;usize&gt; {
+        <span class="self">self</span>.range.<span class="number">0</span>..<span class="self">self</span>.range.<span class="number">1
+    </span>}
 
-    <span class="doccomment">/// Merge the span with other span.</span>
-    <span class="doccomment">///</span>
-    <span class="doccomment">/// # Panics</span>
-    <span class="doccomment">/// * Panic when other have a different source than self.</span>
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">merge</span>(<span class="self">self</span>, <span class="ident">other</span>: <span class="self">Self</span>) -&gt; <span class="self">Self</span> {
+    <span class="doccomment">/// Merge the span with other span.
+    ///
+    /// # Panics
+    /// * Panic when other have a different source than self.
+    </span><span class="attribute">#[must_use]
+    </span><span class="kw">pub fn </span>merge(<span class="self">self</span>, other: <span class="self">Self</span>) -&gt; <span class="self">Self </span>{
         <span class="macro">assert_eq!</span>(
-            <span class="self">self</span>.<span class="ident">source</span>, <span class="ident">other</span>.<span class="ident">source</span>,
-            <span class="string">&quot;cannot merge spans with different sources&quot;</span>
-        );
+            <span class="self">self</span>.source, other.source,
+            <span class="string">&quot;cannot merge spans with different sources&quot;
+        </span>);
 
-        <span class="kw">let</span> <span class="ident">merged</span> <span class="op">=</span> <span class="self">Self</span> {
-            <span class="ident">source</span>: <span class="self">self</span>.<span class="ident">source</span>,
-            <span class="ident">range</span>: (
-                <span class="self">self</span>.<span class="ident">range</span>.<span class="number">0</span>.<span class="ident">min</span>(<span class="ident">other</span>.<span class="ident">range</span>.<span class="number">0</span>),
-                <span class="self">self</span>.<span class="ident">range</span>.<span class="number">1</span>.<span class="ident">max</span>(<span class="ident">other</span>.<span class="ident">range</span>.<span class="number">1</span>),
+        <span class="kw">let </span>merged = <span class="self">Self </span>{
+            source: <span class="self">self</span>.source,
+            range: (
+                <span class="self">self</span>.range.<span class="number">0</span>.min(other.range.<span class="number">0</span>),
+                <span class="self">self</span>.range.<span class="number">1</span>.max(other.range.<span class="number">1</span>),
             ),
         };
-        <span class="ident">drop</span>(<span class="ident">other</span>);
+        drop(other);
 
-        <span class="ident">merged</span>
+        merged
     }
 
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="kw">pub</span> <span class="kw">const</span> <span class="kw">fn</span> <span class="ident">start</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident">usize</span> {
-        <span class="self">self</span>.<span class="ident">range</span>.<span class="number">0</span>
-    }
+    <span class="attribute">#[must_use]
+    </span><span class="kw">pub const fn </span>start(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; usize {
+        <span class="self">self</span>.range.<span class="number">0
+    </span>}
 
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="kw">pub</span> <span class="kw">const</span> <span class="kw">fn</span> <span class="ident">end</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident">usize</span> {
-        <span class="self">self</span>.<span class="ident">range</span>.<span class="number">1</span>
+    <span class="attribute">#[must_use]
+    </span><span class="kw">pub const fn </span>end(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; usize {
+        <span class="self">self</span>.range.<span class="number">1
+    </span>}
+}
+
+<span class="kw">impl </span>Default <span class="kw">for </span>Span {
+    <span class="kw">fn </span>default() -&gt; <span class="self">Self </span>{
+        <span class="self">Self</span>::from_range(Source::default(), <span class="number">0</span>..<span class="number">0</span>)
     }
 }
 
-<span class="kw">impl</span> <span class="ident">Default</span> <span class="kw">for</span> <span class="ident">Span</span> {
-    <span class="kw">fn</span> <span class="ident">default</span>() -&gt; <span class="self">Self</span> {
-        <span class="ident"><span class="self">Self</span>::from_range</span>(<span class="ident">Source::default</span>(), <span class="number">0</span>..<span class="number">0</span>)
+<span class="kw">impl </span>Debug <span class="kw">for </span>Span {
+    <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>Formatter) -&gt; FmtResult {
+        <span class="macro">write!</span>(f, <span class="string">&quot;{:?}:{:?}&quot;</span>, <span class="self">self</span>.source, <span class="self">self</span>.range())
     }
 }
 
-<span class="kw">impl</span> <span class="ident">Debug</span> <span class="kw">for</span> <span class="ident">Span</span> {
-    <span class="kw">fn</span> <span class="ident">fmt</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">f</span>: <span class="kw-2">&amp;mut</span> <span class="ident">Formatter</span>) -&gt; <span class="ident">FmtResult</span> {
-        <span class="macro">write!</span>(<span class="ident">f</span>, <span class="string">&quot;{:?}:{:?}&quot;</span>, <span class="self">self</span>.<span class="ident">source</span>, <span class="self">self</span>.<span class="ident">range</span>())
-    }
-}
+<span class="kw">impl </span>ChumskySpan <span class="kw">for </span>Span {
+    <span class="kw">type </span>Context = Source;
+    <span class="kw">type </span>Offset = usize;
 
-<span class="kw">impl</span> <span class="ident">ChumskySpan</span> <span class="kw">for</span> <span class="ident">Span</span> {
-    <span class="kw">type</span> <span class="ident">Context</span> <span class="op">=</span> <span class="ident">Source</span>;
-    <span class="kw">type</span> <span class="ident">Offset</span> <span class="op">=</span> <span class="ident">usize</span>;
-
-    <span class="kw">fn</span> <span class="ident">new</span>(<span class="ident">source</span>: <span class="ident"><span class="self">Self</span>::Context</span>, <span class="ident">range</span>: <span class="ident">Range</span><span class="op">&lt;</span><span class="ident">usize</span><span class="op">&gt;</span>) -&gt; <span class="self">Self</span> {
-        <span class="self">Self</span> {
-            <span class="ident">source</span>,
-            <span class="ident">range</span>: (<span class="ident">range</span>.<span class="ident">start</span>, <span class="ident">range</span>.<span class="ident">end</span>),
+    <span class="kw">fn </span>new(source: <span class="self">Self</span>::Context, range: Range&lt;usize&gt;) -&gt; <span class="self">Self </span>{
+        <span class="self">Self </span>{
+            source,
+            range: (range.start, range.end),
         }
     }
 
-    <span class="kw">fn</span> <span class="ident">context</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident"><span class="self">Self</span>::Context</span> {
-        <span class="self">self</span>.<span class="ident">source</span>.<span class="ident">clone</span>()
+    <span class="kw">fn </span>context(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="self">Self</span>::Context {
+        <span class="self">self</span>.source.clone()
     }
 
-    <span class="kw">fn</span> <span class="ident">start</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident"><span class="self">Self</span>::Offset</span> {
-        <span class="self">self</span>.<span class="ident">range</span>.<span class="number">0</span>
-    }
+    <span class="kw">fn </span>start(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="self">Self</span>::Offset {
+        <span class="self">self</span>.range.<span class="number">0
+    </span>}
 
-    <span class="kw">fn</span> <span class="ident">end</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident"><span class="self">Self</span>::Offset</span> {
-        <span class="self">self</span>.<span class="ident">range</span>.<span class="number">1</span>
-    }
+    <span class="kw">fn </span>end(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="self">Self</span>::Offset {
+        <span class="self">self</span>.range.<span class="number">1
+    </span>}
 }
 
-<span class="kw">impl</span> <span class="ident">AriadneSpan</span> <span class="kw">for</span> <span class="ident">Span</span> {
-    <span class="kw">type</span> <span class="ident">SourceId</span> <span class="op">=</span> <span class="ident">Source</span>;
+<span class="kw">impl </span>AriadneSpan <span class="kw">for </span>Span {
+    <span class="kw">type </span>SourceId = Source;
 
-    <span class="kw">fn</span> <span class="ident">source</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span><span class="ident"><span class="self">Self</span>::SourceId</span> {
-        <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">source</span>
+    <span class="kw">fn </span>source(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span><span class="self">Self</span>::SourceId {
+        <span class="kw-2">&amp;</span><span class="self">self</span>.source
     }
 
-    <span class="kw">fn</span> <span class="ident">start</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident">usize</span> {
-        <span class="self">self</span>.<span class="ident">range</span>.<span class="number">0</span>
-    }
+    <span class="kw">fn </span>start(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; usize {
+        <span class="self">self</span>.range.<span class="number">0
+    </span>}
 
-    <span class="kw">fn</span> <span class="ident">end</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident">usize</span> {
-        <span class="self">self</span>.<span class="ident">range</span>.<span class="number">1</span>
-    }
+    <span class="kw">fn </span>end(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; usize {
+        <span class="self">self</span>.range.<span class="number">1
+    </span>}
 }
 
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>)]</span>
-<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">Spanned</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
-    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="ident">inner</span>: <span class="ident">Box</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span>,
-    <span class="ident">span</span>: <span class="ident">Span</span>,
+<span class="attribute">#[derive(Clone)]
+</span><span class="kw">pub struct </span>Spanned&lt;T&gt; {
+    <span class="kw">pub</span>(<span class="kw">crate</span>) inner: Box&lt;T&gt;,
+    span: Span,
 }
 
-<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> <span class="ident">Spanned</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">new</span>(<span class="ident">inner</span>: <span class="ident">T</span>, <span class="ident">span</span>: <span class="ident">Span</span>) -&gt; <span class="self">Self</span> {
-        <span class="self">Self</span> {
-            <span class="ident">inner</span>: <span class="ident">Box::new</span>(<span class="ident">inner</span>),
-            <span class="ident">span</span>,
+<span class="kw">impl</span>&lt;T&gt; Spanned&lt;T&gt; {
+    <span class="attribute">#[must_use]
+    </span><span class="kw">pub fn </span>new(inner: T, span: Span) -&gt; <span class="self">Self </span>{
+        <span class="self">Self </span>{
+            inner: Box::new(inner),
+            span,
         }
     }
 
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="kw">pub</span> <span class="kw">const</span> <span class="kw">fn</span> <span class="ident">node</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span><span class="ident">T</span> {
-        <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">inner</span>
+    <span class="attribute">#[must_use]
+    </span><span class="kw">pub const fn </span>node(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span>T {
+        <span class="kw-2">&amp;</span><span class="self">self</span>.inner
     }
 
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">node_mut</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>) -&gt; <span class="kw-2">&amp;mut</span> <span class="ident">T</span> {
-        <span class="kw-2">&amp;mut</span> <span class="self">self</span>.<span class="ident">inner</span>
+    <span class="attribute">#[must_use]
+    </span><span class="kw">pub fn </span>node_mut(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;mut </span>T {
+        <span class="kw-2">&amp;mut </span><span class="self">self</span>.inner
     }
 
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">into_node</span>(<span class="self">self</span>) -&gt; <span class="ident">T</span> {
-        <span class="kw-2">*</span><span class="self">self</span>.<span class="ident">inner</span>
+    <span class="attribute">#[must_use]
+    </span><span class="kw">pub fn </span>into_node(<span class="self">self</span>) -&gt; T {
+        <span class="kw-2">*</span><span class="self">self</span>.inner
     }
 
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">span</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident">Span</span> {
-        <span class="self">self</span>.<span class="ident">span</span>.<span class="ident">clone</span>()
+    <span class="attribute">#[must_use]
+    </span><span class="kw">pub fn </span>span(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; Span {
+        <span class="self">self</span>.span.clone()
     }
 
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">map</span><span class="op">&lt;</span><span class="ident">U</span>, <span class="ident">F</span><span class="op">&gt;</span>(<span class="self">self</span>, <span class="ident">f</span>: <span class="ident">F</span>) -&gt; <span class="ident">Spanned</span><span class="op">&lt;</span><span class="ident">U</span><span class="op">&gt;</span>
-    <span class="kw">where</span>
-        <span class="ident">F</span>: <span class="ident">FnOnce</span>(<span class="ident">T</span>) -&gt; <span class="ident">U</span>,
+    <span class="attribute">#[must_use]
+    </span><span class="kw">pub fn </span>map&lt;U, F&gt;(<span class="self">self</span>, f: F) -&gt; Spanned&lt;U&gt;
+    <span class="kw">where
+        </span>F: FnOnce(T) -&gt; U,
     {
-        <span class="ident">Spanned::new</span>(<span class="ident">f</span>(<span class="kw-2">*</span><span class="self">self</span>.<span class="ident">inner</span>), <span class="self">self</span>.<span class="ident">span</span>)
+        Spanned::new(f(<span class="kw-2">*</span><span class="self">self</span>.inner), <span class="self">self</span>.span)
     }
 
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">map_span</span><span class="op">&lt;</span><span class="ident">F</span>: <span class="ident">FnOnce</span>(<span class="ident">Span</span>) -&gt; <span class="ident">Span</span><span class="op">&gt;</span>(<span class="self">self</span>, <span class="ident">f</span>: <span class="ident">F</span>) -&gt; <span class="self">Self</span> {
-        <span class="self">Self</span> {
-            <span class="ident">inner</span>: <span class="self">self</span>.<span class="ident">inner</span>,
-            <span class="ident">span</span>: <span class="ident">f</span>(<span class="self">self</span>.<span class="ident">span</span>),
+    <span class="attribute">#[must_use]
+    </span><span class="kw">pub fn </span>map_span&lt;F: FnOnce(Span) -&gt; Span&gt;(<span class="self">self</span>, f: F) -&gt; <span class="self">Self </span>{
+        <span class="self">Self </span>{
+            inner: <span class="self">self</span>.inner,
+            span: f(<span class="self">self</span>.span),
         }
     }
 
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">span_mut</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>) -&gt; <span class="kw-2">&amp;mut</span> <span class="ident">Span</span> {
-        <span class="kw-2">&amp;mut</span> <span class="self">self</span>.<span class="ident">span</span>
+    <span class="attribute">#[must_use]
+    </span><span class="kw">pub fn </span>span_mut(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;mut </span>Span {
+        <span class="kw-2">&amp;mut </span><span class="self">self</span>.span
     }
 
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="kw">pub</span> <span class="kw">const</span> <span class="kw">fn</span> <span class="ident">node_span</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; (<span class="kw-2">&amp;</span><span class="ident">T</span>, <span class="kw-2">&amp;</span><span class="ident">Span</span>) {
-        (<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">inner</span>, <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">span</span>)
+    <span class="attribute">#[must_use]
+    </span><span class="kw">pub const fn </span>node_span(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; (<span class="kw-2">&amp;</span>T, <span class="kw-2">&amp;</span>Span) {
+        (<span class="kw-2">&amp;</span><span class="self">self</span>.inner, <span class="kw-2">&amp;</span><span class="self">self</span>.span)
     }
 
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">into_node_span</span>(<span class="self">self</span>) -&gt; (<span class="ident">T</span>, <span class="ident">Span</span>) {
-        (<span class="kw-2">*</span><span class="self">self</span>.<span class="ident">inner</span>, <span class="self">self</span>.<span class="ident">span</span>)
-    }
-}
-
-<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> <span class="ident">Deref</span> <span class="kw">for</span> <span class="ident">Spanned</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
-    <span class="kw">type</span> <span class="ident">Target</span> <span class="op">=</span> <span class="ident">T</span>;
-
-    <span class="kw">fn</span> <span class="ident">deref</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span><span class="ident"><span class="self">Self</span>::Target</span> {
-        <span class="self">self</span>.<span class="ident">node</span>()
+    <span class="attribute">#[must_use]
+    </span><span class="kw">pub fn </span>into_node_span(<span class="self">self</span>) -&gt; (T, Span) {
+        (<span class="kw-2">*</span><span class="self">self</span>.inner, <span class="self">self</span>.span)
     }
 }
 
-<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> <span class="ident">DerefMut</span> <span class="kw">for</span> <span class="ident">Spanned</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
-    <span class="kw">fn</span> <span class="ident">deref_mut</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>) -&gt; <span class="kw-2">&amp;mut</span> <span class="ident"><span class="self">Self</span>::Target</span> {
-        <span class="self">self</span>.<span class="ident">node_mut</span>()
+<span class="kw">impl</span>&lt;T&gt; Deref <span class="kw">for </span>Spanned&lt;T&gt; {
+    <span class="kw">type </span>Target = T;
+
+    <span class="kw">fn </span>deref(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span><span class="self">Self</span>::Target {
+        <span class="self">self</span>.node()
     }
 }
 
-<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">T</span>: <span class="ident">PartialEq</span><span class="op">&gt;</span> <span class="ident">PartialEq</span> <span class="kw">for</span> <span class="ident">Spanned</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
-    <span class="kw">fn</span> <span class="ident">eq</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">other</span>: <span class="kw-2">&amp;</span><span class="self">Self</span>) -&gt; <span class="ident">bool</span> {
-        <span class="self">self</span>.<span class="ident">inner</span> <span class="op">==</span> <span class="ident">other</span>.<span class="ident">inner</span>
+<span class="kw">impl</span>&lt;T&gt; DerefMut <span class="kw">for </span>Spanned&lt;T&gt; {
+    <span class="kw">fn </span>deref_mut(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;mut </span><span class="self">Self</span>::Target {
+        <span class="self">self</span>.node_mut()
     }
 }
 
-<span class="kw">impl</span><span class="op">&lt;</span><span class="ident">T</span>: <span class="ident">Debug</span><span class="op">&gt;</span> <span class="ident">Debug</span> <span class="kw">for</span> <span class="ident">Spanned</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> {
-    <span class="kw">fn</span> <span class="ident">fmt</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">f</span>: <span class="kw-2">&amp;mut</span> <span class="ident">Formatter</span>) -&gt; <span class="ident">FmtResult</span> {
-        <span class="kw">if</span> <span class="ident">f</span>.<span class="ident">alternate</span>() {
-            <span class="macro">write!</span>(<span class="ident">f</span>, <span class="string">&quot;{:#?} @ {:?}&quot;</span>, <span class="self">self</span>.<span class="ident">inner</span>, <span class="self">self</span>.<span class="ident">span</span>)
-        } <span class="kw">else</span> {
-            <span class="macro">write!</span>(<span class="ident">f</span>, <span class="string">&quot;{:?} @ {:?}&quot;</span>, <span class="self">self</span>.<span class="ident">inner</span>, <span class="self">self</span>.<span class="ident">span</span>)
+<span class="kw">impl</span>&lt;T: PartialEq&gt; PartialEq <span class="kw">for </span>Spanned&lt;T&gt; {
+    <span class="kw">fn </span>eq(<span class="kw-2">&amp;</span><span class="self">self</span>, other: <span class="kw-2">&amp;</span><span class="self">Self</span>) -&gt; bool {
+        <span class="self">self</span>.inner == other.inner
+    }
+}
+
+<span class="kw">impl</span>&lt;T: Debug&gt; Debug <span class="kw">for </span>Spanned&lt;T&gt; {
+    <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>Formatter) -&gt; FmtResult {
+        <span class="kw">if </span>f.alternate() {
+            <span class="macro">write!</span>(f, <span class="string">&quot;{:#?} @ {:?}&quot;</span>, <span class="self">self</span>.inner, <span class="self">self</span>.span)
+        } <span class="kw">else </span>{
+            <span class="macro">write!</span>(f, <span class="string">&quot;{:?} @ {:?}&quot;</span>, <span class="self">self</span>.inner, <span class="self">self</span>.span)
         }
     }
 }
 </code></pre></div>
-</section></div></main><div id="rustdoc-vars" data-root-path="../../" data-current-crate="terbium_grammar" data-themes="ayu,dark,light" data-resource-suffix="" data-rustdoc-version="1.64.0-nightly (f6f9d5e73 2022-08-04)" ></div></body></html>
+</section></div></main><div id="rustdoc-vars" data-root-path="../../" data-current-crate="terbium_grammar" data-themes="ayu,dark,light" data-resource-suffix="" data-rustdoc-version="1.66.0-nightly (1898c34e9 2022-10-26)" ></div></body></html>

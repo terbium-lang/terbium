@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `terbium_grammar/src/ast.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>ast.rs - source</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceSerif4-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../FiraSans-Regular.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../FiraSans-Medium.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceCodePro-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceSerif4-Bold.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceCodePro-Semibold.ttf.woff2"><link rel="stylesheet" type="text/css" href="../../normalize.css"><link rel="stylesheet" type="text/css" href="../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" type="text/css" href="../../ayu.css" disabled><link rel="stylesheet" type="text/css" href="../../dark.css" disabled><link rel="stylesheet" type="text/css" href="../../light.css" id="themeStyle"><script id="default-settings" ></script><script src="../../storage.js"></script><script defer src="../../source-script.js"></script><script defer src="../../source-files.js"></script><script defer src="../../main.js"></script><noscript><link rel="stylesheet" href="../../noscript.css"></noscript><link rel="alternate icon" type="image/png" href="../../favicon-16x16.png"><link rel="alternate icon" type="image/png" href="../../favicon-32x32.png"><link rel="icon" type="image/svg+xml" href="../../favicon.svg"></head><body class="rustdoc source"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle">&#9776;</button><a class="sidebar-logo" href="../../terbium_grammar/index.html"><div class="logo-container"><img class="rust-logo" src="../../rust-logo.svg" alt="logo"></div></a><h2 class="location"></h2></nav><nav class="sidebar"><a class="sidebar-logo" href="../../terbium_grammar/index.html"><div class="logo-container"><img class="rust-logo" src="../../rust-logo.svg" alt="logo"></div></a></nav><main><div class="width-limiter"><div class="sub-container"><a class="sub-logo-container" href="../../terbium_grammar/index.html"><img class="rust-logo" src="../../rust-logo.svg" alt="logo"></a><nav class="sub"><form class="search-form"><div class="search-container"><span></span><input class="search-input" name="search" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" title="help" tabindex="-1"><button type="button">?</button></div><div id="settings-menu" tabindex="-1"><a href="../../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../../wheel.svg"></a></div></div></form></nav></div><section id="main-content" class="content"><div class="example-wrap"><pre class="line-numbers"><span id="1">1</span>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `terbium_grammar/src/ast.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>ast.rs - source</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceSerif4-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../FiraSans-Regular.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../FiraSans-Medium.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceCodePro-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceSerif4-Bold.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceCodePro-Semibold.ttf.woff2"><link rel="stylesheet" href="../../normalize.css"><link rel="stylesheet" href="../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" href="../../ayu.css" disabled><link rel="stylesheet" href="../../dark.css" disabled><link rel="stylesheet" href="../../light.css" id="themeStyle"><script id="default-settings" ></script><script src="../../storage.js"></script><script defer src="../../source-script.js"></script><script defer src="../../source-files.js"></script><script defer src="../../main.js"></script><noscript><link rel="stylesheet" href="../../noscript.css"></noscript><link rel="alternate icon" type="image/png" href="../../favicon-16x16.png"><link rel="alternate icon" type="image/png" href="../../favicon-32x32.png"><link rel="icon" type="image/svg+xml" href="../../favicon.svg"></head><body class="rustdoc source"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"></nav><main><div class="width-limiter"><nav class="sub"><a class="sub-logo-container" href="../../terbium_grammar/index.html"><img class="rust-logo" src="../../rust-logo.svg" alt="logo"></a><form class="search-form"><div class="search-container"><span></span><input class="search-input" name="search" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" title="help" tabindex="-1"><a href="../../help.html">?</a></div><div id="settings-menu" tabindex="-1"><a href="../../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../../wheel.svg"></a></div></div></form></nav><section id="main-content" class="content"><div class="example-wrap"><pre class="src-line-numbers"><span id="1">1</span>
 <span id="2">2</span>
 <span id="3">3</span>
 <span id="4">4</span>
@@ -932,939 +932,939 @@
 <span id="932">932</span>
 <span id="933">933</span>
 <span id="934">934</span>
-</pre><pre class="rust"><code><span class="kw">use</span> <span class="ident"><span class="kw">super</span>::token</span>::{<span class="ident">get_lexer</span>, <span class="ident">Bracket</span>, <span class="ident">Keyword</span>, <span class="ident">Literal</span>, <span class="ident">Operator</span>, <span class="ident">StringLiteral</span>, <span class="ident">Token</span>};
-<span class="kw">use</span> <span class="kw">super</span>::{<span class="ident">Error</span>, <span class="ident">Source</span>, <span class="ident">Span</span>, <span class="ident">Spanned</span>};
+</pre><pre class="rust"><code><span class="kw">use </span><span class="kw">super</span>::token::{get_lexer, Bracket, Keyword, Literal, Operator, StringLiteral, Token};
+<span class="kw">use super</span>::{Error, Source, Span, Spanned};
 
-<span class="kw">use</span> <span class="ident">std::path::Path</span>;
+<span class="kw">use </span>std::path::Path;
 
-<span class="kw">use</span> <span class="ident">chumsky::prelude</span>::<span class="kw-2">*</span>;
-<span class="kw">use</span> <span class="ident">chumsky::Stream</span>;
+<span class="kw">use </span>chumsky::prelude::<span class="kw-2">*</span>;
+<span class="kw">use </span>chumsky::Stream;
 
-<span class="kw">pub</span> <span class="kw">type</span> <span class="ident">SpannedExpr</span> <span class="op">=</span> <span class="ident">Spanned</span><span class="op">&lt;</span><span class="ident">Expr</span><span class="op">&gt;</span>;
-<span class="kw">pub</span> <span class="kw">type</span> <span class="ident">SpannedOperator</span> <span class="op">=</span> <span class="ident">Spanned</span><span class="op">&lt;</span><span class="ident">Operator</span><span class="op">&gt;</span>;
-<span class="kw">pub</span> <span class="kw">type</span> <span class="ident">SpannedNode</span> <span class="op">=</span> <span class="ident">Spanned</span><span class="op">&lt;</span><span class="ident">Node</span><span class="op">&gt;</span>;
-<span class="kw">pub</span> <span class="kw">type</span> <span class="ident">SpannedBody</span> <span class="op">=</span> <span class="ident">Spanned</span><span class="op">&lt;</span><span class="ident">Body</span><span class="op">&gt;</span>;
-<span class="kw">pub</span> <span class="kw">type</span> <span class="ident">SpannedTarget</span> <span class="op">=</span> <span class="ident">Spanned</span><span class="op">&lt;</span><span class="ident">Target</span><span class="op">&gt;</span>;
-<span class="kw">pub</span> <span class="kw">type</span> <span class="ident">SpannedParam</span> <span class="op">=</span> <span class="ident">Spanned</span><span class="op">&lt;</span><span class="ident">Param</span><span class="op">&gt;</span>;
-<span class="kw">pub</span> <span class="kw">type</span> <span class="ident">SpannedTypeExpr</span> <span class="op">=</span> <span class="ident">Spanned</span><span class="op">&lt;</span><span class="ident">TypeExpr</span><span class="op">&gt;</span>;
+<span class="kw">pub type </span>SpannedExpr = Spanned&lt;Expr&gt;;
+<span class="kw">pub type </span>SpannedOperator = Spanned&lt;Operator&gt;;
+<span class="kw">pub type </span>SpannedNode = Spanned&lt;Node&gt;;
+<span class="kw">pub type </span>SpannedBody = Spanned&lt;Body&gt;;
+<span class="kw">pub type </span>SpannedTarget = Spanned&lt;Target&gt;;
+<span class="kw">pub type </span>SpannedParam = Spanned&lt;Param&gt;;
+<span class="kw">pub type </span>SpannedTypeExpr = Spanned&lt;TypeExpr&gt;;
 
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">PartialEq</span>)]</span>
-<span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">Expr</span> {
-    <span class="ident">Integer</span>(<span class="ident">u128</span>),
-    <span class="ident">Float</span>(<span class="ident">String</span>), <span class="comment">// See token.rs for why this is a String</span>
-    <span class="ident">String</span>(<span class="ident">String</span>),
-    <span class="ident">Bool</span>(<span class="ident">bool</span>),
-    <span class="ident">Ident</span>(<span class="ident">String</span>),
-    <span class="ident">Array</span>(<span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">SpannedExpr</span><span class="op">&gt;</span>),
-    <span class="ident">Cast</span>(<span class="ident">SpannedExpr</span>, <span class="ident">SpannedExpr</span>),
-    <span class="ident">UnaryExpr</span> {
-        <span class="ident">operator</span>: <span class="ident">SpannedOperator</span>,
-        <span class="ident">value</span>: <span class="ident">SpannedExpr</span>,
+<span class="attribute">#[derive(Clone, Debug, PartialEq)]
+</span><span class="kw">pub enum </span>Expr {
+    Integer(u128),
+    Float(String), <span class="comment">// See token.rs for why this is a String
+    </span>String(String),
+    Bool(bool),
+    Ident(String),
+    Array(Vec&lt;SpannedExpr&gt;),
+    Cast(SpannedExpr, SpannedExpr),
+    UnaryExpr {
+        operator: SpannedOperator,
+        value: SpannedExpr,
     },
-    <span class="ident">BinaryExpr</span> {
-        <span class="ident">operator</span>: <span class="ident">SpannedOperator</span>,
-        <span class="ident">lhs</span>: <span class="ident">SpannedExpr</span>,
-        <span class="ident">rhs</span>: <span class="ident">SpannedExpr</span>,
+    BinaryExpr {
+        operator: SpannedOperator,
+        lhs: SpannedExpr,
+        rhs: SpannedExpr,
     },
-    <span class="ident">Attr</span>(<span class="ident">SpannedExpr</span>, <span class="ident">String</span>),
-    <span class="ident">Call</span> {
-        <span class="ident">value</span>: <span class="ident">SpannedExpr</span>,
-        <span class="ident">args</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">SpannedExpr</span><span class="op">&gt;</span>,
-        <span class="ident">kwargs</span>: <span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">String</span>, <span class="ident">SpannedExpr</span>)<span class="op">&gt;</span>,
+    Attr(SpannedExpr, String),
+    Call {
+        value: SpannedExpr,
+        args: Vec&lt;SpannedExpr&gt;,
+        kwargs: Vec&lt;(String, SpannedExpr)&gt;,
     },
-    <span class="ident">If</span> {
-        <span class="ident">condition</span>: <span class="ident">SpannedExpr</span>,
-        <span class="ident">body</span>: <span class="ident">SpannedBody</span>,
-        <span class="ident">else_if_bodies</span>: <span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">SpannedExpr</span>, <span class="ident">SpannedBody</span>)<span class="op">&gt;</span>,
-        <span class="ident">else_body</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">SpannedBody</span><span class="op">&gt;</span>,
+    If {
+        condition: SpannedExpr,
+        body: SpannedBody,
+        else_if_bodies: Vec&lt;(SpannedExpr, SpannedBody)&gt;,
+        else_body: <span class="prelude-ty">Option</span>&lt;SpannedBody&gt;,
     },
-    <span class="ident">While</span> {
-        <span class="ident">condition</span>: <span class="ident">SpannedExpr</span>,
-        <span class="ident">body</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">SpannedNode</span><span class="op">&gt;</span>,
+    While {
+        condition: SpannedExpr,
+        body: Vec&lt;SpannedNode&gt;,
     },
 }
 
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">PartialEq</span>)]</span>
-<span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">TypeExpr</span> {
-    <span class="doccomment">/// Given T, this becomes Ident(&quot;T&quot;)</span>
-    <span class="ident">Ident</span>(<span class="ident">String</span>),
-    <span class="doccomment">/// Given mod.Type, this becomes Attr(Ident(mod), &quot;type&quot;)</span>
-    <span class="ident">Attr</span>(<span class="ident">SpannedTypeExpr</span>, <span class="ident">String</span>),
-    <span class="doccomment">/// Given Type&lt;A, B&gt;, this becomes Generic(Ident(Type), [Ident(A), Ident(B)])</span>
-    <span class="ident">Generic</span>(<span class="ident">SpannedTypeExpr</span>, <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">SpannedTypeExpr</span><span class="op">&gt;</span>),
-    <span class="doccomment">/// Given A | B, this becomes Union(Ident(A), Ident(B))</span>
-    <span class="doccomment">///</span>
-    <span class="doccomment">/// Terbium handles Unions wide-to-narrow. This means given type A | B,</span>
-    <span class="doccomment">/// something compatible with either type A or B will be compatible with it,</span>
-    <span class="doccomment">/// but only fields/operations that exist on **both** A and B will exist on the type.</span>
-    <span class="ident">Union</span>(<span class="ident">SpannedTypeExpr</span>, <span class="ident">SpannedTypeExpr</span>),
-    <span class="doccomment">/// Given A &amp; B, this becomes And(Ident(A), Ident(B))</span>
-    <span class="doccomment">///</span>
-    <span class="doccomment">/// Terbium handles And narrow-to-wide. This means given type A &amp; B,</span>
-    <span class="doccomment">/// something is only compatible with it if it is also compatible with type A</span>
-    <span class="doccomment">/// **and** type B. This means the fields/operations of this type will be a</span>
-    <span class="doccomment">/// combination of those from A and B.</span>
-    <span class="doccomment">///</span>
-    <span class="doccomment">/// This is useful for requiring types that implement a multitude of traits,</span>
-    <span class="doccomment">/// i.e. the type ``Iterator &amp; Joinable``.</span>
-    <span class="ident">And</span>(<span class="ident">SpannedTypeExpr</span>, <span class="ident">SpannedTypeExpr</span>),
-    <span class="doccomment">/// Given ?T, this becomes Nullable(Ident(T))</span>
-    <span class="doccomment">/// Equivalent to T | null.</span>
-    <span class="ident">Nullable</span>(<span class="ident">SpannedTypeExpr</span>),
-    <span class="doccomment">/// Given !T, this becomes Not(Ident(T))</span>
-    <span class="doccomment">///</span>
-    <span class="doccomment">/// Only types that are not compatible with T will be compatible with !T.</span>
-    <span class="ident">Not</span>(<span class="ident">SpannedTypeExpr</span>),
-    <span class="doccomment">/// Given T[], this becomes Array(Ident(T), None).</span>
-    <span class="doccomment">/// Given T[n], where n is u32, this becomes Array(Ident(T), Some(n)).</span>
-    <span class="doccomment">///</span>
-    <span class="doccomment">/// This represents an Array of T, and if n is specified, an array with</span>
-    <span class="doccomment">/// such capacity.</span>
-    <span class="ident">Array</span>(<span class="ident">SpannedTypeExpr</span>, <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">u32</span><span class="op">&gt;</span>),
-    <span class="doccomment">/// Given [A, B], this becomes Tuple([Ident(A), Ident(B)]).</span>
-    <span class="doccomment">///</span>
-    <span class="doccomment">/// A tuple is an array with an exact number of elements but with</span>
-    <span class="doccomment">/// varying types throughout each element.</span>
-    <span class="ident">Tuple</span>(<span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">SpannedTypeExpr</span><span class="op">&gt;</span>),
-    <span class="doccomment">/// The constant null type. Only `null` will be compatible with this,</span>
-    <span class="doccomment">/// nothing else.</span>
-    <span class="ident">Null</span>,
-    <span class="doccomment">/// The `auto` type, which is the default type and means that</span>
-    <span class="doccomment">/// the type of the object is inferred.</span>
-    <span class="doccomment">///</span>
-    <span class="doccomment">/// Given the type cannot be inferred and Terbium was configured to not</span>
-    <span class="doccomment">/// raise an error given such scenario happens, this will default to</span>
-    <span class="doccomment">/// the `any` type.</span>
-    <span class="ident">Auto</span>,
-    <span class="doccomment">/// The `any` type. It is compatible with any other type and any other type is</span>
-    <span class="doccomment">/// compatible with it, including `null`.</span>
-    <span class="ident">Any</span>,
+<span class="attribute">#[derive(Clone, Debug, PartialEq)]
+</span><span class="kw">pub enum </span>TypeExpr {
+    <span class="doccomment">/// Given T, this becomes Ident(&quot;T&quot;)
+    </span>Ident(String),
+    <span class="doccomment">/// Given mod.Type, this becomes Attr(Ident(mod), &quot;type&quot;)
+    </span>Attr(SpannedTypeExpr, String),
+    <span class="doccomment">/// Given Type&lt;A, B&gt;, this becomes Generic(Ident(Type), [Ident(A), Ident(B)])
+    </span>Generic(SpannedTypeExpr, Vec&lt;SpannedTypeExpr&gt;),
+    <span class="doccomment">/// Given A | B, this becomes Union(Ident(A), Ident(B))
+    ///
+    /// Terbium handles Unions wide-to-narrow. This means given type A | B,
+    /// something compatible with either type A or B will be compatible with it,
+    /// but only fields/operations that exist on **both** A and B will exist on the type.
+    </span>Union(SpannedTypeExpr, SpannedTypeExpr),
+    <span class="doccomment">/// Given A &amp; B, this becomes And(Ident(A), Ident(B))
+    ///
+    /// Terbium handles And narrow-to-wide. This means given type A &amp; B,
+    /// something is only compatible with it if it is also compatible with type A
+    /// **and** type B. This means the fields/operations of this type will be a
+    /// combination of those from A and B.
+    ///
+    /// This is useful for requiring types that implement a multitude of traits,
+    /// i.e. the type ``Iterator &amp; Joinable``.
+    </span>And(SpannedTypeExpr, SpannedTypeExpr),
+    <span class="doccomment">/// Given ?T, this becomes Nullable(Ident(T))
+    /// Equivalent to T | null.
+    </span>Nullable(SpannedTypeExpr),
+    <span class="doccomment">/// Given !T, this becomes Not(Ident(T))
+    ///
+    /// Only types that are not compatible with T will be compatible with !T.
+    </span>Not(SpannedTypeExpr),
+    <span class="doccomment">/// Given T[], this becomes Array(Ident(T), None).
+    /// Given T[n], where n is u32, this becomes Array(Ident(T), Some(n)).
+    ///
+    /// This represents an Array of T, and if n is specified, an array with
+    /// such capacity.
+    </span>Array(SpannedTypeExpr, <span class="prelude-ty">Option</span>&lt;u32&gt;),
+    <span class="doccomment">/// Given [A, B], this becomes Tuple([Ident(A), Ident(B)]).
+    ///
+    /// A tuple is an array with an exact number of elements but with
+    /// varying types throughout each element.
+    </span>Tuple(Vec&lt;SpannedTypeExpr&gt;),
+    <span class="doccomment">/// The constant null type. Only `null` will be compatible with this,
+    /// nothing else.
+    </span>Null,
+    <span class="doccomment">/// The `auto` type, which is the default type and means that
+    /// the type of the object is inferred.
+    ///
+    /// Given the type cannot be inferred and Terbium was configured to not
+    /// raise an error given such scenario happens, this will default to
+    /// the `any` type.
+    </span>Auto,
+    <span class="doccomment">/// The `any` type. It is compatible with any other type and any other type is
+    /// compatible with it, including `null`.
+    </span>Any,
 }
 
-<span class="kw">pub</span> <span class="kw">trait</span> <span class="ident">ParseInterface</span> {
-    <span class="comment">// Parses the given tokens using this parser.</span>
-    <span class="doccomment">///</span>
-    <span class="doccomment">/// # Errors</span>
-    <span class="doccomment">/// * The tokens does not match Terbium grammar.</span>
-    <span class="kw">fn</span> <span class="ident">parse</span>(<span class="ident">tokens</span>: <span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">Token</span>, <span class="ident">Span</span>)<span class="op">&gt;</span>) -&gt; <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="self">Self</span>, <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">Error</span><span class="op">&gt;</span><span class="op">&gt;</span>
-    <span class="kw">where</span>
-        <span class="self">Self</span>: <span class="ident">Sized</span>;
+<span class="kw">pub trait </span>ParseInterface {
+    <span class="comment">// Parses the given tokens using this parser.
+    </span><span class="doccomment">///
+    /// # Errors
+    /// * The tokens does not match Terbium grammar.
+    </span><span class="kw">fn </span>parse(tokens: Vec&lt;(Token, Span)&gt;) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="self">Self</span>, Vec&lt;Error&gt;&gt;
+    <span class="kw">where
+        </span><span class="self">Self</span>: Sized;
 
-    <span class="doccomment">/// Tokenizes source code and parses it using this parser.</span>
-    <span class="doccomment">///</span>
-    <span class="doccomment">/// # Errors</span>
-    <span class="doccomment">/// * The string does not match Terbium grammar.</span>
-    <span class="kw">fn</span> <span class="ident">from_string</span>(<span class="ident">source</span>: <span class="ident">Source</span>, <span class="ident">s</span>: <span class="ident">String</span>) -&gt; <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="self">Self</span>, <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">Error</span><span class="op">&gt;</span><span class="op">&gt;</span>
-    <span class="kw">where</span>
-        <span class="self">Self</span>: <span class="ident">Sized</span>,
+    <span class="doccomment">/// Tokenizes source code and parses it using this parser.
+    ///
+    /// # Errors
+    /// * The string does not match Terbium grammar.
+    </span><span class="kw">fn </span>from_string(source: Source, s: String) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="self">Self</span>, Vec&lt;Error&gt;&gt;
+    <span class="kw">where
+        </span><span class="self">Self</span>: Sized,
     {
-        <span class="kw">let</span> <span class="ident">tokens</span> <span class="op">=</span> <span class="ident">get_lexer</span>().<span class="ident">parse</span>(<span class="ident">Stream</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Span</span>, <span class="kw">_</span><span class="op">&gt;</span><span class="ident">::from_iter</span>(
-            <span class="ident">Span::single</span>(<span class="ident">source</span>.<span class="ident">clone</span>(), <span class="ident">s</span>.<span class="ident">chars</span>().<span class="ident">count</span>()),
-            <span class="ident">s</span>.<span class="ident">chars</span>()
-                .<span class="ident">enumerate</span>()
-                .<span class="ident">map</span>(<span class="op">|</span>(<span class="ident">i</span>, <span class="ident">c</span>)<span class="op">|</span> (<span class="ident">c</span>, <span class="ident">Span::single</span>(<span class="ident">source</span>.<span class="ident">clone</span>(), <span class="ident">i</span>))),
+        <span class="kw">let </span>tokens = get_lexer().parse(Stream::&lt;<span class="kw">_</span>, Span, <span class="kw">_</span>&gt;::from_iter(
+            Span::single(source.clone(), s.chars().count()),
+            s.chars()
+                .enumerate()
+                .map(|(i, c)| (c, Span::single(source.clone(), i))),
         ))<span class="question-mark">?</span>;
 
-        <span class="ident"><span class="self">Self</span>::parse</span>(<span class="ident">tokens</span>)
+        <span class="self">Self</span>::parse(tokens)
     }
 
-    <span class="doccomment">/// Reads and tokenizes the specified source file.</span>
-    <span class="doccomment">///</span>
-    <span class="doccomment">/// # Errors</span>
-    <span class="doccomment">/// * The source file&#39;s content does not match Terbium grammar.</span>
-    <span class="kw">fn</span> <span class="ident">from_file</span><span class="op">&lt;</span><span class="ident">P</span>: <span class="ident">AsRef</span><span class="op">&lt;</span><span class="ident">Path</span><span class="op">&gt;</span><span class="op">&gt;</span>(<span class="ident">path</span>: <span class="ident">P</span>) -&gt; <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="self">Self</span>, <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">Error</span><span class="op">&gt;</span><span class="op">&gt;</span>
-    <span class="kw">where</span>
-        <span class="self">Self</span>: <span class="ident">Sized</span>,
+    <span class="doccomment">/// Reads and tokenizes the specified source file.
+    ///
+    /// # Errors
+    /// * The source file&#39;s content does not match Terbium grammar.
+    </span><span class="kw">fn </span>from_file&lt;P: AsRef&lt;Path&gt;&gt;(path: P) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="self">Self</span>, Vec&lt;Error&gt;&gt;
+    <span class="kw">where
+        </span><span class="self">Self</span>: Sized,
     {
-        <span class="kw">let</span> <span class="ident">content</span> <span class="op">=</span> <span class="ident">std::fs::read_to_string</span>(<span class="ident">path</span>.<span class="ident">as_ref</span>()).<span class="ident">expect</span>(<span class="string">&quot;file is not valid utf-8&quot;</span>);
+        <span class="kw">let </span>content = std::fs::read_to_string(path.as_ref()).expect(<span class="string">&quot;file is not valid utf-8&quot;</span>);
 
-        <span class="ident"><span class="self">Self</span>::from_string</span>(<span class="ident">Source::from_path</span>(<span class="ident">path</span>.<span class="ident">as_ref</span>()), <span class="ident">content</span>)
-    }
-}
-
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">PartialEq</span>)]</span>
-<span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">Target</span> {
-    <span class="comment">// Could represent a variable or a parameter. Supports destructuring.</span>
-    <span class="ident">Ident</span>(<span class="ident">String</span>),
-    <span class="ident">Array</span>(<span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">SpannedTarget</span><span class="op">&gt;</span>),
-    <span class="ident">Attr</span>(<span class="ident">SpannedTarget</span>, <span class="ident">String</span>), <span class="comment">// Invalid as a parameter in a declaration statement or parameter.</span>
-}
-
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">PartialEq</span>)]</span>
-<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">Param</span> {
-    <span class="ident">target</span>: <span class="ident">SpannedTarget</span>,
-    <span class="ident">ty</span>: <span class="ident">SpannedTypeExpr</span>,
-    <span class="ident">default</span>: <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">SpannedExpr</span><span class="op">&gt;</span>,
-}
-
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">PartialEq</span>)]</span>
-<span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">Node</span> {
-    <span class="ident">Module</span>(<span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">SpannedNode</span><span class="op">&gt;</span>),
-    <span class="ident">Func</span> {
-        <span class="ident">name</span>: <span class="ident">String</span>,
-        <span class="ident">params</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">SpannedParam</span><span class="op">&gt;</span>,
-        <span class="ident">body</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">SpannedNode</span><span class="op">&gt;</span>,
-        <span class="ident">return_last</span>: <span class="ident">bool</span>,
-        <span class="ident">return_ty</span>: <span class="ident">SpannedTypeExpr</span>,
-    },
-    <span class="ident">Expr</span>(<span class="ident">SpannedExpr</span>),
-    <span class="comment">// e.g. x.y = z becomes Assign { target: Attr(Ident(&quot;x&quot;), &quot;y&quot;), value: Ident(&quot;z&quot;), .. }</span>
-    <span class="ident">Declare</span> {
-        <span class="ident">targets</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">SpannedTarget</span><span class="op">&gt;</span>,
-        <span class="ident">ty</span>: <span class="ident">SpannedTypeExpr</span>,
-        <span class="ident">value</span>: <span class="ident">SpannedExpr</span>,
-        <span class="ident">r#mut</span>: <span class="ident">bool</span>,
-        <span class="ident">r#const</span>: <span class="ident">bool</span>,
-    },
-    <span class="ident">Assign</span> {
-        <span class="ident">targets</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">SpannedTarget</span><span class="op">&gt;</span>,
-        <span class="ident">value</span>: <span class="ident">SpannedExpr</span>,
-    },
-    <span class="ident">Return</span>(<span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">SpannedExpr</span><span class="op">&gt;</span>),
-    <span class="ident">Require</span>(<span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span>), <span class="comment">// TODO: require y from x; require * from x</span>
-}
-
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">PartialEq</span>)]</span>
-<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">Body</span>(<span class="kw">pub</span> <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">SpannedNode</span><span class="op">&gt;</span>, <span class="kw">pub</span> <span class="ident">bool</span>); <span class="comment">// body, return_last</span>
-
-<span class="kw">impl</span> <span class="ident">ParseInterface</span> <span class="kw">for</span> <span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">Token</span>, <span class="ident">Span</span>)<span class="op">&gt;</span> {
-    <span class="kw">fn</span> <span class="ident">parse</span>(<span class="ident">tokens</span>: <span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">Token</span>, <span class="ident">Span</span>)<span class="op">&gt;</span>) -&gt; <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="self">Self</span>, <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">Error</span><span class="op">&gt;</span><span class="op">&gt;</span>
-    <span class="kw">where</span>
-        <span class="self">Self</span>: <span class="ident">Sized</span>,
-    {
-        <span class="prelude-val">Ok</span>(<span class="ident">tokens</span>)
+        <span class="self">Self</span>::from_string(Source::from_path(path.as_ref()), content)
     }
 }
 
-<span class="kw">impl</span> <span class="ident">ParseInterface</span> <span class="kw">for</span> <span class="ident">Expr</span> {
-    <span class="kw">fn</span> <span class="ident">parse</span>(<span class="kw-2">mut</span> <span class="ident">tokens</span>: <span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">Token</span>, <span class="ident">Span</span>)<span class="op">&gt;</span>) -&gt; <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="self">Self</span>, <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">Error</span><span class="op">&gt;</span><span class="op">&gt;</span>
-    <span class="kw">where</span>
-        <span class="self">Self</span>: <span class="ident">Sized</span>,
-    {
-        <span class="kw">let</span> (<span class="ident">last</span>, <span class="ident">span</span>) <span class="op">=</span> <span class="ident">tokens</span>.<span class="ident">last</span>().<span class="ident">unwrap</span>();
-        <span class="kw">let</span> <span class="ident">span</span> <span class="op">=</span> <span class="ident">span</span>.<span class="ident">clone</span>();
+<span class="attribute">#[derive(Clone, Debug, PartialEq)]
+</span><span class="kw">pub enum </span>Target {
+    <span class="comment">// Could represent a variable or a parameter. Supports destructuring.
+    </span>Ident(String),
+    Array(Vec&lt;SpannedTarget&gt;),
+    Attr(SpannedTarget, String), <span class="comment">// Invalid as a parameter in a declaration statement or parameter.
+</span>}
 
-        <span class="kw">if</span> <span class="ident">last</span> <span class="op">!</span><span class="op">=</span> <span class="kw-2">&amp;</span><span class="ident">Token::Semicolon</span> {
-            <span class="ident">tokens</span>.<span class="ident">push</span>((<span class="ident">Token::Semicolon</span>, <span class="ident">Span::single</span>(<span class="ident">span</span>.<span class="ident">src</span>(), <span class="ident">span</span>.<span class="ident">end</span>())));
+<span class="attribute">#[derive(Clone, Debug, PartialEq)]
+</span><span class="kw">pub struct </span>Param {
+    target: SpannedTarget,
+    ty: SpannedTypeExpr,
+    default: <span class="prelude-ty">Option</span>&lt;SpannedExpr&gt;,
+}
+
+<span class="attribute">#[derive(Clone, Debug, PartialEq)]
+</span><span class="kw">pub enum </span>Node {
+    Module(Vec&lt;SpannedNode&gt;),
+    Func {
+        name: String,
+        params: Vec&lt;SpannedParam&gt;,
+        body: Vec&lt;SpannedNode&gt;,
+        return_last: bool,
+        return_ty: SpannedTypeExpr,
+    },
+    Expr(SpannedExpr),
+    <span class="comment">// e.g. x.y = z becomes Assign { target: Attr(Ident(&quot;x&quot;), &quot;y&quot;), value: Ident(&quot;z&quot;), .. }
+    </span>Declare {
+        targets: Vec&lt;SpannedTarget&gt;,
+        ty: SpannedTypeExpr,
+        value: SpannedExpr,
+        r#mut: bool,
+        r#const: bool,
+    },
+    Assign {
+        targets: Vec&lt;SpannedTarget&gt;,
+        value: SpannedExpr,
+    },
+    Return(<span class="prelude-ty">Option</span>&lt;SpannedExpr&gt;),
+    Require(Vec&lt;String&gt;), <span class="comment">// TODO: require y from x; require * from x
+</span>}
+
+<span class="attribute">#[derive(Clone, Debug, PartialEq)]
+</span><span class="kw">pub struct </span>Body(<span class="kw">pub </span>Vec&lt;SpannedNode&gt;, <span class="kw">pub </span>bool); <span class="comment">// body, return_last
+
+</span><span class="kw">impl </span>ParseInterface <span class="kw">for </span>Vec&lt;(Token, Span)&gt; {
+    <span class="kw">fn </span>parse(tokens: Vec&lt;(Token, Span)&gt;) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="self">Self</span>, Vec&lt;Error&gt;&gt;
+    <span class="kw">where
+        </span><span class="self">Self</span>: Sized,
+    {
+        <span class="prelude-val">Ok</span>(tokens)
+    }
+}
+
+<span class="kw">impl </span>ParseInterface <span class="kw">for </span>Expr {
+    <span class="kw">fn </span>parse(<span class="kw-2">mut </span>tokens: Vec&lt;(Token, Span)&gt;) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="self">Self</span>, Vec&lt;Error&gt;&gt;
+    <span class="kw">where
+        </span><span class="self">Self</span>: Sized,
+    {
+        <span class="kw">let </span>(last, span) = tokens.last().unwrap();
+        <span class="kw">let </span>span = span.clone();
+
+        <span class="kw">if </span>last != <span class="kw-2">&amp;</span>Token::Semicolon {
+            tokens.push((Token::Semicolon, Span::single(span.src(), span.end())));
         }
 
-        <span class="ident">get_body_parser</span>()
-            .<span class="ident">then_ignore</span>(<span class="ident">end</span>())
-            .<span class="ident">map</span>(<span class="op">|</span><span class="ident">b</span><span class="op">|</span> {
-                <span class="kw">let</span> <span class="ident">Body</span>(<span class="ident">body</span>, <span class="kw">_</span>) <span class="op">=</span> <span class="ident">b</span>.<span class="ident">into_node</span>();
+        get_body_parser()
+            .then_ignore(end())
+            .map(|b| {
+                <span class="kw">let </span>Body(body, <span class="kw">_</span>) = b.into_node();
 
-                <span class="kw">if</span> <span class="kw">let</span> <span class="ident">Node::Expr</span>(<span class="ident">e</span>) <span class="op">=</span> <span class="ident">body</span>.<span class="ident">get</span>(<span class="number">0</span>).<span class="ident">unwrap</span>().<span class="ident">node</span>() {
-                    <span class="ident">e</span>.<span class="ident">clone</span>().<span class="ident">into_node</span>()
-                } <span class="kw">else</span> {
+                <span class="kw">if let </span>Node::Expr(e) = body.get(<span class="number">0</span>).unwrap().node() {
+                    e.clone().into_node()
+                } <span class="kw">else </span>{
                     <span class="macro">unreachable!</span>();
                 }
             })
-            .<span class="ident">parse</span>(<span class="ident">Stream</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Span</span>, <span class="kw">_</span><span class="op">&gt;</span><span class="ident">::from_iter</span>(
-                <span class="ident">Span::single</span>(<span class="ident">span</span>.<span class="ident">src</span>(), <span class="ident">span</span>.<span class="ident">end</span>() <span class="op">+</span> <span class="number">1</span>),
-                <span class="ident">tokens</span>.<span class="ident">into_iter</span>(),
+            .parse(Stream::&lt;<span class="kw">_</span>, Span, <span class="kw">_</span>&gt;::from_iter(
+                Span::single(span.src(), span.end() + <span class="number">1</span>),
+                tokens.into_iter(),
             ))
     }
 }
 
-<span class="kw">impl</span> <span class="ident">ParseInterface</span> <span class="kw">for</span> <span class="ident">Node</span> {
-    <span class="kw">fn</span> <span class="ident">parse</span>(<span class="ident">tokens</span>: <span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">Token</span>, <span class="ident">Span</span>)<span class="op">&gt;</span>) -&gt; <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="self">Self</span>, <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">Error</span><span class="op">&gt;</span><span class="op">&gt;</span>
-    <span class="kw">where</span>
-        <span class="self">Self</span>: <span class="ident">Sized</span>,
+<span class="kw">impl </span>ParseInterface <span class="kw">for </span>Node {
+    <span class="kw">fn </span>parse(tokens: Vec&lt;(Token, Span)&gt;) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="self">Self</span>, Vec&lt;Error&gt;&gt;
+    <span class="kw">where
+        </span><span class="self">Self</span>: Sized,
     {
-        <span class="kw">let</span> (<span class="kw">_</span>, <span class="ident">span</span>) <span class="op">=</span> <span class="ident">tokens</span>.<span class="ident">last</span>().<span class="ident">unwrap</span>();
+        <span class="kw">let </span>(<span class="kw">_</span>, span) = tokens.last().unwrap();
 
-        <span class="ident">get_body_parser</span>()
-            .<span class="ident">then_ignore</span>(<span class="ident">end</span>())
-            .<span class="ident">map</span>(<span class="op">|</span><span class="ident">body</span><span class="op">|</span> <span class="ident"><span class="self">Self</span>::Module</span>(<span class="ident">body</span>.<span class="ident">into_node</span>().<span class="number">0</span>))
-            .<span class="ident">parse</span>(<span class="ident">Stream</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Span</span>, <span class="kw">_</span><span class="op">&gt;</span><span class="ident">::from_iter</span>(
-                <span class="ident">Span::single</span>(<span class="ident">span</span>.<span class="ident">src</span>(), <span class="ident">span</span>.<span class="ident">end</span>()),
-                <span class="ident">tokens</span>.<span class="ident">into_iter</span>(),
+        get_body_parser()
+            .then_ignore(end())
+            .map(|body| <span class="self">Self</span>::Module(body.into_node().<span class="number">0</span>))
+            .parse(Stream::&lt;<span class="kw">_</span>, Span, <span class="kw">_</span>&gt;::from_iter(
+                Span::single(span.src(), span.end()),
+                tokens.into_iter(),
             ))
     }
 }
 
-<span class="kw">impl</span> <span class="ident">ParseInterface</span> <span class="kw">for</span> <span class="ident">Body</span> {
-    <span class="kw">fn</span> <span class="ident">parse</span>(<span class="ident">tokens</span>: <span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">Token</span>, <span class="ident">Span</span>)<span class="op">&gt;</span>) -&gt; <span class="prelude-ty">Result</span><span class="op">&lt;</span><span class="self">Self</span>, <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">Error</span><span class="op">&gt;</span><span class="op">&gt;</span>
-    <span class="kw">where</span>
-        <span class="self">Self</span>: <span class="ident">Sized</span>,
+<span class="kw">impl </span>ParseInterface <span class="kw">for </span>Body {
+    <span class="kw">fn </span>parse(tokens: Vec&lt;(Token, Span)&gt;) -&gt; <span class="prelude-ty">Result</span>&lt;<span class="self">Self</span>, Vec&lt;Error&gt;&gt;
+    <span class="kw">where
+        </span><span class="self">Self</span>: Sized,
     {
-        <span class="kw">let</span> (<span class="kw">_</span>, <span class="ident">span</span>) <span class="op">=</span> <span class="ident">tokens</span>.<span class="ident">last</span>().<span class="ident">unwrap</span>();
+        <span class="kw">let </span>(<span class="kw">_</span>, span) = tokens.last().unwrap();
 
-        <span class="ident">get_body_parser</span>()
-            .<span class="ident">then_ignore</span>(<span class="ident">end</span>())
-            .<span class="ident">parse</span>(<span class="ident">Stream</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Span</span>, <span class="kw">_</span><span class="op">&gt;</span><span class="ident">::from_iter</span>(
-                <span class="ident">Span::single</span>(<span class="ident">span</span>.<span class="ident">src</span>(), <span class="ident">span</span>.<span class="ident">end</span>()),
-                <span class="ident">tokens</span>.<span class="ident">into_iter</span>(),
+        get_body_parser()
+            .then_ignore(end())
+            .parse(Stream::&lt;<span class="kw">_</span>, Span, <span class="kw">_</span>&gt;::from_iter(
+                Span::single(span.src(), span.end()),
+                tokens.into_iter(),
             ))
-            .<span class="ident">map</span>(<span class="ident">Spanned::into_node</span>)
+            .map(Spanned::into_node)
     }
 }
 
-<span class="kw">pub</span> <span class="kw">trait</span> <span class="ident">CommonParser</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> <span class="op">=</span> <span class="ident">Parser</span><span class="op">&lt;</span><span class="ident">Token</span>, <span class="ident">T</span>, <span class="ident">Error</span> <span class="op">=</span> <span class="ident">Error</span><span class="op">&gt;</span> <span class="op">+</span> <span class="ident">Clone</span>;
-<span class="kw">pub</span> <span class="kw">type</span> <span class="ident">RecursiveParser</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">T</span><span class="op">&gt;</span> <span class="op">=</span> <span class="ident">Recursive</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">Token</span>, <span class="ident">T</span>, <span class="ident">Error</span><span class="op">&gt;</span>;
+<span class="kw">pub trait </span>CommonParser&lt;T&gt; = Parser&lt;Token, T, Error = Error&gt; + Clone;
+<span class="kw">pub type </span>RecursiveParser&lt;<span class="lifetime">&#39;a</span>, T&gt; = Recursive&lt;<span class="lifetime">&#39;a</span>, Token, T, Error&gt;;
 
-<span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">nested_parser</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">T</span>: <span class="lifetime">&#39;a</span><span class="op">&gt;</span>(
-    <span class="ident">parser</span>: <span class="kw">impl</span> <span class="ident">CommonParser</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> <span class="op">+</span> <span class="lifetime">&#39;a</span>,
-    <span class="ident">delimiter</span>: <span class="ident">Bracket</span>,
-    <span class="ident">f</span>: <span class="kw">impl</span> <span class="ident">Fn</span>(<span class="ident">Span</span>) -&gt; <span class="ident">T</span> <span class="op">+</span> <span class="ident">Clone</span> <span class="op">+</span> <span class="lifetime">&#39;a</span>,
-) -&gt; <span class="kw">impl</span> <span class="ident">CommonParser</span><span class="op">&lt;</span><span class="ident">T</span><span class="op">&gt;</span> <span class="op">+</span> <span class="lifetime">&#39;a</span> {
-    <span class="ident">parser</span>
-        .<span class="ident">delimited_by</span>(
-            <span class="ident">just</span>(<span class="ident">Token::StartBracket</span>(<span class="ident">delimiter</span>)),
-            <span class="ident">just</span>(<span class="ident">Token::EndBracket</span>(<span class="ident">delimiter</span>)),
+<span class="kw">pub fn </span>nested_parser&lt;<span class="lifetime">&#39;a</span>, T: <span class="lifetime">&#39;a</span>&gt;(
+    parser: <span class="kw">impl </span>CommonParser&lt;T&gt; + <span class="lifetime">&#39;a</span>,
+    delimiter: Bracket,
+    f: <span class="kw">impl </span>Fn(Span) -&gt; T + Clone + <span class="lifetime">&#39;a</span>,
+) -&gt; <span class="kw">impl </span>CommonParser&lt;T&gt; + <span class="lifetime">&#39;a </span>{
+    parser
+        .delimited_by(
+            just(Token::StartBracket(delimiter)),
+            just(Token::EndBracket(delimiter)),
         )
-        .<span class="ident">recover_with</span>(<span class="ident">nested_delimiters</span>(
-            <span class="ident">Token::StartBracket</span>(<span class="ident">delimiter</span>),
-            <span class="ident">Token::EndBracket</span>(<span class="ident">delimiter</span>),
+        .recover_with(nested_delimiters(
+            Token::StartBracket(delimiter),
+            Token::EndBracket(delimiter),
             [
                 (
-                    <span class="ident">Token::StartBracket</span>(<span class="ident">Bracket::Paren</span>),
-                    <span class="ident">Token::EndBracket</span>(<span class="ident">Bracket::Paren</span>),
+                    Token::StartBracket(Bracket::Paren),
+                    Token::EndBracket(Bracket::Paren),
                 ),
                 (
-                    <span class="ident">Token::StartBracket</span>(<span class="ident">Bracket::Bracket</span>),
-                    <span class="ident">Token::EndBracket</span>(<span class="ident">Bracket::Bracket</span>),
+                    Token::StartBracket(Bracket::Bracket),
+                    Token::EndBracket(Bracket::Bracket),
                 ),
                 (
-                    <span class="ident">Token::StartBracket</span>(<span class="ident">Bracket::Brace</span>),
-                    <span class="ident">Token::EndBracket</span>(<span class="ident">Bracket::Brace</span>),
+                    Token::StartBracket(Bracket::Brace),
+                    Token::EndBracket(Bracket::Brace),
                 ),
             ],
-            <span class="ident">f</span>,
+            f,
         ))
-        .<span class="ident">boxed</span>()
+        .boxed()
 }
 
-<span class="attribute">#[<span class="ident">must_use</span>]</span>
-<span class="attribute">#[<span class="ident">allow</span>(<span class="ident">clippy::too_many_lines</span>, <span class="ident">clippy::missing_panics_doc</span>)]</span>
-<span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">get_body_parser</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span><span class="op">&gt;</span>() -&gt; <span class="ident">RecursiveParser</span><span class="op">&lt;</span><span class="lifetime">&#39;a</span>, <span class="ident">SpannedBody</span><span class="op">&gt;</span> {
-    <span class="ident">recursive</span>(<span class="op">|</span><span class="ident">body</span>: <span class="ident">Recursive</span><span class="op">&lt;</span><span class="ident">Token</span>, <span class="ident">SpannedBody</span>, <span class="ident">Error</span><span class="op">&gt;</span><span class="op">|</span> {
-        <span class="kw">let</span> <span class="ident">ty</span> <span class="op">=</span> <span class="ident">recursive</span>(<span class="op">|</span><span class="ident">ty</span>: <span class="ident">Recursive</span><span class="op">&lt;</span><span class="ident">Token</span>, <span class="ident">SpannedTypeExpr</span>, <span class="ident">Error</span><span class="op">&gt;</span><span class="op">|</span> {
-            <span class="kw">let</span> <span class="ident">ident</span> <span class="op">=</span> <span class="macro">select!</span> {
-                <span class="ident">Token::Identifier</span>(<span class="ident">s</span>) =&gt; <span class="kw">match</span> <span class="ident">s</span>.<span class="ident">as_str</span>() {
-                    <span class="string">&quot;any&quot;</span> =&gt; <span class="ident">TypeExpr::Any</span>,
-                    <span class="string">&quot;auto&quot;</span> =&gt; <span class="ident">TypeExpr::Auto</span>,
-                    <span class="string">&quot;null&quot;</span> =&gt; <span class="ident">TypeExpr::Null</span>,
-                    <span class="kw">_</span> =&gt; <span class="ident">TypeExpr::Ident</span>(<span class="ident">s</span>),
+<span class="attribute">#[must_use]
+#[allow(clippy::too_many_lines, clippy::missing_panics_doc)]
+</span><span class="kw">pub fn </span>get_body_parser&lt;<span class="lifetime">&#39;a</span>&gt;() -&gt; RecursiveParser&lt;<span class="lifetime">&#39;a</span>, SpannedBody&gt; {
+    recursive(|body: Recursive&lt;Token, SpannedBody, Error&gt;| {
+        <span class="kw">let </span>ty = recursive(|ty: Recursive&lt;Token, SpannedTypeExpr, Error&gt;| {
+            <span class="kw">let </span>ident = <span class="macro">select! </span>{
+                Token::Identifier(s) =&gt; <span class="kw">match </span>s.as_str() {
+                    <span class="string">&quot;any&quot; </span>=&gt; TypeExpr::Any,
+                    <span class="string">&quot;auto&quot; </span>=&gt; TypeExpr::Auto,
+                    <span class="string">&quot;null&quot; </span>=&gt; TypeExpr::Null,
+                    <span class="kw">_ </span>=&gt; TypeExpr::Ident(s),
                 },
             }
-            .<span class="ident">map_with_span</span>(<span class="ident">Spanned::new</span>)
-            .<span class="ident">labelled</span>(<span class="string">&quot;type identifier&quot;</span>);
+            .map_with_span(Spanned::new)
+            .labelled(<span class="string">&quot;type identifier&quot;</span>);
 
-            <span class="kw">let</span> <span class="ident">array</span> <span class="op">=</span> <span class="ident">ty</span>
-                .<span class="ident">clone</span>()
-                .<span class="ident">then</span>(
-                    <span class="macro">select!</span>(<span class="ident">Token::Literal</span>(<span class="ident">Literal::Integer</span>(<span class="ident">i</span>)) =&gt; <span class="ident">i</span>)
-                        .<span class="ident">or_not</span>()
-                        .<span class="ident">delimited_by</span>(
-                            <span class="ident">just</span>(<span class="ident">Token::StartBracket</span>(<span class="ident">Bracket::Bracket</span>)),
-                            <span class="ident">just</span>(<span class="ident">Token::StartBracket</span>(<span class="ident">Bracket::Bracket</span>)),
+            <span class="kw">let </span>array = ty
+                .clone()
+                .then(
+                    <span class="macro">select!</span>(Token::Literal(Literal::Integer(i)) =&gt; i)
+                        .or_not()
+                        .delimited_by(
+                            just(Token::StartBracket(Bracket::Bracket)),
+                            just(Token::StartBracket(Bracket::Bracket)),
                         ),
                 )
-                .<span class="ident">try_map</span>(<span class="op">|</span>(<span class="ident">t</span>, <span class="ident">n</span>), <span class="ident">span</span><span class="op">|</span> {
-                    <span class="prelude-val">Ok</span>(<span class="ident">Spanned::new</span>(
-                        <span class="ident">TypeExpr::Array</span>(
-                            <span class="ident">t</span>,
-                            <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">n</span>) <span class="op">=</span> <span class="ident">n</span> {
-                                <span class="prelude-val">Some</span>(<span class="ident">n</span>.<span class="ident">try_into</span>().<span class="ident">map_err</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> {
-                                    <span class="ident">Error::custom</span>(<span class="ident">span</span>.<span class="ident">clone</span>(), <span class="string">&quot;fixed array length is too large&quot;</span>)
+                .try_map(|(t, n), span| {
+                    <span class="prelude-val">Ok</span>(Spanned::new(
+                        TypeExpr::Array(
+                            t,
+                            <span class="kw">if let </span><span class="prelude-val">Some</span>(n) = n {
+                                <span class="prelude-val">Some</span>(n.try_into().map_err(|<span class="kw">_</span>| {
+                                    Error::custom(span.clone(), <span class="string">&quot;fixed array length is too large&quot;</span>)
                                 })<span class="question-mark">?</span>)
-                            } <span class="kw">else</span> {
-                                <span class="prelude-val">None</span>
-                            },
+                            } <span class="kw">else </span>{
+                                <span class="prelude-val">None
+                            </span>},
                         ),
-                        <span class="ident">span</span>,
+                        span,
                     ))
                 });
 
-            <span class="kw">let</span> <span class="ident">tuple</span> <span class="op">=</span> <span class="ident">ty</span>
-                .<span class="ident">clone</span>()
-                .<span class="ident">separated_by</span>(<span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="ident">Error</span><span class="op">&gt;</span>(<span class="ident">Token::Comma</span>))
-                .<span class="ident">allow_trailing</span>()
-                .<span class="ident">delimited_by</span>(
-                    <span class="ident">just</span>(<span class="ident">Token::StartBracket</span>(<span class="ident">Bracket::Bracket</span>)),
-                    <span class="ident">just</span>(<span class="ident">Token::StartBracket</span>(<span class="ident">Bracket::Bracket</span>)),
+            <span class="kw">let </span>tuple = ty
+                .clone()
+                .separated_by(just::&lt;<span class="kw">_</span>, Token, Error&gt;(Token::Comma))
+                .allow_trailing()
+                .delimited_by(
+                    just(Token::StartBracket(Bracket::Bracket)),
+                    just(Token::StartBracket(Bracket::Bracket)),
                 )
-                .<span class="ident">map_with_span</span>(<span class="op">|</span><span class="ident">a</span>, <span class="ident">span</span><span class="op">|</span> <span class="ident">Spanned::new</span>(<span class="ident">TypeExpr::Tuple</span>(<span class="ident">a</span>), <span class="ident">span</span>));
+                .map_with_span(|a, span| Spanned::new(TypeExpr::Tuple(a), span));
 
-            <span class="kw">let</span> <span class="ident">atom</span> <span class="op">=</span> <span class="ident">choice</span>((
-                <span class="ident">tuple</span>,
-                <span class="ident">ident</span>,
-                <span class="ident">ty</span>.<span class="ident">clone</span>()
-                    .<span class="ident">delimited_by</span>(
-                        <span class="ident">just</span>(<span class="ident">Token::StartBracket</span>(<span class="ident">Bracket::Paren</span>)),
-                        <span class="ident">just</span>(<span class="ident">Token::EndBracket</span>(<span class="ident">Bracket::Paren</span>)),
+            <span class="kw">let </span>atom = choice((
+                tuple,
+                ident,
+                ty.clone()
+                    .delimited_by(
+                        just(Token::StartBracket(Bracket::Paren)),
+                        just(Token::EndBracket(Bracket::Paren)),
                     )
-                    .<span class="ident">boxed</span>(),
-                <span class="ident">array</span>,
+                    .boxed(),
+                array,
             ));
 
-            <span class="kw">let</span> <span class="ident">attr</span> <span class="op">=</span> <span class="ident">atom</span>
-                .<span class="ident">clone</span>()
-                .<span class="ident">then</span>(
-                    <span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="ident">Token::Dot</span>)
-                        .<span class="ident">ignore_then</span>(
-                            <span class="macro">select!</span>(<span class="ident">Token::Identifier</span>(<span class="ident">s</span>) =&gt; <span class="ident">s</span>)
-                                .<span class="ident">map_with_span</span>(<span class="ident">Spanned</span>::<span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span><span class="ident">::new</span>),
+            <span class="kw">let </span>attr = atom
+                .clone()
+                .then(
+                    just::&lt;<span class="kw">_</span>, Token, <span class="kw">_</span>&gt;(Token::Dot)
+                        .ignore_then(
+                            <span class="macro">select!</span>(Token::Identifier(s) =&gt; s)
+                                .map_with_span(Spanned::&lt;String&gt;::new),
                         )
-                        .<span class="ident">repeated</span>(),
+                        .repeated(),
                 )
-                .<span class="ident">foldl</span>(<span class="op">|</span><span class="ident">t</span>, <span class="ident">ident</span><span class="op">|</span> {
-                    <span class="kw">let</span> <span class="ident">span</span> <span class="op">=</span> <span class="ident">t</span>.<span class="ident">span</span>().<span class="ident">merge</span>(<span class="ident">ident</span>.<span class="ident">span</span>());
+                .foldl(|t, ident| {
+                    <span class="kw">let </span>span = t.span().merge(ident.span());
 
-                    <span class="ident">Spanned::new</span>(<span class="ident">TypeExpr::Attr</span>(<span class="ident">t</span>, <span class="ident">ident</span>.<span class="ident">into_node</span>()), <span class="ident">span</span>)
+                    Spanned::new(TypeExpr::Attr(t, ident.into_node()), span)
                 })
-                .<span class="ident">boxed</span>();
+                .boxed();
 
-            <span class="kw">let</span> <span class="ident">generic</span> <span class="op">=</span> <span class="ident">attr</span>
-                .<span class="ident">clone</span>()
-                .<span class="ident">then</span>(
-                    <span class="ident">ty</span>.<span class="ident">clone</span>()
-                        .<span class="ident">separated_by</span>(<span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="ident">Token::Comma</span>))
-                        .<span class="ident">allow_trailing</span>()
-                        .<span class="ident">delimited_by</span>(
-                            <span class="ident">just</span>(<span class="ident">Token::Operator</span>(<span class="ident">Operator::Lt</span>)),
-                            <span class="ident">just</span>(<span class="ident">Token::Operator</span>(<span class="ident">Operator::Gt</span>)),
+            <span class="kw">let </span>generic = attr
+                .clone()
+                .then(
+                    ty.clone()
+                        .separated_by(just::&lt;<span class="kw">_</span>, Token, <span class="kw">_</span>&gt;(Token::Comma))
+                        .allow_trailing()
+                        .delimited_by(
+                            just(Token::Operator(Operator::Lt)),
+                            just(Token::Operator(Operator::Gt)),
                         )
-                        .<span class="ident">or_not</span>(),
+                        .or_not(),
                 )
-                .<span class="ident">map_with_span</span>(<span class="op">|</span>(<span class="ident">subject</span>, <span class="ident">params</span>), <span class="ident">span</span><span class="op">|</span> <span class="kw">match</span> <span class="ident">params</span> {
-                    <span class="prelude-val">Some</span>(<span class="ident">params</span>) =&gt; <span class="ident">Spanned::new</span>(<span class="ident">TypeExpr::Generic</span>(<span class="ident">subject</span>, <span class="ident">params</span>), <span class="ident">span</span>),
-                    <span class="prelude-val">None</span> =&gt; <span class="ident">subject</span>,
+                .map_with_span(|(subject, params), span| <span class="kw">match </span>params {
+                    <span class="prelude-val">Some</span>(params) =&gt; Spanned::new(TypeExpr::Generic(subject, params), span),
+                    <span class="prelude-val">None </span>=&gt; subject,
                 })
-                .<span class="ident">boxed</span>();
+                .boxed();
 
-            <span class="kw">let</span> <span class="ident">nullable</span> <span class="op">=</span> <span class="ident">just</span>(<span class="ident">Token::Question</span>)
-                .<span class="ident">map_with_span</span>(<span class="ident">Spanned</span>::<span class="op">&lt;</span><span class="ident">Token</span><span class="op">&gt;</span><span class="ident">::new</span>)
-                .<span class="ident">repeated</span>()
-                .<span class="ident">then</span>(<span class="ident">generic</span>.<span class="ident">clone</span>())
-                .<span class="ident">foldr</span>(<span class="op">|</span><span class="ident">op</span>, <span class="ident">t</span><span class="op">|</span> {
-                    <span class="kw">let</span> <span class="ident">span</span> <span class="op">=</span> <span class="ident">op</span>.<span class="ident">span</span>().<span class="ident">merge</span>(<span class="ident">t</span>.<span class="ident">span</span>());
+            <span class="kw">let </span>nullable = just(Token::Question)
+                .map_with_span(Spanned::&lt;Token&gt;::new)
+                .repeated()
+                .then(generic.clone())
+                .foldr(|op, t| {
+                    <span class="kw">let </span>span = op.span().merge(t.span());
 
-                    <span class="ident">Spanned::new</span>(<span class="ident">TypeExpr::Nullable</span>(<span class="ident">t</span>), <span class="ident">span</span>)
+                    Spanned::new(TypeExpr::Nullable(t), span)
                 })
-                .<span class="ident">boxed</span>();
+                .boxed();
 
-            <span class="kw">let</span> <span class="ident">not</span> <span class="op">=</span> <span class="ident">just</span>(<span class="ident">Token::Operator</span>(<span class="ident">Operator::Not</span>))
-                .<span class="ident">map_with_span</span>(<span class="ident">Spanned</span>::<span class="op">&lt;</span><span class="ident">Token</span><span class="op">&gt;</span><span class="ident">::new</span>)
-                .<span class="ident">repeated</span>()
-                .<span class="ident">then</span>(<span class="ident">nullable</span>.<span class="ident">clone</span>())
-                .<span class="ident">foldr</span>(<span class="op">|</span><span class="ident">op</span>, <span class="ident">t</span><span class="op">|</span> {
-                    <span class="kw">let</span> <span class="ident">span</span> <span class="op">=</span> <span class="ident">op</span>.<span class="ident">span</span>().<span class="ident">merge</span>(<span class="ident">t</span>.<span class="ident">span</span>());
+            <span class="kw">let </span>not = just(Token::Operator(Operator::Not))
+                .map_with_span(Spanned::&lt;Token&gt;::new)
+                .repeated()
+                .then(nullable.clone())
+                .foldr(|op, t| {
+                    <span class="kw">let </span>span = op.span().merge(t.span());
 
-                    <span class="ident">Spanned::new</span>(<span class="ident">TypeExpr::Not</span>(<span class="ident">t</span>), <span class="ident">span</span>)
+                    Spanned::new(TypeExpr::Not(t), span)
                 })
-                .<span class="ident">boxed</span>();
+                .boxed();
 
-            <span class="kw">let</span> <span class="ident">and</span> <span class="op">=</span> <span class="ident">not</span>
-                .<span class="ident">clone</span>()
-                .<span class="ident">then</span>(
-                    <span class="ident">just</span>(<span class="ident">Token::Operator</span>(<span class="ident">Operator::BitAnd</span>))
-                        .<span class="ident">ignore_then</span>(<span class="ident">not</span>)
-                        .<span class="ident">repeated</span>(),
+            <span class="kw">let </span>and = not
+                .clone()
+                .then(
+                    just(Token::Operator(Operator::BitAnd))
+                        .ignore_then(not)
+                        .repeated(),
                 )
-                .<span class="ident">foldl</span>(<span class="op">|</span><span class="ident">lhs</span>, <span class="ident">rhs</span><span class="op">|</span> {
-                    <span class="kw">let</span> <span class="ident">span</span> <span class="op">=</span> <span class="ident">lhs</span>.<span class="ident">span</span>().<span class="ident">merge</span>(<span class="ident">rhs</span>.<span class="ident">span</span>());
+                .foldl(|lhs, rhs| {
+                    <span class="kw">let </span>span = lhs.span().merge(rhs.span());
 
-                    <span class="ident">Spanned::new</span>(<span class="ident">TypeExpr::And</span>(<span class="ident">lhs</span>, <span class="ident">rhs</span>), <span class="ident">span</span>)
+                    Spanned::new(TypeExpr::And(lhs, rhs), span)
                 })
-                .<span class="ident">boxed</span>();
+                .boxed();
 
-            <span class="ident">and</span>.<span class="ident">clone</span>()
-                .<span class="ident">then</span>(
-                    <span class="ident">just</span>(<span class="ident">Token::Operator</span>(<span class="ident">Operator::BitOr</span>))
-                        .<span class="ident">ignore_then</span>(<span class="ident">and</span>)
-                        .<span class="ident">repeated</span>(),
+            and.clone()
+                .then(
+                    just(Token::Operator(Operator::BitOr))
+                        .ignore_then(and)
+                        .repeated(),
                 )
-                .<span class="ident">foldl</span>(<span class="op">|</span><span class="ident">lhs</span>, <span class="ident">rhs</span><span class="op">|</span> {
-                    <span class="kw">let</span> <span class="ident">span</span> <span class="op">=</span> <span class="ident">lhs</span>.<span class="ident">span</span>().<span class="ident">merge</span>(<span class="ident">rhs</span>.<span class="ident">span</span>());
+                .foldl(|lhs, rhs| {
+                    <span class="kw">let </span>span = lhs.span().merge(rhs.span());
 
-                    <span class="ident">Spanned::new</span>(<span class="ident">TypeExpr::Union</span>(<span class="ident">lhs</span>, <span class="ident">rhs</span>), <span class="ident">span</span>)
+                    Spanned::new(TypeExpr::Union(lhs, rhs), span)
                 })
-                .<span class="ident">boxed</span>()
+                .boxed()
         });
 
-        <span class="kw">let</span> <span class="ident">e</span> <span class="op">=</span> <span class="ident">recursive</span>(<span class="op">|</span><span class="ident">e</span>: <span class="ident">Recursive</span><span class="op">&lt;</span><span class="ident">Token</span>, <span class="ident">SpannedExpr</span>, <span class="ident">Error</span><span class="op">&gt;</span><span class="op">|</span> {
-            <span class="kw">let</span> <span class="ident">literal</span> <span class="op">=</span> <span class="macro">select!</span> {
-                <span class="ident">Token::Literal</span>(<span class="ident">lit</span>) =&gt; <span class="kw">match</span> <span class="ident">lit</span> {
-                    <span class="ident">Literal::Integer</span>(<span class="ident">i</span>) =&gt; <span class="ident">Expr::Integer</span>(<span class="ident">i</span>),
-                    <span class="ident">Literal::Float</span>(<span class="ident">f</span>) =&gt; <span class="ident">Expr::Float</span>(<span class="ident">f</span>),
-                    <span class="ident">Literal::String</span>(<span class="ident">s</span>) =&gt; <span class="kw">match</span> <span class="ident">s</span> {
-                        <span class="ident">StringLiteral::String</span>(<span class="ident">s</span>) =&gt; <span class="ident">Expr::String</span>(<span class="ident">s</span>),
-                        <span class="kw">_</span> =&gt; <span class="macro">unreachable!</span>(),
+        <span class="kw">let </span>e = recursive(|e: Recursive&lt;Token, SpannedExpr, Error&gt;| {
+            <span class="kw">let </span>literal = <span class="macro">select! </span>{
+                Token::Literal(lit) =&gt; <span class="kw">match </span>lit {
+                    Literal::Integer(i) =&gt; Expr::Integer(i),
+                    Literal::Float(f) =&gt; Expr::Float(f),
+                    Literal::String(s) =&gt; <span class="kw">match </span>s {
+                        StringLiteral::String(s) =&gt; Expr::String(s),
+                        <span class="kw">_ </span>=&gt; <span class="macro">unreachable!</span>(),
                     },
                 }
             }
-            .<span class="ident">map_with_span</span>(<span class="ident">SpannedExpr::new</span>)
-            .<span class="ident">labelled</span>(<span class="string">&quot;literal&quot;</span>);
+            .map_with_span(SpannedExpr::new)
+            .labelled(<span class="string">&quot;literal&quot;</span>);
 
-            <span class="kw">let</span> <span class="ident">ident</span> <span class="op">=</span> <span class="macro">select!</span> {
-                <span class="ident">Token::Identifier</span>(<span class="ident">s</span>) =&gt; <span class="kw">match</span> <span class="ident">s</span>.<span class="ident">as_str</span>() {
-                    <span class="string">&quot;true&quot;</span> =&gt; <span class="ident">Expr::Bool</span>(<span class="bool-val">true</span>),
-                    <span class="string">&quot;false&quot;</span> =&gt; <span class="ident">Expr::Bool</span>(<span class="bool-val">false</span>),
-                    <span class="kw">_</span> =&gt; <span class="ident">Expr::Ident</span>(<span class="ident">s</span>),
+            <span class="kw">let </span>ident = <span class="macro">select! </span>{
+                Token::Identifier(s) =&gt; <span class="kw">match </span>s.as_str() {
+                    <span class="string">&quot;true&quot; </span>=&gt; Expr::Bool(<span class="bool-val">true</span>),
+                    <span class="string">&quot;false&quot; </span>=&gt; Expr::Bool(<span class="bool-val">false</span>),
+                    <span class="kw">_ </span>=&gt; Expr::Ident(s),
                 },
             }
-            .<span class="ident">map_with_span</span>(<span class="ident">SpannedExpr::new</span>)
-            .<span class="ident">labelled</span>(<span class="string">&quot;identifier&quot;</span>);
+            .map_with_span(SpannedExpr::new)
+            .labelled(<span class="string">&quot;identifier&quot;</span>);
 
-            <span class="kw">let</span> <span class="ident">array</span> <span class="op">=</span> <span class="ident">e</span>
-                .<span class="ident">clone</span>()
-                .<span class="ident">separated_by</span>(<span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="ident">Error</span><span class="op">&gt;</span>(<span class="ident">Token::Comma</span>))
-                .<span class="ident">allow_trailing</span>()
-                .<span class="ident">delimited_by</span>(
-                    <span class="ident">just</span>(<span class="ident">Token::StartBracket</span>(<span class="ident">Bracket::Bracket</span>)),
-                    <span class="ident">just</span>(<span class="ident">Token::EndBracket</span>(<span class="ident">Bracket::Bracket</span>)),
+            <span class="kw">let </span>array = e
+                .clone()
+                .separated_by(just::&lt;<span class="kw">_</span>, Token, Error&gt;(Token::Comma))
+                .allow_trailing()
+                .delimited_by(
+                    just(Token::StartBracket(Bracket::Bracket)),
+                    just(Token::EndBracket(Bracket::Bracket)),
                 )
-                .<span class="ident">map_with_span</span>(<span class="op">|</span><span class="ident">a</span>, <span class="ident">span</span><span class="op">|</span> <span class="ident">Spanned::new</span>(<span class="ident">Expr::Array</span>(<span class="ident">a</span>), <span class="ident">span</span>));
+                .map_with_span(|a, span| Spanned::new(Expr::Array(a), span));
 
-            <span class="kw">let</span> <span class="ident">if_stmt</span> <span class="op">=</span> <span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="ident">Error</span><span class="op">&gt;</span>(<span class="ident">Token::Keyword</span>(<span class="ident">Keyword::If</span>))
-                .<span class="ident">ignore_then</span>(<span class="ident">e</span>.<span class="ident">clone</span>())
-                .<span class="ident">then</span>(<span class="ident">body</span>.<span class="ident">clone</span>().<span class="ident">delimited_by</span>(
-                    <span class="ident">just</span>(<span class="ident">Token::StartBracket</span>(<span class="ident">Bracket::Brace</span>)),
-                    <span class="ident">just</span>(<span class="ident">Token::EndBracket</span>(<span class="ident">Bracket::Brace</span>)),
+            <span class="kw">let </span>if_stmt = just::&lt;<span class="kw">_</span>, Token, Error&gt;(Token::Keyword(Keyword::If))
+                .ignore_then(e.clone())
+                .then(body.clone().delimited_by(
+                    just(Token::StartBracket(Bracket::Brace)),
+                    just(Token::EndBracket(Bracket::Brace)),
                 ))
-                .<span class="ident">then</span>(
-                    <span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="ident">Token::Keyword</span>(<span class="ident">Keyword::Else</span>))
-                        .<span class="ident">ignore_then</span>(<span class="ident">just</span>(<span class="ident">Token::Keyword</span>(<span class="ident">Keyword::If</span>)))
-                        .<span class="ident">ignore_then</span>(<span class="ident">e</span>.<span class="ident">clone</span>())
-                        .<span class="ident">then</span>(<span class="ident">body</span>.<span class="ident">clone</span>().<span class="ident">delimited_by</span>(
-                            <span class="ident">just</span>(<span class="ident">Token::StartBracket</span>(<span class="ident">Bracket::Brace</span>)),
-                            <span class="ident">just</span>(<span class="ident">Token::EndBracket</span>(<span class="ident">Bracket::Brace</span>)),
+                .then(
+                    just::&lt;<span class="kw">_</span>, Token, <span class="kw">_</span>&gt;(Token::Keyword(Keyword::Else))
+                        .ignore_then(just(Token::Keyword(Keyword::If)))
+                        .ignore_then(e.clone())
+                        .then(body.clone().delimited_by(
+                            just(Token::StartBracket(Bracket::Brace)),
+                            just(Token::EndBracket(Bracket::Brace)),
                         ))
-                        .<span class="ident">repeated</span>(),
+                        .repeated(),
                 )
-                .<span class="ident">then</span>(
-                    <span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="ident">Token::Keyword</span>(<span class="ident">Keyword::Else</span>))
-                        .<span class="ident">ignore_then</span>(<span class="ident">body</span>.<span class="ident">clone</span>().<span class="ident">delimited_by</span>(
-                            <span class="ident">just</span>(<span class="ident">Token::StartBracket</span>(<span class="ident">Bracket::Brace</span>)),
-                            <span class="ident">just</span>(<span class="ident">Token::EndBracket</span>(<span class="ident">Bracket::Brace</span>)),
+                .then(
+                    just::&lt;<span class="kw">_</span>, Token, <span class="kw">_</span>&gt;(Token::Keyword(Keyword::Else))
+                        .ignore_then(body.clone().delimited_by(
+                            just(Token::StartBracket(Bracket::Brace)),
+                            just(Token::EndBracket(Bracket::Brace)),
                         ))
-                        .<span class="ident">or_not</span>(),
+                        .or_not(),
                 )
-                .<span class="ident">map_with_span</span>(<span class="op">|</span>(((<span class="ident">condition</span>, <span class="ident">body</span>), <span class="ident">else_if</span>), <span class="ident">else_body</span>), <span class="ident">span</span><span class="op">|</span> {
-                    <span class="ident">SpannedExpr::new</span>(
-                        <span class="ident">Expr::If</span> {
-                            <span class="ident">condition</span>,
-                            <span class="ident">body</span>,
-                            <span class="ident">else_if_bodies</span>: <span class="ident">else_if</span>,
-                            <span class="ident">else_body</span>,
+                .map_with_span(|(((condition, body), else_if), else_body), span| {
+                    SpannedExpr::new(
+                        Expr::If {
+                            condition,
+                            body,
+                            else_if_bodies: else_if,
+                            else_body,
                         },
-                        <span class="ident">span</span>,
+                        span,
                     )
                 });
 
-            <span class="kw">let</span> <span class="ident">while_stmt</span> <span class="op">=</span> <span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="ident">Error</span><span class="op">&gt;</span>(<span class="ident">Token::Keyword</span>(<span class="ident">Keyword::While</span>))
-                .<span class="ident">ignore_then</span>(<span class="ident">e</span>.<span class="ident">clone</span>())
-                .<span class="ident">then</span>(<span class="ident">body</span>.<span class="ident">clone</span>().<span class="ident">delimited_by</span>(
-                    <span class="ident">just</span>(<span class="ident">Token::StartBracket</span>(<span class="ident">Bracket::Brace</span>)),
-                    <span class="ident">just</span>(<span class="ident">Token::EndBracket</span>(<span class="ident">Bracket::Brace</span>)),
+            <span class="kw">let </span>while_stmt = just::&lt;<span class="kw">_</span>, Token, Error&gt;(Token::Keyword(Keyword::While))
+                .ignore_then(e.clone())
+                .then(body.clone().delimited_by(
+                    just(Token::StartBracket(Bracket::Brace)),
+                    just(Token::EndBracket(Bracket::Brace)),
                 ))
-                .<span class="ident">map_with_span</span>(<span class="op">|</span>(<span class="ident">condition</span>, <span class="ident">body</span>), <span class="ident">span</span><span class="op">|</span> {
-                    <span class="ident">SpannedExpr::new</span>(
-                        <span class="ident">Expr::While</span> {
-                            <span class="ident">condition</span>,
-                            <span class="ident">body</span>: <span class="ident">body</span>.<span class="ident">into_node</span>().<span class="number">0</span>,
+                .map_with_span(|(condition, body), span| {
+                    SpannedExpr::new(
+                        Expr::While {
+                            condition,
+                            body: body.into_node().<span class="number">0</span>,
                         },
-                        <span class="ident">span</span>,
+                        span,
                     )
                 });
 
-            <span class="kw">let</span> <span class="ident">atom</span> <span class="op">=</span> <span class="ident">choice</span>((
-                <span class="ident">literal</span>,
-                <span class="ident">ident</span>,
-                <span class="ident">e</span>.<span class="ident">clone</span>()
-                    .<span class="ident">delimited_by</span>(
-                        <span class="ident">just</span>(<span class="ident">Token::StartBracket</span>(<span class="ident">Bracket::Paren</span>)),
-                        <span class="ident">just</span>(<span class="ident">Token::EndBracket</span>(<span class="ident">Bracket::Paren</span>)),
+            <span class="kw">let </span>atom = choice((
+                literal,
+                ident,
+                e.clone()
+                    .delimited_by(
+                        just(Token::StartBracket(Bracket::Paren)),
+                        just(Token::EndBracket(Bracket::Paren)),
                     )
-                    .<span class="ident">boxed</span>(),
-                <span class="ident">if_stmt</span>,
-                <span class="ident">while_stmt</span>,
-                <span class="ident">array</span>,
+                    .boxed(),
+                if_stmt,
+                while_stmt,
+                array,
             ))
-            .<span class="ident">boxed</span>();
+            .boxed();
 
-            <span class="kw">let</span> <span class="ident">attr</span> <span class="op">=</span> <span class="ident">atom</span>
-                .<span class="ident">clone</span>()
-                .<span class="ident">then</span>(
-                    <span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="ident">Error</span><span class="op">&gt;</span>(<span class="ident">Token::Dot</span>)
-                        .<span class="ident">ignore_then</span>(<span class="ident">ident</span>)
-                        .<span class="ident">repeated</span>(),
+            <span class="kw">let </span>attr = atom
+                .clone()
+                .then(
+                    just::&lt;<span class="kw">_</span>, Token, Error&gt;(Token::Dot)
+                        .ignore_then(ident)
+                        .repeated(),
                 )
-                .<span class="ident">foldl</span>(<span class="op">|</span><span class="ident">expr</span>, <span class="ident">ident</span><span class="op">|</span> {
-                    <span class="kw">let</span> <span class="ident">span</span> <span class="op">=</span> <span class="ident">expr</span>.<span class="ident">span</span>();
+                .foldl(|expr, ident| {
+                    <span class="kw">let </span>span = expr.span();
 
-                    <span class="ident">SpannedExpr::new</span>(
-                        <span class="ident">Expr::Attr</span>(
-                            <span class="ident">expr</span>,
-                            <span class="kw">match</span> <span class="ident">ident</span>.<span class="ident">node</span>() {
-                                <span class="ident">Expr::Ident</span>(<span class="ident">s</span>) =&gt; <span class="ident">s</span>.<span class="ident">to_string</span>(),
-                                <span class="ident">Expr::Bool</span>(<span class="ident">b</span>) =&gt; <span class="ident">b</span>.<span class="ident">to_string</span>(),
-                                <span class="kw">_</span> =&gt; <span class="macro">unreachable!</span>(),
+                    SpannedExpr::new(
+                        Expr::Attr(
+                            expr,
+                            <span class="kw">match </span>ident.node() {
+                                Expr::Ident(s) =&gt; s.to_string(),
+                                Expr::Bool(b) =&gt; b.to_string(),
+                                <span class="kw">_ </span>=&gt; <span class="macro">unreachable!</span>(),
                             },
                         ),
-                        <span class="ident">span</span>.<span class="ident">merge</span>(<span class="ident">ident</span>.<span class="ident">span</span>()),
+                        span.merge(ident.span()),
                     )
                 })
-                .<span class="ident">boxed</span>();
+                .boxed();
 
-            <span class="kw">let</span> <span class="ident">call</span> <span class="op">=</span> <span class="ident">attr</span>
-                .<span class="ident">clone</span>()
-                .<span class="ident">then</span>(
-                    <span class="ident">e</span>.<span class="ident">clone</span>()
-                        .<span class="ident">separated_by</span>(<span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="ident">Error</span><span class="op">&gt;</span>(<span class="ident">Token::Comma</span>))
-                        .<span class="ident">allow_trailing</span>()
-                        .<span class="ident">delimited_by</span>(
-                            <span class="ident">just</span>(<span class="ident">Token::StartBracket</span>(<span class="ident">Bracket::Paren</span>)),
-                            <span class="ident">just</span>(<span class="ident">Token::EndBracket</span>(<span class="ident">Bracket::Paren</span>)),
+            <span class="kw">let </span>call = attr
+                .clone()
+                .then(
+                    e.clone()
+                        .separated_by(just::&lt;<span class="kw">_</span>, Token, Error&gt;(Token::Comma))
+                        .allow_trailing()
+                        .delimited_by(
+                            just(Token::StartBracket(Bracket::Paren)),
+                            just(Token::EndBracket(Bracket::Paren)),
                         )
-                        .<span class="ident">or_not</span>(),
+                        .or_not(),
                 )
-                .<span class="ident">map_with_span</span>(<span class="op">|</span>(<span class="ident">expr</span>, <span class="ident">args</span>), <span class="ident">span</span><span class="op">|</span> <span class="kw">match</span> <span class="ident">args</span> {
-                    <span class="prelude-val">Some</span>(<span class="ident">args</span>) =&gt; <span class="ident">SpannedExpr::new</span>(
-                        <span class="ident">Expr::Call</span> {
-                            <span class="ident">value</span>: <span class="ident">expr</span>,
-                            <span class="ident">args</span>,
-                            <span class="ident">kwargs</span>: <span class="macro">vec!</span>[],
+                .map_with_span(|(expr, args), span| <span class="kw">match </span>args {
+                    <span class="prelude-val">Some</span>(args) =&gt; SpannedExpr::new(
+                        Expr::Call {
+                            value: expr,
+                            args,
+                            kwargs: <span class="macro">vec!</span>[],
                         },
-                        <span class="ident">span</span>,
+                        span,
                     ),
-                    <span class="prelude-val">None</span> =&gt; <span class="ident">expr</span>,
+                    <span class="prelude-val">None </span>=&gt; expr,
                 })
-                .<span class="ident">boxed</span>();
+                .boxed();
 
-            <span class="kw">let</span> <span class="ident">spanned_op</span> <span class="op">=</span> <span class="op">|</span><span class="ident">o</span>: <span class="ident">Token</span>, <span class="ident">span</span>: <span class="ident">Span</span><span class="op">|</span> -&gt; <span class="ident">SpannedOperator</span> {
-                <span class="kw">match</span> <span class="ident">o</span> {
-                    <span class="ident">Token::Operator</span>(<span class="ident">op</span>) =&gt; <span class="ident">SpannedOperator::new</span>(<span class="ident">op</span>, <span class="ident">span</span>),
-                    <span class="kw">_</span> =&gt; <span class="macro">unreachable!</span>(),
+            <span class="kw">let </span>spanned_op = |o: Token, span: Span| -&gt; SpannedOperator {
+                <span class="kw">match </span>o {
+                    Token::Operator(op) =&gt; SpannedOperator::new(op, span),
+                    <span class="kw">_ </span>=&gt; <span class="macro">unreachable!</span>(),
                 }
             };
 
-            <span class="kw">let</span> <span class="ident">unary</span> <span class="op">=</span> <span class="ident">just</span>(<span class="ident">Token::Operator</span>(<span class="ident">Operator::Sub</span>))
-                .<span class="ident">or</span>(<span class="ident">just</span>(<span class="ident">Token::Operator</span>(<span class="ident">Operator::Add</span>)))
-                .<span class="ident">or</span>(<span class="ident">just</span>(<span class="ident">Token::Operator</span>(<span class="ident">Operator::Not</span>)))
-                .<span class="ident">or</span>(<span class="ident">just</span>(<span class="ident">Token::Operator</span>(<span class="ident">Operator::BitNot</span>)))
-                .<span class="ident">map_with_span</span>(<span class="ident">spanned_op</span>)
-                .<span class="ident">repeated</span>()
-                .<span class="ident">then</span>(<span class="ident">call</span>.<span class="ident">clone</span>())
-                .<span class="ident">foldr</span>(<span class="op">|</span><span class="ident">operator</span>, <span class="ident">expr</span><span class="op">|</span> {
-                    <span class="kw">let</span> <span class="ident">span</span> <span class="op">=</span> <span class="ident">operator</span>.<span class="ident">span</span>().<span class="ident">merge</span>(<span class="ident">expr</span>.<span class="ident">span</span>());
+            <span class="kw">let </span>unary = just(Token::Operator(Operator::Sub))
+                .or(just(Token::Operator(Operator::Add)))
+                .or(just(Token::Operator(Operator::Not)))
+                .or(just(Token::Operator(Operator::BitNot)))
+                .map_with_span(spanned_op)
+                .repeated()
+                .then(call.clone())
+                .foldr(|operator, expr| {
+                    <span class="kw">let </span>span = operator.span().merge(expr.span());
 
-                    <span class="ident">SpannedExpr::new</span>(
-                        <span class="ident">Expr::UnaryExpr</span> {
-                            <span class="ident">operator</span>,
-                            <span class="ident">value</span>: <span class="ident">expr</span>,
+                    SpannedExpr::new(
+                        Expr::UnaryExpr {
+                            operator,
+                            value: expr,
                         },
-                        <span class="ident">span</span>,
+                        span,
                     )
                 })
-                .<span class="ident">boxed</span>();
+                .boxed();
 
-            <span class="kw">let</span> <span class="ident">binary_cast</span> <span class="op">=</span> <span class="ident">unary</span>
-                .<span class="ident">clone</span>()
-                .<span class="ident">then</span>(<span class="ident">just</span>(<span class="ident">Token::Cast</span>).<span class="ident">ignore_then</span>(<span class="ident">unary</span>).<span class="ident">repeated</span>())
-                .<span class="ident">foldl</span>(<span class="op">|</span><span class="ident">subject</span>, <span class="ident">ty</span><span class="op">|</span> {
-                    <span class="kw">let</span> <span class="ident">span</span> <span class="op">=</span> <span class="ident">subject</span>.<span class="ident">span</span>().<span class="ident">merge</span>(<span class="ident">ty</span>.<span class="ident">span</span>());
+            <span class="kw">let </span>binary_cast = unary
+                .clone()
+                .then(just(Token::Cast).ignore_then(unary).repeated())
+                .foldl(|subject, ty| {
+                    <span class="kw">let </span>span = subject.span().merge(ty.span());
 
-                    <span class="ident">SpannedExpr::new</span>(<span class="ident">Expr::Cast</span>(<span class="ident">subject</span>, <span class="ident">ty</span>), <span class="ident">span</span>)
+                    SpannedExpr::new(Expr::Cast(subject, ty), span)
                 })
-                .<span class="ident">boxed</span>();
+                .boxed();
 
-            <span class="kw">let</span> <span class="ident">binary_pow</span> <span class="op">=</span> <span class="ident">binary_cast</span>
-                .<span class="ident">clone</span>()
-                .<span class="ident">then</span>(<span class="ident">just</span>(<span class="ident">Token::Operator</span>(<span class="ident">Operator::Pow</span>)).<span class="ident">map_with_span</span>(<span class="ident">spanned_op</span>))
-                .<span class="ident">repeated</span>()
-                .<span class="ident">then</span>(<span class="ident">binary_cast</span>)
-                .<span class="ident">foldr</span>(<span class="op">|</span>(<span class="ident">lhs</span>, <span class="ident">operator</span>), <span class="ident">rhs</span><span class="op">|</span> {
-                    <span class="kw">let</span> <span class="ident">span</span> <span class="op">=</span> <span class="ident">lhs</span>.<span class="ident">span</span>().<span class="ident">merge</span>(<span class="ident">rhs</span>.<span class="ident">span</span>());
+            <span class="kw">let </span>binary_pow = binary_cast
+                .clone()
+                .then(just(Token::Operator(Operator::Pow)).map_with_span(spanned_op))
+                .repeated()
+                .then(binary_cast)
+                .foldr(|(lhs, operator), rhs| {
+                    <span class="kw">let </span>span = lhs.span().merge(rhs.span());
 
-                    <span class="ident">SpannedExpr::new</span>(<span class="ident">Expr::BinaryExpr</span> { <span class="ident">operator</span>, <span class="ident">lhs</span>, <span class="ident">rhs</span> }, <span class="ident">span</span>)
+                    SpannedExpr::new(Expr::BinaryExpr { operator, lhs, rhs }, span)
                 })
-                .<span class="ident">boxed</span>();
+                .boxed();
 
-            <span class="kw">let</span> <span class="ident">op</span> <span class="op">=</span> <span class="ident">just</span>(<span class="ident">Token::Operator</span>(<span class="ident">Operator::Mul</span>))
-                .<span class="ident">or</span>(<span class="ident">just</span>(<span class="ident">Token::Operator</span>(<span class="ident">Operator::Div</span>)))
-                .<span class="ident">or</span>(<span class="ident">just</span>(<span class="ident">Token::Operator</span>(<span class="ident">Operator::Mod</span>)))
-                .<span class="ident">map_with_span</span>(<span class="ident">spanned_op</span>);
-            <span class="kw">let</span> <span class="ident">binary_product</span> <span class="op">=</span> <span class="ident">binary_pow</span>
-                .<span class="ident">clone</span>()
-                .<span class="ident">then</span>(<span class="ident">op</span>.<span class="ident">then</span>(<span class="ident">binary_pow</span>).<span class="ident">repeated</span>())
-                .<span class="ident">foldl</span>(<span class="op">|</span><span class="ident">lhs</span>, (<span class="ident">operator</span>, <span class="ident">rhs</span>)<span class="op">|</span> {
-                    <span class="kw">let</span> <span class="ident">span</span> <span class="op">=</span> <span class="ident">lhs</span>.<span class="ident">span</span>().<span class="ident">merge</span>(<span class="ident">rhs</span>.<span class="ident">span</span>());
+            <span class="kw">let </span>op = just(Token::Operator(Operator::Mul))
+                .or(just(Token::Operator(Operator::Div)))
+                .or(just(Token::Operator(Operator::Mod)))
+                .map_with_span(spanned_op);
+            <span class="kw">let </span>binary_product = binary_pow
+                .clone()
+                .then(op.then(binary_pow).repeated())
+                .foldl(|lhs, (operator, rhs)| {
+                    <span class="kw">let </span>span = lhs.span().merge(rhs.span());
 
-                    <span class="ident">Spanned::new</span>(<span class="ident">Expr::BinaryExpr</span> { <span class="ident">operator</span>, <span class="ident">lhs</span>, <span class="ident">rhs</span> }, <span class="ident">span</span>)
+                    Spanned::new(Expr::BinaryExpr { operator, lhs, rhs }, span)
                 })
-                .<span class="ident">boxed</span>();
+                .boxed();
 
-            <span class="kw">let</span> <span class="ident">op</span> <span class="op">=</span> <span class="ident">just</span>(<span class="ident">Token::Operator</span>(<span class="ident">Operator::Add</span>))
-                .<span class="ident">or</span>(<span class="ident">just</span>(<span class="ident">Token::Operator</span>(<span class="ident">Operator::Sub</span>)))
-                .<span class="ident">map_with_span</span>(<span class="ident">spanned_op</span>);
-            <span class="kw">let</span> <span class="ident">binary_sum</span> <span class="op">=</span> <span class="ident">binary_product</span>
-                .<span class="ident">clone</span>()
-                .<span class="ident">then</span>(<span class="ident">op</span>.<span class="ident">then</span>(<span class="ident">binary_product</span>).<span class="ident">repeated</span>())
-                .<span class="ident">foldl</span>(<span class="op">|</span><span class="ident">lhs</span>, (<span class="ident">operator</span>, <span class="ident">rhs</span>)<span class="op">|</span> {
-                    <span class="kw">let</span> <span class="ident">span</span> <span class="op">=</span> <span class="ident">lhs</span>.<span class="ident">span</span>().<span class="ident">merge</span>(<span class="ident">rhs</span>.<span class="ident">span</span>());
+            <span class="kw">let </span>op = just(Token::Operator(Operator::Add))
+                .or(just(Token::Operator(Operator::Sub)))
+                .map_with_span(spanned_op);
+            <span class="kw">let </span>binary_sum = binary_product
+                .clone()
+                .then(op.then(binary_product).repeated())
+                .foldl(|lhs, (operator, rhs)| {
+                    <span class="kw">let </span>span = lhs.span().merge(rhs.span());
 
-                    <span class="ident">Spanned::new</span>(<span class="ident">Expr::BinaryExpr</span> { <span class="ident">operator</span>, <span class="ident">lhs</span>, <span class="ident">rhs</span> }, <span class="ident">span</span>)
+                    Spanned::new(Expr::BinaryExpr { operator, lhs, rhs }, span)
                 })
-                .<span class="ident">boxed</span>();
+                .boxed();
 
-            <span class="kw">let</span> <span class="ident">op</span> <span class="op">=</span> <span class="ident">just</span>(<span class="ident">Token::Operator</span>(<span class="ident">Operator::Eq</span>))
-                .<span class="ident">or</span>(<span class="ident">just</span>(<span class="ident">Token::Operator</span>(<span class="ident">Operator::Ne</span>)))
-                .<span class="ident">or</span>(<span class="ident">just</span>(<span class="ident">Token::Operator</span>(<span class="ident">Operator::Lt</span>)))
-                .<span class="ident">or</span>(<span class="ident">just</span>(<span class="ident">Token::Operator</span>(<span class="ident">Operator::Gt</span>)))
-                .<span class="ident">or</span>(<span class="ident">just</span>(<span class="ident">Token::Operator</span>(<span class="ident">Operator::Le</span>)))
-                .<span class="ident">or</span>(<span class="ident">just</span>(<span class="ident">Token::Operator</span>(<span class="ident">Operator::Ge</span>)))
-                .<span class="ident">map_with_span</span>(<span class="ident">spanned_op</span>);
-            <span class="kw">let</span> <span class="ident">binary_cmp</span> <span class="op">=</span> <span class="ident">binary_sum</span>
-                .<span class="ident">clone</span>()
-                .<span class="ident">then</span>(<span class="ident">op</span>.<span class="ident">then</span>(<span class="ident">binary_sum</span>).<span class="ident">repeated</span>())
-                .<span class="ident">foldl</span>(<span class="op">|</span><span class="ident">lhs</span>, (<span class="ident">operator</span>, <span class="ident">rhs</span>)<span class="op">|</span> {
-                    <span class="kw">let</span> <span class="ident">span</span> <span class="op">=</span> <span class="ident">lhs</span>.<span class="ident">span</span>().<span class="ident">merge</span>(<span class="ident">rhs</span>.<span class="ident">span</span>());
+            <span class="kw">let </span>op = just(Token::Operator(Operator::Eq))
+                .or(just(Token::Operator(Operator::Ne)))
+                .or(just(Token::Operator(Operator::Lt)))
+                .or(just(Token::Operator(Operator::Gt)))
+                .or(just(Token::Operator(Operator::Le)))
+                .or(just(Token::Operator(Operator::Ge)))
+                .map_with_span(spanned_op);
+            <span class="kw">let </span>binary_cmp = binary_sum
+                .clone()
+                .then(op.then(binary_sum).repeated())
+                .foldl(|lhs, (operator, rhs)| {
+                    <span class="kw">let </span>span = lhs.span().merge(rhs.span());
 
-                    <span class="ident">Spanned::new</span>(<span class="ident">Expr::BinaryExpr</span> { <span class="ident">operator</span>, <span class="ident">lhs</span>, <span class="ident">rhs</span> }, <span class="ident">span</span>)
+                    Spanned::new(Expr::BinaryExpr { operator, lhs, rhs }, span)
                 })
-                .<span class="ident">boxed</span>();
+                .boxed();
 
-            <span class="kw">let</span> <span class="ident">binary_logical_and</span> <span class="op">=</span> <span class="ident">binary_cmp</span>
-                .<span class="ident">clone</span>()
-                .<span class="ident">then</span>(
-                    <span class="ident">just</span>(<span class="ident">Token::Operator</span>(<span class="ident">Operator::And</span>))
-                        .<span class="ident">map_with_span</span>(<span class="ident">spanned_op</span>)
-                        .<span class="ident">then</span>(<span class="ident">binary_cmp</span>)
-                        .<span class="ident">repeated</span>(),
+            <span class="kw">let </span>binary_logical_and = binary_cmp
+                .clone()
+                .then(
+                    just(Token::Operator(Operator::And))
+                        .map_with_span(spanned_op)
+                        .then(binary_cmp)
+                        .repeated(),
                 )
-                .<span class="ident">foldl</span>(<span class="op">|</span><span class="ident">lhs</span>, (<span class="ident">operator</span>, <span class="ident">rhs</span>)<span class="op">|</span> {
-                    <span class="kw">let</span> <span class="ident">span</span> <span class="op">=</span> <span class="ident">lhs</span>.<span class="ident">span</span>().<span class="ident">merge</span>(<span class="ident">rhs</span>.<span class="ident">span</span>());
+                .foldl(|lhs, (operator, rhs)| {
+                    <span class="kw">let </span>span = lhs.span().merge(rhs.span());
 
-                    <span class="ident">Spanned::new</span>(<span class="ident">Expr::BinaryExpr</span> { <span class="ident">operator</span>, <span class="ident">lhs</span>, <span class="ident">rhs</span> }, <span class="ident">span</span>)
+                    Spanned::new(Expr::BinaryExpr { operator, lhs, rhs }, span)
                 })
-                .<span class="ident">boxed</span>();
+                .boxed();
 
-            <span class="kw">let</span> <span class="ident">binary_logical_or</span> <span class="op">=</span> <span class="ident">binary_logical_and</span>
-                .<span class="ident">clone</span>()
-                .<span class="ident">then</span>(
-                    <span class="ident">just</span>(<span class="ident">Token::Operator</span>(<span class="ident">Operator::Or</span>))
-                        .<span class="ident">map_with_span</span>(<span class="ident">spanned_op</span>)
-                        .<span class="ident">then</span>(<span class="ident">binary_logical_and</span>)
-                        .<span class="ident">repeated</span>(),
+            <span class="kw">let </span>binary_logical_or = binary_logical_and
+                .clone()
+                .then(
+                    just(Token::Operator(Operator::Or))
+                        .map_with_span(spanned_op)
+                        .then(binary_logical_and)
+                        .repeated(),
                 )
-                .<span class="ident">foldl</span>(<span class="op">|</span><span class="ident">lhs</span>, (<span class="ident">operator</span>, <span class="ident">rhs</span>)<span class="op">|</span> {
-                    <span class="kw">let</span> <span class="ident">span</span> <span class="op">=</span> <span class="ident">lhs</span>.<span class="ident">span</span>().<span class="ident">merge</span>(<span class="ident">rhs</span>.<span class="ident">span</span>());
+                .foldl(|lhs, (operator, rhs)| {
+                    <span class="kw">let </span>span = lhs.span().merge(rhs.span());
 
-                    <span class="ident">Spanned::new</span>(<span class="ident">Expr::BinaryExpr</span> { <span class="ident">operator</span>, <span class="ident">lhs</span>, <span class="ident">rhs</span> }, <span class="ident">span</span>)
+                    Spanned::new(Expr::BinaryExpr { operator, lhs, rhs }, span)
                 })
-                .<span class="ident">boxed</span>();
+                .boxed();
 
-            <span class="kw">let</span> <span class="ident">op</span> <span class="op">=</span> <span class="ident">just</span>(<span class="ident">Token::Operator</span>(<span class="ident">Operator::BitAnd</span>))
-                .<span class="ident">or</span>(<span class="ident">just</span>(<span class="ident">Token::Operator</span>(<span class="ident">Operator::BitOr</span>)))
-                .<span class="ident">or</span>(<span class="ident">just</span>(<span class="ident">Token::Operator</span>(<span class="ident">Operator::BitXor</span>)))
-                .<span class="ident">map_with_span</span>(<span class="ident">spanned_op</span>);
-            <span class="ident">binary_logical_or</span>
-                .<span class="ident">clone</span>()
-                .<span class="ident">then</span>(<span class="ident">op</span>.<span class="ident">then</span>(<span class="ident">binary_logical_or</span>).<span class="ident">repeated</span>())
-                .<span class="ident">foldl</span>(<span class="op">|</span><span class="ident">lhs</span>, (<span class="ident">operator</span>, <span class="ident">rhs</span>)<span class="op">|</span> {
-                    <span class="kw">let</span> <span class="ident">span</span> <span class="op">=</span> <span class="ident">lhs</span>.<span class="ident">span</span>().<span class="ident">merge</span>(<span class="ident">rhs</span>.<span class="ident">span</span>());
+            <span class="kw">let </span>op = just(Token::Operator(Operator::BitAnd))
+                .or(just(Token::Operator(Operator::BitOr)))
+                .or(just(Token::Operator(Operator::BitXor)))
+                .map_with_span(spanned_op);
+            binary_logical_or
+                .clone()
+                .then(op.then(binary_logical_or).repeated())
+                .foldl(|lhs, (operator, rhs)| {
+                    <span class="kw">let </span>span = lhs.span().merge(rhs.span());
 
-                    <span class="ident">Spanned::new</span>(<span class="ident">Expr::BinaryExpr</span> { <span class="ident">operator</span>, <span class="ident">lhs</span>, <span class="ident">rhs</span> }, <span class="ident">span</span>)
+                    Spanned::new(Expr::BinaryExpr { operator, lhs, rhs }, span)
                 })
-                .<span class="ident">boxed</span>()
+                .boxed()
         });
 
-        <span class="kw">let</span> <span class="ident">require</span> <span class="op">=</span> <span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="ident">Token::Keyword</span>(<span class="ident">Keyword::Require</span>))
-            .<span class="ident">ignore_then</span>(
-                <span class="macro">select!</span> {
-                    <span class="ident">Token::Identifier</span>(<span class="ident">i</span>) =&gt; <span class="ident">i</span>,
+        <span class="kw">let </span>require = just::&lt;<span class="kw">_</span>, Token, <span class="kw">_</span>&gt;(Token::Keyword(Keyword::Require))
+            .ignore_then(
+                <span class="macro">select! </span>{
+                    Token::Identifier(i) =&gt; i,
                 }
-                .<span class="ident">separated_by</span>(<span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="ident">Token::Comma</span>))
-                .<span class="ident">allow_trailing</span>()
-                .<span class="ident">at_least</span>(<span class="number">1</span>),
+                .separated_by(just::&lt;<span class="kw">_</span>, Token, <span class="kw">_</span>&gt;(Token::Comma))
+                .allow_trailing()
+                .at_least(<span class="number">1</span>),
             )
-            .<span class="ident">then_ignore</span>(<span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="ident">Token::Semicolon</span>))
-            .<span class="ident">map_with_span</span>(<span class="op">|</span><span class="ident">n</span>, <span class="ident">span</span><span class="op">|</span> <span class="ident">Spanned::new</span>(<span class="ident">Node::Require</span>(<span class="ident">n</span>), <span class="ident">span</span>));
+            .then_ignore(just::&lt;<span class="kw">_</span>, Token, <span class="kw">_</span>&gt;(Token::Semicolon))
+            .map_with_span(|n, span| Spanned::new(Node::Require(n), span));
 
-        <span class="comment">// TODO: support more targets</span>
-        <span class="kw">let</span> <span class="ident">target</span> <span class="op">=</span> <span class="ident">recursive</span>(<span class="op">|</span><span class="ident">t</span><span class="op">|</span> {
+        <span class="comment">// TODO: support more targets
+        </span><span class="kw">let </span>target = recursive(|t| {
             <span class="macro">select!</span>(
-                <span class="ident">Token::Identifier</span>(<span class="ident">i</span>) =&gt; <span class="ident">Target::Ident</span>(<span class="ident">i</span>),
+                Token::Identifier(i) =&gt; Target::Ident(i),
             )
-            .<span class="ident">map_with_span</span>(<span class="ident">Spanned::new</span>)
-            .<span class="ident">or</span>(<span class="ident">t</span>
-                .<span class="ident">separated_by</span>(<span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="ident">Token::Comma</span>))
-                .<span class="ident">allow_trailing</span>()
-                .<span class="ident">at_least</span>(<span class="number">1</span>)
-                .<span class="ident">delimited_by</span>(
-                    <span class="ident">just</span>(<span class="ident">Token::StartBracket</span>(<span class="ident">Bracket::Bracket</span>)),
-                    <span class="ident">just</span>(<span class="ident">Token::EndBracket</span>(<span class="ident">Bracket::Bracket</span>)),
+            .map_with_span(Spanned::new)
+            .or(t
+                .separated_by(just::&lt;<span class="kw">_</span>, Token, <span class="kw">_</span>&gt;(Token::Comma))
+                .allow_trailing()
+                .at_least(<span class="number">1</span>)
+                .delimited_by(
+                    just(Token::StartBracket(Bracket::Bracket)),
+                    just(Token::EndBracket(Bracket::Bracket)),
                 )
-                .<span class="ident">map_with_span</span>(<span class="op">|</span><span class="ident">a</span>, <span class="ident">span</span><span class="op">|</span> <span class="ident">Spanned::new</span>(<span class="ident">Target::Array</span>(<span class="ident">a</span>), <span class="ident">span</span>)))
+                .map_with_span(|a, span| Spanned::new(Target::Array(a), span)))
         });
 
-        <span class="kw">let</span> <span class="ident">declare</span> <span class="op">=</span> <span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="ident">Token::Keyword</span>(<span class="ident">Keyword::Let</span>))
-            .<span class="ident">or</span>(<span class="ident">just</span>(<span class="ident">Token::Keyword</span>(<span class="ident">Keyword::Const</span>)))
-            .<span class="ident">then</span>(<span class="ident">just</span>(<span class="ident">Token::Keyword</span>(<span class="ident">Keyword::Mut</span>)).<span class="ident">or_not</span>())
-            .<span class="ident">map_with_span</span>(<span class="ident">Spanned</span>::<span class="op">&lt;</span>(<span class="ident">Token</span>, <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="ident">Token</span><span class="op">&gt;</span>)<span class="op">&gt;</span><span class="ident">::new</span>)
-            .<span class="ident">then</span>(
-                <span class="ident">target</span>
-                    .<span class="ident">clone</span>()
-                    .<span class="ident">then</span>(
-                        <span class="ident">just</span>(<span class="ident">Token::Colon</span>)
-                            .<span class="ident">ignore_then</span>(<span class="ident">ty</span>.<span class="ident">clone</span>())
-                            .<span class="ident">or_not</span>()
-                            .<span class="ident">map_with_span</span>(<span class="op">|</span><span class="ident">t</span>, <span class="ident">span</span><span class="op">|</span> {
-                                <span class="ident">t</span>.<span class="ident">unwrap_or_else</span>(<span class="op">|</span><span class="op">|</span> <span class="ident">Spanned::new</span>(<span class="ident">TypeExpr::Auto</span>, <span class="ident">span</span>))
+        <span class="kw">let </span>declare = just::&lt;<span class="kw">_</span>, Token, <span class="kw">_</span>&gt;(Token::Keyword(Keyword::Let))
+            .or(just(Token::Keyword(Keyword::Const)))
+            .then(just(Token::Keyword(Keyword::Mut)).or_not())
+            .map_with_span(Spanned::&lt;(Token, <span class="prelude-ty">Option</span>&lt;Token&gt;)&gt;::new)
+            .then(
+                target
+                    .clone()
+                    .then(
+                        just(Token::Colon)
+                            .ignore_then(ty.clone())
+                            .or_not()
+                            .map_with_span(|t, span| {
+                                t.unwrap_or_else(|| Spanned::new(TypeExpr::Auto, span))
                             }),
                     )
-                    .<span class="ident">then_ignore</span>(<span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="ident">Token::Assign</span>)),
+                    .then_ignore(just::&lt;<span class="kw">_</span>, Token, <span class="kw">_</span>&gt;(Token::Assign)),
             )
-            .<span class="ident">then</span>(<span class="ident">e</span>.<span class="ident">clone</span>())
-            .<span class="ident">then_ignore</span>(<span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="ident">Token::Semicolon</span>))
-            .<span class="ident">try_map</span>(<span class="op">|</span>((<span class="ident">modifiers</span>, (<span class="ident">target</span>, <span class="ident">ty</span>)), <span class="ident">expr</span>), <span class="ident">span</span><span class="op">|</span> {
-                <span class="kw">let</span> (<span class="ident">modifier</span>, <span class="ident">is_mut</span>) <span class="op">=</span> <span class="ident">modifiers</span>.<span class="ident">node</span>();
+            .then(e.clone())
+            .then_ignore(just::&lt;<span class="kw">_</span>, Token, <span class="kw">_</span>&gt;(Token::Semicolon))
+            .try_map(|((modifiers, (target, ty)), expr), span| {
+                <span class="kw">let </span>(modifier, is_mut) = modifiers.node();
 
-                <span class="kw">let</span> <span class="ident">r#mut</span> <span class="op">=</span> <span class="ident">is_mut</span>.<span class="ident">is_some</span>();
-                <span class="kw">let</span> <span class="ident">r#const</span> <span class="op">=</span> <span class="macro">matches!</span>(<span class="ident">modifier</span>, <span class="ident">Token::Keyword</span>(<span class="ident">Keyword::Const</span>));
+                <span class="kw">let </span>r#mut = is_mut.is_some();
+                <span class="kw">let </span>r#const = <span class="macro">matches!</span>(modifier, Token::Keyword(Keyword::Const));
 
-                <span class="kw">if</span> <span class="ident">r#mut</span> <span class="op">&amp;&amp;</span> <span class="ident">r#const</span> {
-                    <span class="kw">return</span> <span class="prelude-val">Err</span>(<span class="ident">Error::no_const_mut</span>(<span class="ident">modifiers</span>.<span class="ident">span</span>()));
+                <span class="kw">if </span>r#mut &amp;&amp; r#const {
+                    <span class="kw">return </span><span class="prelude-val">Err</span>(Error::no_const_mut(modifiers.span()));
                 }
 
-                <span class="prelude-val">Ok</span>(<span class="ident">Spanned::new</span>(
-                    <span class="ident">Node::Declare</span> {
-                        <span class="ident">targets</span>: <span class="macro">vec!</span>[<span class="ident">target</span>],
-                        <span class="ident">ty</span>,
-                        <span class="ident">value</span>: <span class="ident">expr</span>,
-                        <span class="ident">r#mut</span>,
-                        <span class="ident">r#const</span>,
+                <span class="prelude-val">Ok</span>(Spanned::new(
+                    Node::Declare {
+                        targets: <span class="macro">vec!</span>[target],
+                        ty,
+                        value: expr,
+                        r#mut,
+                        r#const,
                     },
-                    <span class="ident">span</span>,
+                    span,
                 ))
             });
 
-        <span class="kw">let</span> <span class="ident">assign</span> <span class="op">=</span> <span class="ident">target</span>
-            .<span class="ident">clone</span>()
-            .<span class="ident">then_ignore</span>(<span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="ident">Token::Assign</span>))
-            .<span class="ident">repeated</span>()
-            .<span class="ident">at_least</span>(<span class="number">1</span>)
-            .<span class="ident">then</span>(<span class="ident">e</span>.<span class="ident">clone</span>())
-            .<span class="ident">then_ignore</span>(<span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="ident">Token::Semicolon</span>))
-            .<span class="ident">map_with_span</span>(<span class="op">|</span>(<span class="ident">targets</span>, <span class="ident">expr</span>), <span class="ident">span</span><span class="op">|</span> {
-                <span class="ident">Spanned::new</span>(
-                    <span class="ident">Node::Assign</span> {
-                        <span class="ident">targets</span>,
-                        <span class="ident">value</span>: <span class="ident">expr</span>,
+        <span class="kw">let </span>assign = target
+            .clone()
+            .then_ignore(just::&lt;<span class="kw">_</span>, Token, <span class="kw">_</span>&gt;(Token::Assign))
+            .repeated()
+            .at_least(<span class="number">1</span>)
+            .then(e.clone())
+            .then_ignore(just::&lt;<span class="kw">_</span>, Token, <span class="kw">_</span>&gt;(Token::Semicolon))
+            .map_with_span(|(targets, expr), span| {
+                Spanned::new(
+                    Node::Assign {
+                        targets,
+                        value: expr,
                     },
-                    <span class="ident">span</span>,
+                    span,
                 )
             });
 
-        <span class="kw">let</span> <span class="ident">param</span> <span class="op">=</span> <span class="ident">target</span>
-            .<span class="ident">clone</span>()
-            .<span class="ident">then</span>(
-                <span class="ident">just</span>(<span class="ident">Token::Colon</span>)
-                    .<span class="ident">ignore_then</span>(<span class="ident">ty</span>.<span class="ident">clone</span>())
-                    .<span class="ident">or_not</span>()
-                    .<span class="ident">map_with_span</span>(<span class="op">|</span><span class="ident">t</span>, <span class="ident">span</span><span class="op">|</span> {
-                        <span class="ident">t</span>.<span class="ident">unwrap_or_else</span>(<span class="op">|</span><span class="op">|</span> <span class="ident">Spanned::new</span>(<span class="ident">TypeExpr::Auto</span>, <span class="ident">span</span>))
+        <span class="kw">let </span>param = target
+            .clone()
+            .then(
+                just(Token::Colon)
+                    .ignore_then(ty.clone())
+                    .or_not()
+                    .map_with_span(|t, span| {
+                        t.unwrap_or_else(|| Spanned::new(TypeExpr::Auto, span))
                     }),
             )
-            .<span class="ident">then</span>(
-                <span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="ident">Token::Assign</span>)
-                    .<span class="ident">ignore_then</span>(<span class="ident">e</span>.<span class="ident">clone</span>())
-                    .<span class="ident">or_not</span>(),
+            .then(
+                just::&lt;<span class="kw">_</span>, Token, <span class="kw">_</span>&gt;(Token::Assign)
+                    .ignore_then(e.clone())
+                    .or_not(),
             )
-            .<span class="ident">map_with_span</span>(<span class="op">|</span>((<span class="ident">target</span>, <span class="ident">ty</span>), <span class="ident">default</span>), <span class="ident">span</span><span class="op">|</span> {
-                <span class="ident">Spanned::new</span>(
-                    <span class="ident">Param</span> {
-                        <span class="ident">target</span>,
-                        <span class="ident">ty</span>,
-                        <span class="ident">default</span>,
+            .map_with_span(|((target, ty), default), span| {
+                Spanned::new(
+                    Param {
+                        target,
+                        ty,
+                        default,
                     },
-                    <span class="ident">span</span>,
+                    span,
                 )
             });
 
-        <span class="kw">let</span> <span class="ident">func</span> <span class="op">=</span> <span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="ident">Token::Keyword</span>(<span class="ident">Keyword::Func</span>))
-            .<span class="ident">ignore_then</span>(<span class="macro">select!</span> {
-                <span class="ident">Token::Identifier</span>(<span class="ident">i</span>) =&gt; <span class="ident">i</span>,
+        <span class="kw">let </span>func = just::&lt;<span class="kw">_</span>, Token, <span class="kw">_</span>&gt;(Token::Keyword(Keyword::Func))
+            .ignore_then(<span class="macro">select! </span>{
+                Token::Identifier(i) =&gt; i,
             })
-            .<span class="ident">then</span>(
-                <span class="ident">param</span>
-                    .<span class="ident">separated_by</span>(<span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="ident">Token::Comma</span>))
-                    .<span class="ident">allow_trailing</span>()
-                    .<span class="ident">delimited_by</span>(
-                        <span class="ident">just</span>(<span class="ident">Token::StartBracket</span>(<span class="ident">Bracket::Paren</span>)),
-                        <span class="ident">just</span>(<span class="ident">Token::EndBracket</span>(<span class="ident">Bracket::Paren</span>)),
+            .then(
+                param
+                    .separated_by(just::&lt;<span class="kw">_</span>, Token, <span class="kw">_</span>&gt;(Token::Comma))
+                    .allow_trailing()
+                    .delimited_by(
+                        just(Token::StartBracket(Bracket::Paren)),
+                        just(Token::EndBracket(Bracket::Paren)),
                     ),
             )
-            .<span class="ident">then</span>(
-                <span class="ident">just</span>(<span class="ident">Token::Arrow</span>)
-                    .<span class="ident">ignore_then</span>(<span class="ident">ty</span>)
-                    .<span class="ident">or_not</span>()
-                    .<span class="ident">map_with_span</span>(<span class="op">|</span><span class="ident">t</span>, <span class="ident">span</span><span class="op">|</span> {
-                        <span class="ident">t</span>.<span class="ident">unwrap_or_else</span>(<span class="op">|</span><span class="op">|</span> <span class="ident">Spanned::new</span>(<span class="ident">TypeExpr::Auto</span>, <span class="ident">span</span>))
+            .then(
+                just(Token::Arrow)
+                    .ignore_then(ty)
+                    .or_not()
+                    .map_with_span(|t, span| {
+                        t.unwrap_or_else(|| Spanned::new(TypeExpr::Auto, span))
                     }),
             )
-            .<span class="ident">then</span>(<span class="ident">body</span>.<span class="ident">clone</span>().<span class="ident">delimited_by</span>(
-                <span class="ident">just</span>(<span class="ident">Token::StartBracket</span>(<span class="ident">Bracket::Brace</span>)),
-                <span class="ident">just</span>(<span class="ident">Token::EndBracket</span>(<span class="ident">Bracket::Brace</span>)),
+            .then(body.clone().delimited_by(
+                just(Token::StartBracket(Bracket::Brace)),
+                just(Token::EndBracket(Bracket::Brace)),
             ))
-            .<span class="ident">map_with_span</span>(<span class="op">|</span>(((<span class="ident">name</span>, <span class="ident">params</span>), <span class="ident">return_ty</span>), <span class="ident">body</span>), <span class="ident">span</span><span class="op">|</span> {
-                <span class="kw">let</span> <span class="ident">Body</span>(<span class="ident">body</span>, <span class="ident">return_last</span>) <span class="op">=</span> <span class="ident">body</span>.<span class="ident">into_node</span>();
+            .map_with_span(|(((name, params), return_ty), body), span| {
+                <span class="kw">let </span>Body(body, return_last) = body.into_node();
 
-                <span class="ident">Spanned::new</span>(
-                    <span class="ident">Node::Func</span> {
-                        <span class="ident">name</span>,
-                        <span class="ident">params</span>,
-                        <span class="ident">body</span>,
-                        <span class="ident">return_last</span>,
-                        <span class="ident">return_ty</span>,
+                Spanned::new(
+                    Node::Func {
+                        name,
+                        params,
+                        body,
+                        return_last,
+                        return_ty,
                     },
-                    <span class="ident">span</span>,
+                    span,
                 )
             });
 
-        <span class="kw">let</span> <span class="ident">r#return</span> <span class="op">=</span> <span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="ident">Token::Keyword</span>(<span class="ident">Keyword::Return</span>))
-            .<span class="ident">ignore_then</span>(<span class="ident">e</span>.<span class="ident">clone</span>().<span class="ident">or_not</span>())
-            .<span class="ident">then_ignore</span>(<span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="ident">Token::Semicolon</span>))
-            .<span class="ident">map_with_span</span>(<span class="op">|</span><span class="ident">e</span>, <span class="ident">span</span><span class="op">|</span> <span class="ident">Spanned::new</span>(<span class="ident">Node::Return</span>(<span class="ident">e</span>), <span class="ident">span</span>));
+        <span class="kw">let </span>r#return = just::&lt;<span class="kw">_</span>, Token, <span class="kw">_</span>&gt;(Token::Keyword(Keyword::Return))
+            .ignore_then(e.clone().or_not())
+            .then_ignore(just::&lt;<span class="kw">_</span>, Token, <span class="kw">_</span>&gt;(Token::Semicolon))
+            .map_with_span(|e, span| Spanned::new(Node::Return(e), span));
 
-        <span class="kw">let</span> <span class="ident">expr</span> <span class="op">=</span> <span class="ident">e</span>
-            .<span class="ident">clone</span>()
-            .<span class="ident">then_ignore</span>(<span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Token</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="ident">Token::Semicolon</span>))
-            .<span class="ident">or</span>(<span class="ident">e</span>
-                .<span class="ident">clone</span>()
-                .<span class="ident">try_map</span>(<span class="op">|</span><span class="ident">e</span>, <span class="ident">span</span><span class="op">|</span> <span class="kw">match</span> <span class="ident">e</span>.<span class="ident">node</span>() {
-                    <span class="ident">Expr::If</span> { .. } <span class="op">|</span> <span class="ident">Expr::While</span> { .. } =&gt; <span class="prelude-val">Ok</span>(<span class="ident">e</span>),
-                    <span class="kw">_</span> =&gt; <span class="prelude-val">Err</span>(<span class="ident">Error::custom</span>(<span class="ident">span</span>, <span class="string">&quot;missing semicolon&quot;</span>)),
+        <span class="kw">let </span>expr = e
+            .clone()
+            .then_ignore(just::&lt;<span class="kw">_</span>, Token, <span class="kw">_</span>&gt;(Token::Semicolon))
+            .or(e
+                .clone()
+                .try_map(|e, span| <span class="kw">match </span>e.node() {
+                    Expr::If { .. } | Expr::While { .. } =&gt; <span class="prelude-val">Ok</span>(e),
+                    <span class="kw">_ </span>=&gt; <span class="prelude-val">Err</span>(Error::custom(span, <span class="string">&quot;missing semicolon&quot;</span>)),
                 })
-                .<span class="ident">then_ignore</span>(<span class="ident">none_of</span>(<span class="ident">Token::EndBracket</span>(<span class="ident">Bracket::Brace</span>)).<span class="ident">rewind</span>()))
-            .<span class="ident">map_with_span</span>(<span class="op">|</span><span class="ident">e</span>, <span class="ident">span</span><span class="op">|</span> <span class="ident">Spanned::new</span>(<span class="ident">Node::Expr</span>(<span class="ident">e</span>), <span class="ident">span</span>));
+                .then_ignore(none_of(Token::EndBracket(Bracket::Brace)).rewind()))
+            .map_with_span(|e, span| Spanned::new(Node::Expr(e), span));
 
-        <span class="ident">choice</span>((<span class="ident">func</span>, <span class="ident">declare</span>, <span class="ident">assign</span>, <span class="ident">r#return</span>, <span class="ident">require</span>, <span class="ident">expr</span>))
-            .<span class="ident">repeated</span>()
-            .<span class="ident">then</span>(
-                <span class="ident">e</span>.<span class="ident">clone</span>()
-                    .<span class="ident">or_not</span>()
-                    .<span class="ident">map_with_span</span>(<span class="op">|</span><span class="ident">o</span>, <span class="ident">span</span><span class="op">|</span> <span class="ident">o</span>.<span class="ident">map</span>(<span class="op">|</span><span class="ident">o</span><span class="op">|</span> <span class="ident">Spanned::new</span>(<span class="ident">Node::Expr</span>(<span class="ident">o</span>), <span class="ident">span</span>))),
+        choice((func, declare, assign, r#return, require, expr))
+            .repeated()
+            .then(
+                e.clone()
+                    .or_not()
+                    .map_with_span(|o, span| o.map(|o| Spanned::new(Node::Expr(o), span))),
             )
-            .<span class="ident">recover_with</span>(<span class="ident">skip_then_retry_until</span>([]))
-            .<span class="ident">map_with_span</span>(<span class="op">|</span>(<span class="kw-2">mut</span> <span class="ident">nodes</span>, <span class="ident">last</span>), <span class="ident">span</span><span class="op">|</span> {
-                <span class="ident">Spanned::new</span>(
+            .recover_with(skip_then_retry_until([]))
+            .map_with_span(|(<span class="kw-2">mut </span>nodes, last), span| {
+                Spanned::new(
                     {
-                        <span class="kw">let</span> <span class="ident">return_last</span> <span class="op">=</span> <span class="ident">last</span>.<span class="ident">is_some</span>();
-                        <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">last</span>) <span class="op">=</span> <span class="ident">last</span> {
-                            <span class="ident">nodes</span>.<span class="ident">push</span>(<span class="ident">last</span>);
+                        <span class="kw">let </span>return_last = last.is_some();
+                        <span class="kw">if let </span><span class="prelude-val">Some</span>(last) = last {
+                            nodes.push(last);
                         }
-                        <span class="ident">Body</span>(<span class="ident">nodes</span>, <span class="ident">return_last</span>)
+                        Body(nodes, return_last)
                     },
-                    <span class="ident">span</span>,
+                    span,
                 )
             })
     })
 }
 
-<span class="comment">// TODO: write tests</span>
-</code></pre></div>
-</section></div></main><div id="rustdoc-vars" data-root-path="../../" data-current-crate="terbium_grammar" data-themes="ayu,dark,light" data-resource-suffix="" data-rustdoc-version="1.64.0-nightly (f6f9d5e73 2022-08-04)" ></div></body></html>
+<span class="comment">// TODO: write tests
+</span></code></pre></div>
+</section></div></main><div id="rustdoc-vars" data-root-path="../../" data-current-crate="terbium_grammar" data-themes="ayu,dark,light" data-resource-suffix="" data-rustdoc-version="1.66.0-nightly (1898c34e9 2022-10-26)" ></div></body></html>

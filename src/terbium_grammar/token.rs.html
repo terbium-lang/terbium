@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `terbium_grammar/src/token.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>token.rs - source</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceSerif4-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../FiraSans-Regular.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../FiraSans-Medium.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceCodePro-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceSerif4-Bold.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceCodePro-Semibold.ttf.woff2"><link rel="stylesheet" type="text/css" href="../../normalize.css"><link rel="stylesheet" type="text/css" href="../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" type="text/css" href="../../ayu.css" disabled><link rel="stylesheet" type="text/css" href="../../dark.css" disabled><link rel="stylesheet" type="text/css" href="../../light.css" id="themeStyle"><script id="default-settings" ></script><script src="../../storage.js"></script><script defer src="../../source-script.js"></script><script defer src="../../source-files.js"></script><script defer src="../../main.js"></script><noscript><link rel="stylesheet" href="../../noscript.css"></noscript><link rel="alternate icon" type="image/png" href="../../favicon-16x16.png"><link rel="alternate icon" type="image/png" href="../../favicon-32x32.png"><link rel="icon" type="image/svg+xml" href="../../favicon.svg"></head><body class="rustdoc source"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle">&#9776;</button><a class="sidebar-logo" href="../../terbium_grammar/index.html"><div class="logo-container"><img class="rust-logo" src="../../rust-logo.svg" alt="logo"></div></a><h2 class="location"></h2></nav><nav class="sidebar"><a class="sidebar-logo" href="../../terbium_grammar/index.html"><div class="logo-container"><img class="rust-logo" src="../../rust-logo.svg" alt="logo"></div></a></nav><main><div class="width-limiter"><div class="sub-container"><a class="sub-logo-container" href="../../terbium_grammar/index.html"><img class="rust-logo" src="../../rust-logo.svg" alt="logo"></a><nav class="sub"><form class="search-form"><div class="search-container"><span></span><input class="search-input" name="search" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" title="help" tabindex="-1"><button type="button">?</button></div><div id="settings-menu" tabindex="-1"><a href="../../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../../wheel.svg"></a></div></div></form></nav></div><section id="main-content" class="content"><div class="example-wrap"><pre class="line-numbers"><span id="1">1</span>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `terbium_grammar/src/token.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>token.rs - source</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceSerif4-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../FiraSans-Regular.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../FiraSans-Medium.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceCodePro-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceSerif4-Bold.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceCodePro-Semibold.ttf.woff2"><link rel="stylesheet" href="../../normalize.css"><link rel="stylesheet" href="../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" href="../../ayu.css" disabled><link rel="stylesheet" href="../../dark.css" disabled><link rel="stylesheet" href="../../light.css" id="themeStyle"><script id="default-settings" ></script><script src="../../storage.js"></script><script defer src="../../source-script.js"></script><script defer src="../../source-files.js"></script><script defer src="../../main.js"></script><noscript><link rel="stylesheet" href="../../noscript.css"></noscript><link rel="alternate icon" type="image/png" href="../../favicon-16x16.png"><link rel="alternate icon" type="image/png" href="../../favicon-32x32.png"><link rel="icon" type="image/svg+xml" href="../../favicon.svg"></head><body class="rustdoc source"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"></nav><main><div class="width-limiter"><nav class="sub"><a class="sub-logo-container" href="../../terbium_grammar/index.html"><img class="rust-logo" src="../../rust-logo.svg" alt="logo"></a><form class="search-form"><div class="search-container"><span></span><input class="search-input" name="search" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" title="help" tabindex="-1"><a href="../../help.html">?</a></div><div id="settings-menu" tabindex="-1"><a href="../../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../../wheel.svg"></a></div></div></form></nav><section id="main-content" class="content"><div class="example-wrap"><pre class="src-line-numbers"><span id="1">1</span>
 <span id="2">2</span>
 <span id="3">3</span>
 <span id="4">4</span>
@@ -458,465 +458,465 @@
 <span id="458">458</span>
 <span id="459">459</span>
 <span id="460">460</span>
-</pre><pre class="rust"><code><span class="kw">use</span> <span class="kw">super</span>::{<span class="ident">Error</span>, <span class="ident">Span</span>};
+</pre><pre class="rust"><code><span class="kw">use super</span>::{Error, Span};
 
-<span class="kw">use</span> <span class="ident">chumsky::prelude</span>::<span class="kw-2">*</span>;
+<span class="kw">use </span>chumsky::prelude::<span class="kw-2">*</span>;
 
-<span class="kw">use</span> <span class="ident">std</span>::{<span class="ident">fmt::Display</span>, <span class="ident">hash::Hash</span>};
+<span class="kw">use </span>std::{fmt::Display, hash::Hash};
 
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Copy</span>, <span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">PartialEq</span>, <span class="ident">Eq</span>, <span class="ident">Hash</span>)]</span>
-<span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">Operator</span> {
-    <span class="comment">// Arithmetic</span>
-    <span class="ident">Add</span>,
-    <span class="ident">Sub</span>,
-    <span class="ident">Mul</span>,
-    <span class="ident">Div</span>,
-    <span class="ident">Mod</span>,
-    <span class="ident">Pow</span>,
-    <span class="comment">// Logical</span>
-    <span class="ident">Eq</span>,
-    <span class="ident">Ne</span>,
-    <span class="ident">Lt</span>,
-    <span class="ident">Le</span>,
-    <span class="ident">Gt</span>,
-    <span class="ident">Ge</span>,
-    <span class="ident">Or</span>,
-    <span class="ident">And</span>,
-    <span class="ident">Not</span>,
-    <span class="comment">// Bitwise</span>
-    <span class="ident">BitOr</span>,
-    <span class="ident">BitXor</span>,
-    <span class="ident">BitAnd</span>,
-    <span class="ident">BitNot</span>,
-    <span class="ident">BitLShift</span>,
-    <span class="ident">BitRShift</span>,
-    <span class="comment">// Programmatic</span>
-    <span class="ident">Range</span>,
+<span class="attribute">#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+</span><span class="kw">pub enum </span>Operator {
+    <span class="comment">// Arithmetic
+    </span>Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    Pow,
+    <span class="comment">// Logical
+    </span>Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    Or,
+    And,
+    Not,
+    <span class="comment">// Bitwise
+    </span>BitOr,
+    BitXor,
+    BitAnd,
+    BitNot,
+    BitLShift,
+    BitRShift,
+    <span class="comment">// Programmatic
+    </span>Range,
 }
 
-<span class="kw">impl</span> <span class="ident">Operator</span> {
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="kw">pub</span> <span class="kw">const</span> <span class="kw">fn</span> <span class="ident">supports_unary</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident">bool</span> {
-        <span class="comment">// TODO: &amp;ident could retrieve memory address of the object</span>
-        <span class="macro">matches!</span>(<span class="self">self</span>, <span class="ident"><span class="self">Self</span>::Add</span> <span class="op">|</span> <span class="ident"><span class="self">Self</span>::Sub</span> <span class="op">|</span> <span class="ident"><span class="self">Self</span>::Not</span> <span class="op">|</span> <span class="ident"><span class="self">Self</span>::BitNot</span>)
+<span class="kw">impl </span>Operator {
+    <span class="attribute">#[must_use]
+    </span><span class="kw">pub const fn </span>supports_unary(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
+        <span class="comment">// TODO: &amp;ident could retrieve memory address of the object
+        </span><span class="macro">matches!</span>(<span class="self">self</span>, <span class="self">Self</span>::Add | <span class="self">Self</span>::Sub | <span class="self">Self</span>::Not | <span class="self">Self</span>::BitNot)
     }
 
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="kw">pub</span> <span class="kw">const</span> <span class="kw">fn</span> <span class="ident">supports_binary</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident">bool</span> {
+    <span class="attribute">#[must_use]
+    </span><span class="kw">pub const fn </span>supports_binary(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
         <span class="macro">matches!</span>(
             <span class="self">self</span>,
-            <span class="ident"><span class="self">Self</span>::Add</span>
-                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::Sub</span>
-                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::Mul</span>
-                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::Div</span>
-                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::Mod</span>
-                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::Pow</span>
-                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::Eq</span>
-                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::Ne</span>
-                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::Lt</span>
-                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::Le</span>
-                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::Gt</span>
-                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::Ge</span>
-                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::Or</span>
-                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::And</span>
-                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::Not</span>
-                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::BitOr</span>
-                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::BitXor</span>
-                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::BitAnd</span>
-                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::BitLShift</span>
-                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::BitRShift</span>
-                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::Range</span>
+            <span class="self">Self</span>::Add
+                | <span class="self">Self</span>::Sub
+                | <span class="self">Self</span>::Mul
+                | <span class="self">Self</span>::Div
+                | <span class="self">Self</span>::Mod
+                | <span class="self">Self</span>::Pow
+                | <span class="self">Self</span>::Eq
+                | <span class="self">Self</span>::Ne
+                | <span class="self">Self</span>::Lt
+                | <span class="self">Self</span>::Le
+                | <span class="self">Self</span>::Gt
+                | <span class="self">Self</span>::Ge
+                | <span class="self">Self</span>::Or
+                | <span class="self">Self</span>::And
+                | <span class="self">Self</span>::Not
+                | <span class="self">Self</span>::BitOr
+                | <span class="self">Self</span>::BitXor
+                | <span class="self">Self</span>::BitAnd
+                | <span class="self">Self</span>::BitLShift
+                | <span class="self">Self</span>::BitRShift
+                | <span class="self">Self</span>::Range
         )
     }
 }
 
-<span class="kw">impl</span> <span class="ident">Display</span> <span class="kw">for</span> <span class="ident">Operator</span> {
-    <span class="kw">fn</span> <span class="ident">fmt</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">f</span>: <span class="kw-2">&amp;mut</span> <span class="ident">std::fmt::Formatter</span>) -&gt; <span class="ident">std::fmt::Result</span> {
-        <span class="ident">f</span>.<span class="ident">write_str</span>(<span class="kw">match</span> <span class="self">self</span> {
-            <span class="ident"><span class="self">Self</span>::Add</span> =&gt; <span class="string">&quot;+&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::Sub</span> =&gt; <span class="string">&quot;-&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::Mul</span> =&gt; <span class="string">&quot;*&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::Div</span> =&gt; <span class="string">&quot;/&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::Mod</span> =&gt; <span class="string">&quot;%&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::Pow</span> =&gt; <span class="string">&quot;**&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::Eq</span> =&gt; <span class="string">&quot;==&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::Ne</span> =&gt; <span class="string">&quot;!=&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::Lt</span> =&gt; <span class="string">&quot;&lt;&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::Le</span> =&gt; <span class="string">&quot;&lt;=&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::Gt</span> =&gt; <span class="string">&quot;&gt;&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::Ge</span> =&gt; <span class="string">&quot;&gt;=&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::Or</span> =&gt; <span class="string">&quot;||&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::And</span> =&gt; <span class="string">&quot;&amp;&amp;&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::Not</span> =&gt; <span class="string">&quot;!&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::BitOr</span> =&gt; <span class="string">&quot;|&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::BitXor</span> =&gt; <span class="string">&quot;^&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::BitAnd</span> =&gt; <span class="string">&quot;&amp;&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::BitNot</span> =&gt; <span class="string">&quot;~&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::BitLShift</span> =&gt; <span class="string">&quot;&lt;&lt;&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::BitRShift</span> =&gt; <span class="string">&quot;&gt;&gt;&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::Range</span> =&gt; <span class="string">&quot;..&quot;</span>,
+<span class="kw">impl </span>Display <span class="kw">for </span>Operator {
+    <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>std::fmt::Formatter) -&gt; std::fmt::Result {
+        f.write_str(<span class="kw">match </span><span class="self">self </span>{
+            <span class="self">Self</span>::Add =&gt; <span class="string">&quot;+&quot;</span>,
+            <span class="self">Self</span>::Sub =&gt; <span class="string">&quot;-&quot;</span>,
+            <span class="self">Self</span>::Mul =&gt; <span class="string">&quot;*&quot;</span>,
+            <span class="self">Self</span>::Div =&gt; <span class="string">&quot;/&quot;</span>,
+            <span class="self">Self</span>::Mod =&gt; <span class="string">&quot;%&quot;</span>,
+            <span class="self">Self</span>::Pow =&gt; <span class="string">&quot;**&quot;</span>,
+            <span class="self">Self</span>::Eq =&gt; <span class="string">&quot;==&quot;</span>,
+            <span class="self">Self</span>::Ne =&gt; <span class="string">&quot;!=&quot;</span>,
+            <span class="self">Self</span>::Lt =&gt; <span class="string">&quot;&lt;&quot;</span>,
+            <span class="self">Self</span>::Le =&gt; <span class="string">&quot;&lt;=&quot;</span>,
+            <span class="self">Self</span>::Gt =&gt; <span class="string">&quot;&gt;&quot;</span>,
+            <span class="self">Self</span>::Ge =&gt; <span class="string">&quot;&gt;=&quot;</span>,
+            <span class="self">Self</span>::Or =&gt; <span class="string">&quot;||&quot;</span>,
+            <span class="self">Self</span>::And =&gt; <span class="string">&quot;&amp;&amp;&quot;</span>,
+            <span class="self">Self</span>::Not =&gt; <span class="string">&quot;!&quot;</span>,
+            <span class="self">Self</span>::BitOr =&gt; <span class="string">&quot;|&quot;</span>,
+            <span class="self">Self</span>::BitXor =&gt; <span class="string">&quot;^&quot;</span>,
+            <span class="self">Self</span>::BitAnd =&gt; <span class="string">&quot;&amp;&quot;</span>,
+            <span class="self">Self</span>::BitNot =&gt; <span class="string">&quot;~&quot;</span>,
+            <span class="self">Self</span>::BitLShift =&gt; <span class="string">&quot;&lt;&lt;&quot;</span>,
+            <span class="self">Self</span>::BitRShift =&gt; <span class="string">&quot;&gt;&gt;&quot;</span>,
+            <span class="self">Self</span>::Range =&gt; <span class="string">&quot;..&quot;</span>,
         })
     }
 }
 
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">PartialEq</span>, <span class="ident">Eq</span>, <span class="ident">Hash</span>)]</span>
-<span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">StringLiteral</span> {
-    <span class="ident">String</span>(<span class="ident">String</span>),
-    <span class="ident">ByteString</span>(<span class="ident">String</span>),
-    <span class="ident">RawString</span>(<span class="ident">String</span>),
-    <span class="ident">InterpolatedString</span>(<span class="ident">String</span>),
+<span class="attribute">#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+</span><span class="kw">pub enum </span>StringLiteral {
+    String(String),
+    ByteString(String),
+    RawString(String),
+    InterpolatedString(String),
 }
 
-<span class="kw">impl</span> <span class="ident">Display</span> <span class="kw">for</span> <span class="ident">StringLiteral</span> {
-    <span class="kw">fn</span> <span class="ident">fmt</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">f</span>: <span class="kw-2">&amp;mut</span> <span class="ident">std::fmt::Formatter</span>) -&gt; <span class="ident">std::fmt::Result</span> {
-        <span class="ident">f</span>.<span class="ident">write_str</span>(
-            <span class="kw">match</span> <span class="self">self</span> {
-                <span class="ident"><span class="self">Self</span>::String</span>(<span class="ident">s</span>) =&gt; <span class="macro">format!</span>(<span class="string">&quot;{:?}&quot;</span>, <span class="ident">s</span>),
-                <span class="ident"><span class="self">Self</span>::ByteString</span>(<span class="ident">s</span>) =&gt; <span class="macro">format!</span>(<span class="string">&quot;~{:?}&quot;</span>, <span class="ident">s</span>),
-                <span class="ident"><span class="self">Self</span>::RawString</span>(<span class="ident">s</span>) =&gt; <span class="macro">format!</span>(<span class="string">&quot;r{:?}&quot;</span>, <span class="ident">s</span>),
-                <span class="ident"><span class="self">Self</span>::InterpolatedString</span>(<span class="ident">s</span>) =&gt; <span class="macro">format!</span>(<span class="string">&quot;${:?}&quot;</span>, <span class="ident">s</span>),
+<span class="kw">impl </span>Display <span class="kw">for </span>StringLiteral {
+    <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>std::fmt::Formatter) -&gt; std::fmt::Result {
+        f.write_str(
+            <span class="kw">match </span><span class="self">self </span>{
+                <span class="self">Self</span>::String(s) =&gt; <span class="macro">format!</span>(<span class="string">&quot;{:?}&quot;</span>, s),
+                <span class="self">Self</span>::ByteString(s) =&gt; <span class="macro">format!</span>(<span class="string">&quot;~{:?}&quot;</span>, s),
+                <span class="self">Self</span>::RawString(s) =&gt; <span class="macro">format!</span>(<span class="string">&quot;r{:?}&quot;</span>, s),
+                <span class="self">Self</span>::InterpolatedString(s) =&gt; <span class="macro">format!</span>(<span class="string">&quot;${:?}&quot;</span>, s),
             }
-            .<span class="ident">as_str</span>(),
+            .as_str(),
         )
     }
 }
 
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">PartialEq</span>, <span class="ident">Eq</span>, <span class="ident">Hash</span>)]</span>
-<span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">Literal</span> {
-    <span class="ident">String</span>(<span class="ident">StringLiteral</span>),
-    <span class="ident">Integer</span>(<span class="ident">u128</span>), <span class="comment">// This can be unsigned since unary minus is parsed separate from Literal</span>
-    <span class="ident">Float</span>(<span class="ident">String</span>), <span class="comment">// Rust floats are not hashable, additionally we want to avoid as much floating point precision loss as possible</span>
-}
+<span class="attribute">#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+</span><span class="kw">pub enum </span>Literal {
+    String(StringLiteral),
+    Integer(u128), <span class="comment">// This can be unsigned since unary minus is parsed separate from Literal
+    </span>Float(String), <span class="comment">// Rust floats are not hashable, additionally we want to avoid as much floating point precision loss as possible
+</span>}
 
-<span class="kw">impl</span> <span class="ident">Display</span> <span class="kw">for</span> <span class="ident">Literal</span> {
-    <span class="kw">fn</span> <span class="ident">fmt</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">f</span>: <span class="kw-2">&amp;mut</span> <span class="ident">std::fmt::Formatter</span>) -&gt; <span class="ident">std::fmt::Result</span> {
-        <span class="ident">f</span>.<span class="ident">write_str</span>(
-            <span class="kw">match</span> <span class="self">self</span> {
-                <span class="ident"><span class="self">Self</span>::String</span>(<span class="ident">s</span>) =&gt; <span class="ident">s</span>.<span class="ident">to_string</span>(),
-                <span class="ident"><span class="self">Self</span>::Integer</span>(<span class="ident">i</span>) =&gt; <span class="ident">i</span>.<span class="ident">to_string</span>(),
-                <span class="ident"><span class="self">Self</span>::Float</span>(<span class="ident">f</span>) =&gt; <span class="ident">f</span>.<span class="ident">clone</span>(),
+<span class="kw">impl </span>Display <span class="kw">for </span>Literal {
+    <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>std::fmt::Formatter) -&gt; std::fmt::Result {
+        f.write_str(
+            <span class="kw">match </span><span class="self">self </span>{
+                <span class="self">Self</span>::String(s) =&gt; s.to_string(),
+                <span class="self">Self</span>::Integer(i) =&gt; i.to_string(),
+                <span class="self">Self</span>::Float(f) =&gt; f.clone(),
             }
-            .<span class="ident">as_str</span>(),
+            .as_str(),
         )
     }
 }
 
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">PartialEq</span>, <span class="ident">Eq</span>, <span class="ident">Hash</span>)]</span>
-<span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">Keyword</span> {
-    <span class="ident">Func</span>,
-    <span class="ident">Class</span>,
-    <span class="comment">// Modules</span>
-    <span class="ident">Require</span>,
-    <span class="ident">Export</span>,
-    <span class="comment">// Variables</span>
-    <span class="ident">Let</span>,
-    <span class="ident">Const</span>,
-    <span class="ident">Mut</span>,
-    <span class="comment">// Attributes</span>
-    <span class="ident">Private</span>,
-    <span class="comment">// Control flow</span>
-    <span class="ident">If</span>,
-    <span class="ident">Else</span>,
-    <span class="ident">Match</span>,
-    <span class="ident">For</span>,
-    <span class="ident">In</span>,
-    <span class="ident">While</span>,
-    <span class="ident">Break</span>,
-    <span class="ident">Continue</span>,
-    <span class="ident">Return</span>,
-    <span class="ident">With</span>,
-    <span class="ident">Throws</span>,
-    <span class="ident">Where</span>,
+<span class="attribute">#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+</span><span class="kw">pub enum </span>Keyword {
+    Func,
+    Class,
+    <span class="comment">// Modules
+    </span>Require,
+    Export,
+    <span class="comment">// Variables
+    </span>Let,
+    Const,
+    Mut,
+    <span class="comment">// Attributes
+    </span>Private,
+    <span class="comment">// Control flow
+    </span>If,
+    Else,
+    Match,
+    For,
+    In,
+    While,
+    Break,
+    Continue,
+    Return,
+    With,
+    Throws,
+    Where,
 }
 
-<span class="kw">impl</span> <span class="ident">Display</span> <span class="kw">for</span> <span class="ident">Keyword</span> {
-    <span class="kw">fn</span> <span class="ident">fmt</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">f</span>: <span class="kw-2">&amp;mut</span> <span class="ident">std::fmt::Formatter</span>) -&gt; <span class="ident">std::fmt::Result</span> {
-        <span class="ident">f</span>.<span class="ident">write_str</span>(<span class="kw">match</span> <span class="self">self</span> {
-            <span class="ident"><span class="self">Self</span>::Func</span> =&gt; <span class="string">&quot;func&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::Class</span> =&gt; <span class="string">&quot;class&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::Require</span> =&gt; <span class="string">&quot;require&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::Export</span> =&gt; <span class="string">&quot;export&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::Let</span> =&gt; <span class="string">&quot;let&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::Const</span> =&gt; <span class="string">&quot;const&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::Mut</span> =&gt; <span class="string">&quot;mut&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::Private</span> =&gt; <span class="string">&quot;private&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::If</span> =&gt; <span class="string">&quot;if&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::Else</span> =&gt; <span class="string">&quot;else&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::Match</span> =&gt; <span class="string">&quot;match&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::For</span> =&gt; <span class="string">&quot;for&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::In</span> =&gt; <span class="string">&quot;in&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::While</span> =&gt; <span class="string">&quot;while&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::Break</span> =&gt; <span class="string">&quot;break&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::Continue</span> =&gt; <span class="string">&quot;continue&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::Return</span> =&gt; <span class="string">&quot;return&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::With</span> =&gt; <span class="string">&quot;with&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::Throws</span> =&gt; <span class="string">&quot;throws&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::Where</span> =&gt; <span class="string">&quot;where&quot;</span>,
+<span class="kw">impl </span>Display <span class="kw">for </span>Keyword {
+    <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>std::fmt::Formatter) -&gt; std::fmt::Result {
+        f.write_str(<span class="kw">match </span><span class="self">self </span>{
+            <span class="self">Self</span>::Func =&gt; <span class="string">&quot;func&quot;</span>,
+            <span class="self">Self</span>::Class =&gt; <span class="string">&quot;class&quot;</span>,
+            <span class="self">Self</span>::Require =&gt; <span class="string">&quot;require&quot;</span>,
+            <span class="self">Self</span>::Export =&gt; <span class="string">&quot;export&quot;</span>,
+            <span class="self">Self</span>::Let =&gt; <span class="string">&quot;let&quot;</span>,
+            <span class="self">Self</span>::Const =&gt; <span class="string">&quot;const&quot;</span>,
+            <span class="self">Self</span>::Mut =&gt; <span class="string">&quot;mut&quot;</span>,
+            <span class="self">Self</span>::Private =&gt; <span class="string">&quot;private&quot;</span>,
+            <span class="self">Self</span>::If =&gt; <span class="string">&quot;if&quot;</span>,
+            <span class="self">Self</span>::Else =&gt; <span class="string">&quot;else&quot;</span>,
+            <span class="self">Self</span>::Match =&gt; <span class="string">&quot;match&quot;</span>,
+            <span class="self">Self</span>::For =&gt; <span class="string">&quot;for&quot;</span>,
+            <span class="self">Self</span>::In =&gt; <span class="string">&quot;in&quot;</span>,
+            <span class="self">Self</span>::While =&gt; <span class="string">&quot;while&quot;</span>,
+            <span class="self">Self</span>::Break =&gt; <span class="string">&quot;break&quot;</span>,
+            <span class="self">Self</span>::Continue =&gt; <span class="string">&quot;continue&quot;</span>,
+            <span class="self">Self</span>::Return =&gt; <span class="string">&quot;return&quot;</span>,
+            <span class="self">Self</span>::With =&gt; <span class="string">&quot;with&quot;</span>,
+            <span class="self">Self</span>::Throws =&gt; <span class="string">&quot;throws&quot;</span>,
+            <span class="self">Self</span>::Where =&gt; <span class="string">&quot;where&quot;</span>,
         })
     }
 }
 
-<span class="kw">impl</span> <span class="ident">Keyword</span> {
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="kw">pub</span> <span class="kw">const</span> <span class="kw">fn</span> <span class="ident">is_soft</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident">bool</span> {
-        <span class="op">!</span><span class="macro">matches!</span>(
+<span class="kw">impl </span>Keyword {
+    <span class="attribute">#[must_use]
+    </span><span class="kw">pub const fn </span>is_soft(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
+        !<span class="macro">matches!</span>(
             <span class="self">self</span>,
-            <span class="ident"><span class="self">Self</span>::Func</span>
-                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::Class</span>
-                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::Let</span>
-                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::Const</span>
-                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::Mut</span>
-                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::If</span>
-                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::Else</span>
-                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::For</span>
-                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::In</span>
-                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::While</span>
-                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::Break</span>
-                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::Continue</span>
-                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::Return</span>
-                <span class="op">|</span> <span class="ident"><span class="self">Self</span>::With</span>
+            <span class="self">Self</span>::Func
+                | <span class="self">Self</span>::Class
+                | <span class="self">Self</span>::Let
+                | <span class="self">Self</span>::Const
+                | <span class="self">Self</span>::Mut
+                | <span class="self">Self</span>::If
+                | <span class="self">Self</span>::Else
+                | <span class="self">Self</span>::For
+                | <span class="self">Self</span>::In
+                | <span class="self">Self</span>::While
+                | <span class="self">Self</span>::Break
+                | <span class="self">Self</span>::Continue
+                | <span class="self">Self</span>::Return
+                | <span class="self">Self</span>::With
         )
     }
 }
 
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Copy</span>, <span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">PartialEq</span>, <span class="ident">Eq</span>, <span class="ident">Hash</span>)]</span>
-<span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">Bracket</span> {
-    <span class="ident">Paren</span>,   <span class="comment">// ()</span>
-    <span class="ident">Bracket</span>, <span class="comment">// []</span>
-    <span class="ident">Brace</span>,   <span class="comment">// {}</span>
-}
+<span class="attribute">#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+</span><span class="kw">pub enum </span>Bracket {
+    Paren,   <span class="comment">// ()
+    </span>Bracket, <span class="comment">// []
+    </span>Brace,   <span class="comment">// {}
+</span>}
 
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">PartialEq</span>, <span class="ident">Eq</span>, <span class="ident">Hash</span>)]</span>
-<span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">Token</span> {
-    <span class="ident">Invalid</span>(<span class="ident">char</span>),
-    <span class="ident">Operator</span>(<span class="ident">Operator</span>),
-    <span class="ident">Literal</span>(<span class="ident">Literal</span>),
-    <span class="ident">Keyword</span>(<span class="ident">Keyword</span>),
-    <span class="ident">Identifier</span>(<span class="ident">String</span>),
-    <span class="ident">StartBracket</span>(<span class="ident">Bracket</span>),
-    <span class="ident">EndBracket</span>(<span class="ident">Bracket</span>),
-    <span class="ident">Comma</span>,
-    <span class="ident">Dot</span>,
-    <span class="ident">Cast</span>, <span class="comment">// ::</span>
-    <span class="ident">Question</span>,
-    <span class="ident">Semicolon</span>,
-    <span class="ident">Assign</span>, <span class="comment">// =</span>
-    <span class="ident">Colon</span>,  <span class="comment">// :</span>
-    <span class="ident">Arrow</span>,  <span class="comment">// -&gt;</span>
-}
+<span class="attribute">#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+</span><span class="kw">pub enum </span>Token {
+    Invalid(char),
+    Operator(Operator),
+    Literal(Literal),
+    Keyword(Keyword),
+    Identifier(String),
+    StartBracket(Bracket),
+    EndBracket(Bracket),
+    Comma,
+    Dot,
+    Cast, <span class="comment">// ::
+    </span>Question,
+    Semicolon,
+    Assign, <span class="comment">// =
+    </span>Colon,  <span class="comment">// :
+    </span>Arrow,  <span class="comment">// -&gt;
+</span>}
 
-<span class="kw">impl</span> <span class="ident">Display</span> <span class="kw">for</span> <span class="ident">Token</span> {
-    <span class="kw">fn</span> <span class="ident">fmt</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">f</span>: <span class="kw-2">&amp;mut</span> <span class="ident">std::fmt::Formatter</span>) -&gt; <span class="ident">std::fmt::Result</span> {
-        <span class="kw">let</span> <span class="ident">s</span>: <span class="ident">String</span>;
+<span class="kw">impl </span>Display <span class="kw">for </span>Token {
+    <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>std::fmt::Formatter) -&gt; std::fmt::Result {
+        <span class="kw">let </span>s: String;
 
-        <span class="ident">f</span>.<span class="ident">write_str</span>(<span class="kw">match</span> <span class="self">self</span> {
-            <span class="ident"><span class="self">Self</span>::Invalid</span>(<span class="ident">c</span>) =&gt; {
-                <span class="ident">s</span> <span class="op">=</span> <span class="ident">c</span>.<span class="ident">to_string</span>();
-                <span class="ident">s</span>.<span class="ident">as_str</span>()
+        f.write_str(<span class="kw">match </span><span class="self">self </span>{
+            <span class="self">Self</span>::Invalid(c) =&gt; {
+                s = c.to_string();
+                s.as_str()
             }
-            <span class="ident"><span class="self">Self</span>::Operator</span>(<span class="ident">o</span>) =&gt; {
-                <span class="ident">s</span> <span class="op">=</span> <span class="ident">o</span>.<span class="ident">to_string</span>();
-                <span class="ident">s</span>.<span class="ident">as_str</span>()
+            <span class="self">Self</span>::Operator(o) =&gt; {
+                s = o.to_string();
+                s.as_str()
             }
-            <span class="ident"><span class="self">Self</span>::Literal</span>(<span class="ident">l</span>) =&gt; {
-                <span class="ident">s</span> <span class="op">=</span> <span class="ident">l</span>.<span class="ident">to_string</span>();
-                <span class="ident">s</span>.<span class="ident">as_str</span>()
+            <span class="self">Self</span>::Literal(l) =&gt; {
+                s = l.to_string();
+                s.as_str()
             }
-            <span class="ident"><span class="self">Self</span>::Keyword</span>(<span class="ident">k</span>) =&gt; {
-                <span class="ident">s</span> <span class="op">=</span> <span class="ident">k</span>.<span class="ident">to_string</span>();
-                <span class="ident">s</span>.<span class="ident">as_str</span>()
+            <span class="self">Self</span>::Keyword(k) =&gt; {
+                s = k.to_string();
+                s.as_str()
             }
-            <span class="ident"><span class="self">Self</span>::Identifier</span>(<span class="ident">s</span>) =&gt; <span class="ident">s</span>.<span class="ident">as_str</span>(),
-            <span class="ident"><span class="self">Self</span>::StartBracket</span>(<span class="ident">b</span>) =&gt; <span class="kw">match</span> <span class="ident">b</span> {
-                <span class="ident">Bracket::Paren</span> =&gt; <span class="string">&quot;(&quot;</span>,
-                <span class="ident">Bracket::Bracket</span> =&gt; <span class="string">&quot;[&quot;</span>,
-                <span class="ident">Bracket::Brace</span> =&gt; <span class="string">&quot;{&quot;</span>,
+            <span class="self">Self</span>::Identifier(s) =&gt; s.as_str(),
+            <span class="self">Self</span>::StartBracket(b) =&gt; <span class="kw">match </span>b {
+                Bracket::Paren =&gt; <span class="string">&quot;(&quot;</span>,
+                Bracket::Bracket =&gt; <span class="string">&quot;[&quot;</span>,
+                Bracket::Brace =&gt; <span class="string">&quot;{&quot;</span>,
             },
-            <span class="ident"><span class="self">Self</span>::EndBracket</span>(<span class="ident">b</span>) =&gt; <span class="kw">match</span> <span class="ident">b</span> {
-                <span class="ident">Bracket::Paren</span> =&gt; <span class="string">&quot;)&quot;</span>,
-                <span class="ident">Bracket::Bracket</span> =&gt; <span class="string">&quot;]&quot;</span>,
-                <span class="ident">Bracket::Brace</span> =&gt; <span class="string">&quot;}&quot;</span>,
+            <span class="self">Self</span>::EndBracket(b) =&gt; <span class="kw">match </span>b {
+                Bracket::Paren =&gt; <span class="string">&quot;)&quot;</span>,
+                Bracket::Bracket =&gt; <span class="string">&quot;]&quot;</span>,
+                Bracket::Brace =&gt; <span class="string">&quot;}&quot;</span>,
             },
-            <span class="ident"><span class="self">Self</span>::Comma</span> =&gt; <span class="string">&quot;,&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::Dot</span> =&gt; <span class="string">&quot;.&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::Cast</span> =&gt; <span class="string">&quot;::&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::Question</span> =&gt; <span class="string">&quot;?&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::Semicolon</span> =&gt; <span class="string">&quot;;&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::Assign</span> =&gt; <span class="string">&quot;=&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::Colon</span> =&gt; <span class="string">&quot;:&quot;</span>,
-            <span class="ident"><span class="self">Self</span>::Arrow</span> =&gt; <span class="string">&quot;-&gt;&quot;</span>,
+            <span class="self">Self</span>::Comma =&gt; <span class="string">&quot;,&quot;</span>,
+            <span class="self">Self</span>::Dot =&gt; <span class="string">&quot;.&quot;</span>,
+            <span class="self">Self</span>::Cast =&gt; <span class="string">&quot;::&quot;</span>,
+            <span class="self">Self</span>::Question =&gt; <span class="string">&quot;?&quot;</span>,
+            <span class="self">Self</span>::Semicolon =&gt; <span class="string">&quot;;&quot;</span>,
+            <span class="self">Self</span>::Assign =&gt; <span class="string">&quot;=&quot;</span>,
+            <span class="self">Self</span>::Colon =&gt; <span class="string">&quot;:&quot;</span>,
+            <span class="self">Self</span>::Arrow =&gt; <span class="string">&quot;-&gt;&quot;</span>,
         })
     }
 }
 
-<span class="macro">macro_rules!</span> <span class="ident">escape_hex</span> {
-    (<span class="macro-nonterminal">$</span><span class="macro-nonterminal">c</span>:<span class="ident">expr</span>, <span class="macro-nonterminal">$</span><span class="macro-nonterminal">l</span>:<span class="ident">expr</span>) =&gt; {{
-        <span class="ident">just</span>(<span class="macro-nonterminal">$</span><span class="macro-nonterminal">c</span>).<span class="ident">ignore_then</span>(
-            <span class="ident">filter</span>(<span class="op">|</span><span class="ident">c</span>: <span class="kw-2">&amp;</span><span class="ident">char</span><span class="op">|</span> <span class="ident">c</span>.<span class="ident">is_digit</span>(<span class="number">16</span>))
-                .<span class="ident">repeated</span>()
-                .<span class="ident">exactly</span>(<span class="macro-nonterminal">$</span><span class="macro-nonterminal">l</span>)
-                .<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span>()
-                .<span class="ident">validate</span>(<span class="op">|</span><span class="ident">digits</span>, <span class="ident">span</span>, <span class="ident">emit</span><span class="op">|</span> {
-                    <span class="ident">char::from_u32</span>(<span class="ident">u32::from_str_radix</span>(<span class="kw-2">&amp;</span><span class="ident">digits</span>, <span class="number">16</span>).<span class="ident">unwrap</span>()).<span class="ident">unwrap_or_else</span>(<span class="op">|</span><span class="op">|</span> {
-                        <span class="ident">emit</span>(<span class="ident">Error::custom</span>(
-                            <span class="ident">span</span>,
-                            <span class="macro">format!</span>(<span class="string">&quot;invalid unicode character \\u{}&quot;</span>, <span class="ident">digits</span>),
+<span class="macro">macro_rules! </span>escape_hex {
+    (<span class="macro-nonterminal">$c</span>:expr, <span class="macro-nonterminal">$l</span>:expr) =&gt; {{
+        just(<span class="macro-nonterminal">$c</span>).ignore_then(
+            filter(|c: <span class="kw-2">&amp;</span>char| c.is_digit(<span class="number">16</span>))
+                .repeated()
+                .exactly(<span class="macro-nonterminal">$l</span>)
+                .collect::&lt;String&gt;()
+                .validate(|digits, span, emit| {
+                    char::from_u32(u32::from_str_radix(<span class="kw-2">&amp;</span>digits, <span class="number">16</span>).unwrap()).unwrap_or_else(|| {
+                        emit(Error::custom(
+                            span,
+                            <span class="macro">format!</span>(<span class="string">&quot;invalid unicode character \\u{}&quot;</span>, digits),
                         ));
-                        <span class="string">&#39;\u{FFFD}&#39;</span> <span class="comment">// unicode replacement character</span>
-                    })
+                        <span class="string">&#39;\u{FFFD}&#39; </span><span class="comment">// unicode replacement character
+                    </span>})
                 }),
         )
     }};
 }
 
-<span class="attribute">#[<span class="ident">must_use</span>]</span>
-<span class="attribute">#[<span class="ident">allow</span>(<span class="ident">clippy::too_many_lines</span>)]</span>
-<span class="attribute">#[<span class="ident">allow</span>(<span class="ident">clippy::cast_sign_loss</span>)]</span> <span class="comment">// text::int does not handle signed</span>
-<span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">get_lexer</span>() -&gt; <span class="kw">impl</span> <span class="ident">Parser</span><span class="op">&lt;</span><span class="ident">char</span>, <span class="ident">Vec</span><span class="op">&lt;</span>(<span class="ident">Token</span>, <span class="ident">Span</span>)<span class="op">&gt;</span>, <span class="ident">Error</span> <span class="op">=</span> <span class="ident">Error</span><span class="op">&gt;</span> {
-    <span class="kw">let</span> <span class="ident">integer</span> <span class="op">=</span> <span class="ident">text::int</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Error</span><span class="op">&gt;</span>(<span class="number">10</span>)
-        .<span class="ident">from_str</span>::<span class="op">&lt;</span><span class="ident">i128</span><span class="op">&gt;</span>()
-        <span class="comment">// This is done to ensure that the interger won&#39;t overflow i128</span>
-        .<span class="ident">unwrapped</span>()
-        .<span class="ident">map</span>(<span class="op">|</span><span class="ident">int</span><span class="op">|</span> <span class="ident">Literal::Integer</span>(<span class="ident">int</span> <span class="kw">as</span> <span class="ident">u128</span>))
-        .<span class="ident">map</span>(<span class="ident">Token::Literal</span>)
-        .<span class="ident">labelled</span>(<span class="string">&quot;integer literal&quot;</span>);
+<span class="attribute">#[must_use]
+#[allow(clippy::too_many_lines)]
+#[allow(clippy::cast_sign_loss)] </span><span class="comment">// text::int does not handle signed
+</span><span class="kw">pub fn </span>get_lexer() -&gt; <span class="kw">impl </span>Parser&lt;char, Vec&lt;(Token, Span)&gt;, Error = Error&gt; {
+    <span class="kw">let </span>integer = text::int::&lt;<span class="kw">_</span>, Error&gt;(<span class="number">10</span>)
+        .from_str::&lt;i128&gt;()
+        <span class="comment">// This is done to ensure that the interger won&#39;t overflow i128
+        </span>.unwrapped()
+        .map(|int| Literal::Integer(int <span class="kw">as </span>u128))
+        .map(Token::Literal)
+        .labelled(<span class="string">&quot;integer literal&quot;</span>);
 
-    <span class="kw">let</span> <span class="ident">float</span> <span class="op">=</span> <span class="ident">text::int</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Error</span><span class="op">&gt;</span>(<span class="number">10</span>)
-        .<span class="ident">chain</span>::<span class="op">&lt;</span><span class="ident">char</span>, <span class="kw">_</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="ident">just</span>(<span class="string">&#39;.&#39;</span>).<span class="ident">chain</span>(<span class="ident">filter</span>(<span class="ident">char::is_ascii_digit</span>).<span class="ident">repeated</span>()))
-        .<span class="ident">or</span>(<span class="ident">just</span>(<span class="string">&#39;.&#39;</span>).<span class="ident">chain</span>::<span class="op">&lt;</span><span class="ident">char</span>, <span class="kw">_</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="ident">text::digits</span>(<span class="number">10</span>)))
-        .<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span>()
-        .<span class="ident">map</span>(<span class="ident">Literal::Float</span>)
-        .<span class="ident">map</span>(<span class="ident">Token::Literal</span>)
-        .<span class="ident">labelled</span>(<span class="string">&quot;float literal&quot;</span>);
+    <span class="kw">let </span>float = text::int::&lt;<span class="kw">_</span>, Error&gt;(<span class="number">10</span>)
+        .chain::&lt;char, <span class="kw">_</span>, <span class="kw">_</span>&gt;(just(<span class="string">&#39;.&#39;</span>).chain(filter(char::is_ascii_digit).repeated()))
+        .or(just(<span class="string">&#39;.&#39;</span>).chain::&lt;char, <span class="kw">_</span>, <span class="kw">_</span>&gt;(text::digits(<span class="number">10</span>)))
+        .collect::&lt;String&gt;()
+        .map(Literal::Float)
+        .map(Token::Literal)
+        .labelled(<span class="string">&quot;float literal&quot;</span>);
 
-    <span class="kw">let</span> <span class="ident">escape</span> <span class="op">=</span> <span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="kw">_</span>, <span class="ident">Error</span><span class="op">&gt;</span>(<span class="string">&#39;\\&#39;</span>)
-        .<span class="ident">ignore_then</span>(
-            <span class="ident">just</span>(<span class="string">&#39;\\&#39;</span>)
-                .<span class="ident">or</span>(<span class="ident">just</span>(<span class="string">&#39;&quot;&#39;</span>))
-                .<span class="ident">or</span>(<span class="ident">just</span>(<span class="string">&#39;\&#39;&#39;</span>))
-                .<span class="ident">or</span>(<span class="ident">just</span>(<span class="string">&#39;b&#39;</span>).<span class="ident">to</span>(<span class="string">&#39;\x08&#39;</span>))
-                .<span class="ident">or</span>(<span class="ident">just</span>(<span class="string">&#39;f&#39;</span>).<span class="ident">to</span>(<span class="string">&#39;\x0C&#39;</span>))
-                .<span class="ident">or</span>(<span class="ident">just</span>(<span class="string">&#39;n&#39;</span>).<span class="ident">to</span>(<span class="string">&#39;\n&#39;</span>))
-                .<span class="ident">or</span>(<span class="ident">just</span>(<span class="string">&#39;r&#39;</span>).<span class="ident">to</span>(<span class="string">&#39;\r&#39;</span>))
-                .<span class="ident">or</span>(<span class="ident">just</span>(<span class="string">&#39;t&#39;</span>).<span class="ident">to</span>(<span class="string">&#39;\t&#39;</span>))
-                .<span class="ident">or</span>(<span class="macro">escape_hex!</span>(<span class="string">&#39;x&#39;</span>, <span class="number">2</span>))
-                .<span class="ident">or</span>(<span class="macro">escape_hex!</span>(<span class="string">&#39;u&#39;</span>, <span class="number">4</span>))
-                .<span class="ident">or</span>(<span class="macro">escape_hex!</span>(<span class="string">&#39;U&#39;</span>, <span class="number">8</span>)),
+    <span class="kw">let </span>escape = just::&lt;<span class="kw">_</span>, <span class="kw">_</span>, Error&gt;(<span class="string">&#39;\\&#39;</span>)
+        .ignore_then(
+            just(<span class="string">&#39;\\&#39;</span>)
+                .or(just(<span class="string">&#39;&quot;&#39;</span>))
+                .or(just(<span class="string">&#39;\&#39;&#39;</span>))
+                .or(just(<span class="string">&#39;b&#39;</span>).to(<span class="string">&#39;\x08&#39;</span>))
+                .or(just(<span class="string">&#39;f&#39;</span>).to(<span class="string">&#39;\x0C&#39;</span>))
+                .or(just(<span class="string">&#39;n&#39;</span>).to(<span class="string">&#39;\n&#39;</span>))
+                .or(just(<span class="string">&#39;r&#39;</span>).to(<span class="string">&#39;\r&#39;</span>))
+                .or(just(<span class="string">&#39;t&#39;</span>).to(<span class="string">&#39;\t&#39;</span>))
+                .or(<span class="macro">escape_hex!</span>(<span class="string">&#39;x&#39;</span>, <span class="number">2</span>))
+                .or(<span class="macro">escape_hex!</span>(<span class="string">&#39;u&#39;</span>, <span class="number">4</span>))
+                .or(<span class="macro">escape_hex!</span>(<span class="string">&#39;U&#39;</span>, <span class="number">8</span>)),
         )
-        .<span class="ident">labelled</span>(<span class="string">&quot;escape sequence&quot;</span>);
+        .labelled(<span class="string">&quot;escape sequence&quot;</span>);
 
-    <span class="kw">let</span> <span class="ident">string</span> <span class="op">=</span> <span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="kw">_</span>, <span class="ident">Error</span><span class="op">&gt;</span>(<span class="string">&#39;&quot;&#39;</span>)
-        .<span class="ident">ignore_then</span>(
-            <span class="ident">filter</span>(<span class="op">|</span><span class="ident">c</span>: <span class="kw-2">&amp;</span><span class="ident">char</span><span class="op">|</span> <span class="kw-2">*</span><span class="ident">c</span> <span class="op">!</span><span class="op">=</span> <span class="string">&#39;\\&#39;</span> <span class="op">&amp;&amp;</span> <span class="kw-2">*</span><span class="ident">c</span> <span class="op">!</span><span class="op">=</span> <span class="string">&#39;&quot;&#39;</span>)
-                .<span class="ident">or</span>(<span class="ident">escape</span>)
-                .<span class="ident">repeated</span>(),
+    <span class="kw">let </span>string = just::&lt;<span class="kw">_</span>, <span class="kw">_</span>, Error&gt;(<span class="string">&#39;&quot;&#39;</span>)
+        .ignore_then(
+            filter(|c: <span class="kw-2">&amp;</span>char| <span class="kw-2">*</span>c != <span class="string">&#39;\\&#39; </span>&amp;&amp; <span class="kw-2">*</span>c != <span class="string">&#39;&quot;&#39;</span>)
+                .or(escape)
+                .repeated(),
         )
-        .<span class="ident">then_ignore</span>(<span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">char</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="string">&#39;&quot;&#39;</span>))
-        .<span class="ident">or</span>(<span class="ident">just</span>(<span class="string">&#39;\&#39;&#39;</span>)
-            .<span class="ident">ignore_then</span>(
-                <span class="ident">filter</span>(<span class="op">|</span><span class="ident">c</span>: <span class="kw-2">&amp;</span><span class="ident">char</span><span class="op">|</span> <span class="kw-2">*</span><span class="ident">c</span> <span class="op">!</span><span class="op">=</span> <span class="string">&#39;\\&#39;</span> <span class="op">&amp;&amp;</span> <span class="kw-2">*</span><span class="ident">c</span> <span class="op">!</span><span class="op">=</span> <span class="string">&#39;\&#39;&#39;</span>)
-                    .<span class="ident">or</span>(<span class="ident">escape</span>)
-                    .<span class="ident">repeated</span>(),
+        .then_ignore(just::&lt;<span class="kw">_</span>, char, <span class="kw">_</span>&gt;(<span class="string">&#39;&quot;&#39;</span>))
+        .or(just(<span class="string">&#39;\&#39;&#39;</span>)
+            .ignore_then(
+                filter(|c: <span class="kw-2">&amp;</span>char| <span class="kw-2">*</span>c != <span class="string">&#39;\\&#39; </span>&amp;&amp; <span class="kw-2">*</span>c != <span class="string">&#39;\&#39;&#39;</span>)
+                    .or(escape)
+                    .repeated(),
             )
-            .<span class="ident">then_ignore</span>(<span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">char</span>, <span class="kw">_</span><span class="op">&gt;</span>(<span class="string">&#39;\&#39;&#39;</span>)))
-        .<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">String</span><span class="op">&gt;</span>()
-        .<span class="ident">map</span>(<span class="op">|</span><span class="ident">s</span><span class="op">|</span> <span class="ident">Token::Literal</span>(<span class="ident">Literal::String</span>(<span class="ident">StringLiteral::String</span>(<span class="ident">s</span>))))
-        .<span class="ident">labelled</span>(<span class="string">&quot;string literal&quot;</span>);
+            .then_ignore(just::&lt;<span class="kw">_</span>, char, <span class="kw">_</span>&gt;(<span class="string">&#39;\&#39;&#39;</span>)))
+        .collect::&lt;String&gt;()
+        .map(|s| Token::Literal(Literal::String(StringLiteral::String(s))))
+        .labelled(<span class="string">&quot;string literal&quot;</span>);
 
-    <span class="kw">let</span> <span class="ident">ident_or_keyword</span> <span class="op">=</span> <span class="ident">text::ident</span>().<span class="ident">map</span>(<span class="op">|</span><span class="ident">s</span>: <span class="ident">String</span><span class="op">|</span> <span class="kw">match</span> <span class="ident">s</span>.<span class="ident">as_str</span>() {
-        <span class="string">&quot;func&quot;</span> =&gt; <span class="ident">Token::Keyword</span>(<span class="ident">Keyword::Func</span>),
-        <span class="string">&quot;class&quot;</span> =&gt; <span class="ident">Token::Keyword</span>(<span class="ident">Keyword::Class</span>),
-        <span class="string">&quot;require&quot;</span> =&gt; <span class="ident">Token::Keyword</span>(<span class="ident">Keyword::Require</span>),
-        <span class="string">&quot;export&quot;</span> =&gt; <span class="ident">Token::Keyword</span>(<span class="ident">Keyword::Export</span>),
-        <span class="string">&quot;let&quot;</span> =&gt; <span class="ident">Token::Keyword</span>(<span class="ident">Keyword::Let</span>),
-        <span class="string">&quot;const&quot;</span> =&gt; <span class="ident">Token::Keyword</span>(<span class="ident">Keyword::Const</span>),
-        <span class="string">&quot;mut&quot;</span> =&gt; <span class="ident">Token::Keyword</span>(<span class="ident">Keyword::Mut</span>),
-        <span class="string">&quot;private&quot;</span> =&gt; <span class="ident">Token::Keyword</span>(<span class="ident">Keyword::Private</span>),
-        <span class="string">&quot;if&quot;</span> =&gt; <span class="ident">Token::Keyword</span>(<span class="ident">Keyword::If</span>),
-        <span class="string">&quot;else&quot;</span> =&gt; <span class="ident">Token::Keyword</span>(<span class="ident">Keyword::Else</span>),
-        <span class="string">&quot;match&quot;</span> =&gt; <span class="ident">Token::Keyword</span>(<span class="ident">Keyword::Match</span>),
-        <span class="string">&quot;for&quot;</span> =&gt; <span class="ident">Token::Keyword</span>(<span class="ident">Keyword::For</span>),
-        <span class="string">&quot;in&quot;</span> =&gt; <span class="ident">Token::Keyword</span>(<span class="ident">Keyword::In</span>),
-        <span class="string">&quot;while&quot;</span> =&gt; <span class="ident">Token::Keyword</span>(<span class="ident">Keyword::While</span>),
-        <span class="string">&quot;break&quot;</span> =&gt; <span class="ident">Token::Keyword</span>(<span class="ident">Keyword::Break</span>),
-        <span class="string">&quot;continue&quot;</span> =&gt; <span class="ident">Token::Keyword</span>(<span class="ident">Keyword::Continue</span>),
-        <span class="string">&quot;return&quot;</span> =&gt; <span class="ident">Token::Keyword</span>(<span class="ident">Keyword::Return</span>),
-        <span class="string">&quot;with&quot;</span> =&gt; <span class="ident">Token::Keyword</span>(<span class="ident">Keyword::With</span>),
-        <span class="string">&quot;throws&quot;</span> =&gt; <span class="ident">Token::Keyword</span>(<span class="ident">Keyword::Throws</span>),
-        <span class="string">&quot;where&quot;</span> =&gt; <span class="ident">Token::Keyword</span>(<span class="ident">Keyword::Where</span>),
-        <span class="kw">_</span> =&gt; <span class="ident">Token::Identifier</span>(<span class="ident">s</span>),
+    <span class="kw">let </span>ident_or_keyword = text::ident().map(|s: String| <span class="kw">match </span>s.as_str() {
+        <span class="string">&quot;func&quot; </span>=&gt; Token::Keyword(Keyword::Func),
+        <span class="string">&quot;class&quot; </span>=&gt; Token::Keyword(Keyword::Class),
+        <span class="string">&quot;require&quot; </span>=&gt; Token::Keyword(Keyword::Require),
+        <span class="string">&quot;export&quot; </span>=&gt; Token::Keyword(Keyword::Export),
+        <span class="string">&quot;let&quot; </span>=&gt; Token::Keyword(Keyword::Let),
+        <span class="string">&quot;const&quot; </span>=&gt; Token::Keyword(Keyword::Const),
+        <span class="string">&quot;mut&quot; </span>=&gt; Token::Keyword(Keyword::Mut),
+        <span class="string">&quot;private&quot; </span>=&gt; Token::Keyword(Keyword::Private),
+        <span class="string">&quot;if&quot; </span>=&gt; Token::Keyword(Keyword::If),
+        <span class="string">&quot;else&quot; </span>=&gt; Token::Keyword(Keyword::Else),
+        <span class="string">&quot;match&quot; </span>=&gt; Token::Keyword(Keyword::Match),
+        <span class="string">&quot;for&quot; </span>=&gt; Token::Keyword(Keyword::For),
+        <span class="string">&quot;in&quot; </span>=&gt; Token::Keyword(Keyword::In),
+        <span class="string">&quot;while&quot; </span>=&gt; Token::Keyword(Keyword::While),
+        <span class="string">&quot;break&quot; </span>=&gt; Token::Keyword(Keyword::Break),
+        <span class="string">&quot;continue&quot; </span>=&gt; Token::Keyword(Keyword::Continue),
+        <span class="string">&quot;return&quot; </span>=&gt; Token::Keyword(Keyword::Return),
+        <span class="string">&quot;with&quot; </span>=&gt; Token::Keyword(Keyword::With),
+        <span class="string">&quot;throws&quot; </span>=&gt; Token::Keyword(Keyword::Throws),
+        <span class="string">&quot;where&quot; </span>=&gt; Token::Keyword(Keyword::Where),
+        <span class="kw">_ </span>=&gt; Token::Identifier(s),
     });
 
-    <span class="kw">let</span> <span class="ident">single_line</span> <span class="op">=</span> <span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="kw">_</span>, <span class="ident">Error</span><span class="op">&gt;</span>(<span class="string">&quot;//&quot;</span>)
-        .<span class="ident">then</span>(<span class="ident">take_until</span>(<span class="ident">text::newline</span>().<span class="ident">or</span>(<span class="ident">end</span>())))
-        .<span class="ident">ignored</span>();
+    <span class="kw">let </span>single_line = just::&lt;<span class="kw">_</span>, <span class="kw">_</span>, Error&gt;(<span class="string">&quot;//&quot;</span>)
+        .then(take_until(text::newline().or(end())))
+        .ignored();
 
-    <span class="kw">let</span> <span class="ident">multi_line</span> <span class="op">=</span> <span class="ident">just</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="kw">_</span>, <span class="ident">Error</span><span class="op">&gt;</span>(<span class="string">&quot;/*&quot;</span>)
-        .<span class="ident">then</span>(<span class="ident">take_until</span>(<span class="ident">just</span>(<span class="string">&quot;*/&quot;</span>)))
-        .<span class="ident">ignored</span>();
+    <span class="kw">let </span>multi_line = just::&lt;<span class="kw">_</span>, <span class="kw">_</span>, Error&gt;(<span class="string">&quot;/*&quot;</span>)
+        .then(take_until(just(<span class="string">&quot;*/&quot;</span>)))
+        .ignored();
 
-    <span class="kw">let</span> <span class="ident">comment</span> <span class="op">=</span> <span class="ident">single_line</span>.<span class="ident">or</span>(<span class="ident">multi_line</span>).<span class="ident">or_not</span>();
+    <span class="kw">let </span>comment = single_line.or(multi_line).or_not();
 
-    <span class="kw">let</span> <span class="ident">right_shift</span> <span class="op">=</span> <span class="ident">just</span>(<span class="string">&quot;&gt;&gt;&quot;</span>).<span class="ident">then_ignore</span>(<span class="ident">none_of</span>(<span class="string">&quot;)&lt;&gt;]},;&quot;</span>).<span class="ident">padded</span>().<span class="ident">rewind</span>());
+    <span class="kw">let </span>right_shift = just(<span class="string">&quot;&gt;&gt;&quot;</span>).then_ignore(none_of(<span class="string">&quot;)&lt;&gt;]},;&quot;</span>).padded().rewind());
 
-    <span class="kw">let</span> <span class="ident">symbol</span> <span class="op">=</span> <span class="ident">choice</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Error</span><span class="op">&gt;</span>((
-        <span class="ident">just</span>(<span class="string">&#39;,&#39;</span>).<span class="ident">to</span>(<span class="ident">Token::Comma</span>),
-        <span class="ident">just</span>(<span class="string">&#39;;&#39;</span>).<span class="ident">to</span>(<span class="ident">Token::Semicolon</span>),
-        <span class="ident">just</span>(<span class="string">&#39;?&#39;</span>).<span class="ident">to</span>(<span class="ident">Token::Question</span>),
-        <span class="ident">just</span>(<span class="string">&quot;::&quot;</span>).<span class="ident">to</span>(<span class="ident">Token::Cast</span>),
-        <span class="ident">just</span>(<span class="string">&#39;:&#39;</span>).<span class="ident">to</span>(<span class="ident">Token::Colon</span>),
-        <span class="ident">just</span>(<span class="string">&quot;-&gt;&quot;</span>).<span class="ident">to</span>(<span class="ident">Token::Arrow</span>),
-        <span class="ident">just</span>(<span class="string">&quot;..&quot;</span>).<span class="ident">map</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="ident">Token::Operator</span>(<span class="ident">Operator::Range</span>)),
-        <span class="ident">just</span>(<span class="string">&#39;.&#39;</span>).<span class="ident">to</span>(<span class="ident">Token::Dot</span>),
-        <span class="ident">just</span>(<span class="string">&#39;+&#39;</span>).<span class="ident">map</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="ident">Token::Operator</span>(<span class="ident">Operator::Add</span>)),
-        <span class="ident">just</span>(<span class="string">&#39;-&#39;</span>).<span class="ident">map</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="ident">Token::Operator</span>(<span class="ident">Operator::Sub</span>)),
-        <span class="ident">just</span>(<span class="string">&quot;**&quot;</span>).<span class="ident">map</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="ident">Token::Operator</span>(<span class="ident">Operator::Pow</span>)),
-        <span class="ident">just</span>(<span class="string">&#39;*&#39;</span>).<span class="ident">map</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="ident">Token::Operator</span>(<span class="ident">Operator::Mul</span>)),
-        <span class="ident">just</span>(<span class="string">&#39;/&#39;</span>).<span class="ident">map</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="ident">Token::Operator</span>(<span class="ident">Operator::Div</span>)),
-        <span class="ident">just</span>(<span class="string">&#39;%&#39;</span>).<span class="ident">map</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="ident">Token::Operator</span>(<span class="ident">Operator::Mod</span>)),
+    <span class="kw">let </span>symbol = choice::&lt;<span class="kw">_</span>, Error&gt;((
+        just(<span class="string">&#39;,&#39;</span>).to(Token::Comma),
+        just(<span class="string">&#39;;&#39;</span>).to(Token::Semicolon),
+        just(<span class="string">&#39;?&#39;</span>).to(Token::Question),
+        just(<span class="string">&quot;::&quot;</span>).to(Token::Cast),
+        just(<span class="string">&#39;:&#39;</span>).to(Token::Colon),
+        just(<span class="string">&quot;-&gt;&quot;</span>).to(Token::Arrow),
+        just(<span class="string">&quot;..&quot;</span>).map(|<span class="kw">_</span>| Token::Operator(Operator::Range)),
+        just(<span class="string">&#39;.&#39;</span>).to(Token::Dot),
+        just(<span class="string">&#39;+&#39;</span>).map(|<span class="kw">_</span>| Token::Operator(Operator::Add)),
+        just(<span class="string">&#39;-&#39;</span>).map(|<span class="kw">_</span>| Token::Operator(Operator::Sub)),
+        just(<span class="string">&quot;**&quot;</span>).map(|<span class="kw">_</span>| Token::Operator(Operator::Pow)),
+        just(<span class="string">&#39;*&#39;</span>).map(|<span class="kw">_</span>| Token::Operator(Operator::Mul)),
+        just(<span class="string">&#39;/&#39;</span>).map(|<span class="kw">_</span>| Token::Operator(Operator::Div)),
+        just(<span class="string">&#39;%&#39;</span>).map(|<span class="kw">_</span>| Token::Operator(Operator::Mod)),
     ))
-    .<span class="ident">or</span>(<span class="ident">choice</span>((
-        <span class="comment">// Weird split-off as chumsky only supports choices up to 26-length tuples.</span>
-        <span class="comment">// Maybe it would be better to separate them based off of category</span>
-        <span class="ident">just</span>(<span class="string">&quot;==&quot;</span>).<span class="ident">map</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="ident">Token::Operator</span>(<span class="ident">Operator::Eq</span>)),
-        <span class="ident">just</span>(<span class="string">&quot;!=&quot;</span>).<span class="ident">map</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="ident">Token::Operator</span>(<span class="ident">Operator::Ne</span>)),
-        <span class="ident">just</span>(<span class="string">&#39;!&#39;</span>).<span class="ident">map</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="ident">Token::Operator</span>(<span class="ident">Operator::Not</span>)), <span class="comment">// Conflicts with !=</span>
-        <span class="ident">just</span>(<span class="string">&#39;=&#39;</span>).<span class="ident">to</span>(<span class="ident">Token::Assign</span>),                       <span class="comment">// Conflicts with ==</span>
-        <span class="ident">just</span>(<span class="string">&quot;&lt;=&quot;</span>).<span class="ident">map</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="ident">Token::Operator</span>(<span class="ident">Operator::Le</span>)),
-        <span class="ident">just</span>(<span class="string">&quot;&gt;=&quot;</span>).<span class="ident">map</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="ident">Token::Operator</span>(<span class="ident">Operator::Ge</span>)),
-        <span class="ident">just</span>(<span class="string">&quot;&lt;&lt;&quot;</span>).<span class="ident">to</span>(<span class="ident">Token::Operator</span>(<span class="ident">Operator::BitLShift</span>)),
-        <span class="ident">right_shift</span>.<span class="ident">to</span>(<span class="ident">Token::Operator</span>(<span class="ident">Operator::BitRShift</span>)),
-        <span class="ident">just</span>(<span class="string">&#39;&lt;&#39;</span>).<span class="ident">map</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="ident">Token::Operator</span>(<span class="ident">Operator::Lt</span>)),
-        <span class="ident">just</span>(<span class="string">&#39;&gt;&#39;</span>).<span class="ident">map</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="ident">Token::Operator</span>(<span class="ident">Operator::Gt</span>)),
-        <span class="ident">just</span>(<span class="string">&quot;||&quot;</span>).<span class="ident">map</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="ident">Token::Operator</span>(<span class="ident">Operator::Or</span>)),
-        <span class="ident">just</span>(<span class="string">&quot;&amp;&amp;&quot;</span>).<span class="ident">map</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="ident">Token::Operator</span>(<span class="ident">Operator::And</span>)),
-        <span class="ident">just</span>(<span class="string">&#39;|&#39;</span>).<span class="ident">map</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="ident">Token::Operator</span>(<span class="ident">Operator::BitOr</span>)),
-        <span class="ident">just</span>(<span class="string">&#39;^&#39;</span>).<span class="ident">map</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="ident">Token::Operator</span>(<span class="ident">Operator::BitXor</span>)),
-        <span class="ident">just</span>(<span class="string">&#39;&amp;&#39;</span>).<span class="ident">map</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="ident">Token::Operator</span>(<span class="ident">Operator::BitAnd</span>)),
-        <span class="ident">just</span>(<span class="string">&#39;~&#39;</span>).<span class="ident">map</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="ident">Token::Operator</span>(<span class="ident">Operator::BitNot</span>)),
+    .or(choice((
+        <span class="comment">// Weird split-off as chumsky only supports choices up to 26-length tuples.
+        // Maybe it would be better to separate them based off of category
+        </span>just(<span class="string">&quot;==&quot;</span>).map(|<span class="kw">_</span>| Token::Operator(Operator::Eq)),
+        just(<span class="string">&quot;!=&quot;</span>).map(|<span class="kw">_</span>| Token::Operator(Operator::Ne)),
+        just(<span class="string">&#39;!&#39;</span>).map(|<span class="kw">_</span>| Token::Operator(Operator::Not)), <span class="comment">// Conflicts with !=
+        </span>just(<span class="string">&#39;=&#39;</span>).to(Token::Assign),                       <span class="comment">// Conflicts with ==
+        </span>just(<span class="string">&quot;&lt;=&quot;</span>).map(|<span class="kw">_</span>| Token::Operator(Operator::Le)),
+        just(<span class="string">&quot;&gt;=&quot;</span>).map(|<span class="kw">_</span>| Token::Operator(Operator::Ge)),
+        just(<span class="string">&quot;&lt;&lt;&quot;</span>).to(Token::Operator(Operator::BitLShift)),
+        right_shift.to(Token::Operator(Operator::BitRShift)),
+        just(<span class="string">&#39;&lt;&#39;</span>).map(|<span class="kw">_</span>| Token::Operator(Operator::Lt)),
+        just(<span class="string">&#39;&gt;&#39;</span>).map(|<span class="kw">_</span>| Token::Operator(Operator::Gt)),
+        just(<span class="string">&quot;||&quot;</span>).map(|<span class="kw">_</span>| Token::Operator(Operator::Or)),
+        just(<span class="string">&quot;&amp;&amp;&quot;</span>).map(|<span class="kw">_</span>| Token::Operator(Operator::And)),
+        just(<span class="string">&#39;|&#39;</span>).map(|<span class="kw">_</span>| Token::Operator(Operator::BitOr)),
+        just(<span class="string">&#39;^&#39;</span>).map(|<span class="kw">_</span>| Token::Operator(Operator::BitXor)),
+        just(<span class="string">&#39;&amp;&#39;</span>).map(|<span class="kw">_</span>| Token::Operator(Operator::BitAnd)),
+        just(<span class="string">&#39;~&#39;</span>).map(|<span class="kw">_</span>| Token::Operator(Operator::BitNot)),
     )));
 
-    <span class="kw">let</span> <span class="ident">brackets</span> <span class="op">=</span> <span class="ident">choice</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Error</span><span class="op">&gt;</span>((
-        <span class="ident">just</span>(<span class="string">&#39;(&#39;</span>).<span class="ident">map</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="ident">Token::StartBracket</span>(<span class="ident">Bracket::Paren</span>)),
-        <span class="ident">just</span>(<span class="string">&#39;[&#39;</span>).<span class="ident">map</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="ident">Token::StartBracket</span>(<span class="ident">Bracket::Bracket</span>)),
-        <span class="ident">just</span>(<span class="string">&#39;{&#39;</span>).<span class="ident">map</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="ident">Token::StartBracket</span>(<span class="ident">Bracket::Brace</span>)),
-        <span class="ident">just</span>(<span class="string">&#39;)&#39;</span>).<span class="ident">map</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="ident">Token::EndBracket</span>(<span class="ident">Bracket::Paren</span>)),
-        <span class="ident">just</span>(<span class="string">&#39;]&#39;</span>).<span class="ident">map</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="ident">Token::EndBracket</span>(<span class="ident">Bracket::Bracket</span>)),
-        <span class="ident">just</span>(<span class="string">&#39;}&#39;</span>).<span class="ident">map</span>(<span class="op">|</span><span class="kw">_</span><span class="op">|</span> <span class="ident">Token::EndBracket</span>(<span class="ident">Bracket::Brace</span>)),
+    <span class="kw">let </span>brackets = choice::&lt;<span class="kw">_</span>, Error&gt;((
+        just(<span class="string">&#39;(&#39;</span>).map(|<span class="kw">_</span>| Token::StartBracket(Bracket::Paren)),
+        just(<span class="string">&#39;[&#39;</span>).map(|<span class="kw">_</span>| Token::StartBracket(Bracket::Bracket)),
+        just(<span class="string">&#39;{&#39;</span>).map(|<span class="kw">_</span>| Token::StartBracket(Bracket::Brace)),
+        just(<span class="string">&#39;)&#39;</span>).map(|<span class="kw">_</span>| Token::EndBracket(Bracket::Paren)),
+        just(<span class="string">&#39;]&#39;</span>).map(|<span class="kw">_</span>| Token::EndBracket(Bracket::Bracket)),
+        just(<span class="string">&#39;}&#39;</span>).map(|<span class="kw">_</span>| Token::EndBracket(Bracket::Brace)),
     ));
 
-    <span class="ident">choice</span>::<span class="op">&lt;</span><span class="kw">_</span>, <span class="ident">Error</span><span class="op">&gt;</span>((<span class="ident">string</span>, <span class="ident">float</span>, <span class="ident">symbol</span>, <span class="ident">brackets</span>, <span class="ident">ident_or_keyword</span>, <span class="ident">integer</span>))
-        .<span class="ident">or</span>(<span class="ident">any</span>().<span class="ident">map</span>(<span class="ident">Token::Invalid</span>).<span class="ident">validate</span>(<span class="op">|</span><span class="ident">token</span>, <span class="ident">span</span>, <span class="ident">emit</span><span class="op">|</span> {
-            <span class="ident">emit</span>(<span class="ident">Error::unexpected_token</span>(<span class="ident">span</span>, <span class="kw-2">&amp;</span><span class="ident">token</span>));
-            <span class="ident">token</span>
+    choice::&lt;<span class="kw">_</span>, Error&gt;((string, float, symbol, brackets, ident_or_keyword, integer))
+        .or(any().map(Token::Invalid).validate(|token, span, emit| {
+            emit(Error::unexpected_token(span, <span class="kw-2">&amp;</span>token));
+            token
         }))
-        .<span class="ident">map_with_span</span>(<span class="kw">move</span> <span class="op">|</span><span class="ident">token</span>, <span class="ident">span</span><span class="op">|</span> (<span class="ident">token</span>, <span class="ident">span</span>))
-        .<span class="ident">padded</span>()
-        .<span class="ident">recover_with</span>(<span class="ident">skip_then_retry_until</span>([]))
-        .<span class="ident">padded_by</span>(<span class="ident">comment</span>.<span class="ident">padded</span>())
-        .<span class="ident">repeated</span>()
-        .<span class="ident">padded</span>()
-        .<span class="ident">then_ignore</span>(<span class="ident">end</span>())
+        .map_with_span(<span class="kw">move </span>|token, span| (token, span))
+        .padded()
+        .recover_with(skip_then_retry_until([]))
+        .padded_by(comment.padded())
+        .repeated()
+        .padded()
+        .then_ignore(end())
 }
 </code></pre></div>
-</section></div></main><div id="rustdoc-vars" data-root-path="../../" data-current-crate="terbium_grammar" data-themes="ayu,dark,light" data-resource-suffix="" data-rustdoc-version="1.64.0-nightly (f6f9d5e73 2022-08-04)" ></div></body></html>
+</section></div></main><div id="rustdoc-vars" data-root-path="../../" data-current-crate="terbium_grammar" data-themes="ayu,dark,light" data-resource-suffix="" data-rustdoc-version="1.66.0-nightly (1898c34e9 2022-10-26)" ></div></body></html>

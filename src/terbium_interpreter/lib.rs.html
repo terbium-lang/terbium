@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `terbium_interpreter/src/lib.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>lib.rs - source</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceSerif4-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../FiraSans-Regular.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../FiraSans-Medium.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceCodePro-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceSerif4-Bold.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceCodePro-Semibold.ttf.woff2"><link rel="stylesheet" type="text/css" href="../../normalize.css"><link rel="stylesheet" type="text/css" href="../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" type="text/css" href="../../ayu.css" disabled><link rel="stylesheet" type="text/css" href="../../dark.css" disabled><link rel="stylesheet" type="text/css" href="../../light.css" id="themeStyle"><script id="default-settings" ></script><script src="../../storage.js"></script><script defer src="../../source-script.js"></script><script defer src="../../source-files.js"></script><script defer src="../../main.js"></script><noscript><link rel="stylesheet" href="../../noscript.css"></noscript><link rel="alternate icon" type="image/png" href="../../favicon-16x16.png"><link rel="alternate icon" type="image/png" href="../../favicon-32x32.png"><link rel="icon" type="image/svg+xml" href="../../favicon.svg"></head><body class="rustdoc source"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="mobile-topbar"><button class="sidebar-menu-toggle">&#9776;</button><a class="sidebar-logo" href="../../terbium_interpreter/index.html"><div class="logo-container"><img class="rust-logo" src="../../rust-logo.svg" alt="logo"></div></a><h2 class="location"></h2></nav><nav class="sidebar"><a class="sidebar-logo" href="../../terbium_interpreter/index.html"><div class="logo-container"><img class="rust-logo" src="../../rust-logo.svg" alt="logo"></div></a></nav><main><div class="width-limiter"><div class="sub-container"><a class="sub-logo-container" href="../../terbium_interpreter/index.html"><img class="rust-logo" src="../../rust-logo.svg" alt="logo"></a><nav class="sub"><form class="search-form"><div class="search-container"><span></span><input class="search-input" name="search" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" title="help" tabindex="-1"><button type="button">?</button></div><div id="settings-menu" tabindex="-1"><a href="../../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../../wheel.svg"></a></div></div></form></nav></div><section id="main-content" class="content"><div class="example-wrap"><pre class="line-numbers"><span id="1">1</span>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source of the Rust file `terbium_interpreter/src/lib.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>lib.rs - source</title><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceSerif4-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../FiraSans-Regular.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../FiraSans-Medium.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceCodePro-Regular.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceSerif4-Bold.ttf.woff2"><link rel="preload" as="font" type="font/woff2" crossorigin href="../../SourceCodePro-Semibold.ttf.woff2"><link rel="stylesheet" href="../../normalize.css"><link rel="stylesheet" href="../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" href="../../ayu.css" disabled><link rel="stylesheet" href="../../dark.css" disabled><link rel="stylesheet" href="../../light.css" id="themeStyle"><script id="default-settings" ></script><script src="../../storage.js"></script><script defer src="../../source-script.js"></script><script defer src="../../source-files.js"></script><script defer src="../../main.js"></script><noscript><link rel="stylesheet" href="../../noscript.css"></noscript><link rel="alternate icon" type="image/png" href="../../favicon-16x16.png"><link rel="alternate icon" type="image/png" href="../../favicon-32x32.png"><link rel="icon" type="image/svg+xml" href="../../favicon.svg"></head><body class="rustdoc source"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"></nav><main><div class="width-limiter"><nav class="sub"><a class="sub-logo-container" href="../../terbium_interpreter/index.html"><img class="rust-logo" src="../../rust-logo.svg" alt="logo"></a><form class="search-form"><div class="search-container"><span></span><input class="search-input" name="search" autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"><div id="help-button" title="help" tabindex="-1"><a href="../../help.html">?</a></div><div id="settings-menu" tabindex="-1"><a href="../../settings.html" title="settings"><img width="22" height="22" alt="Change settings" src="../../wheel.svg"></a></div></div></form></nav><section id="main-content" class="content"><div class="example-wrap"><pre class="src-line-numbers"><span id="1">1</span>
 <span id="2">2</span>
 <span id="3">3</span>
 <span id="4">4</span>
@@ -762,769 +762,769 @@
 <span id="762">762</span>
 <span id="763">763</span>
 <span id="764">764</span>
-</pre><pre class="rust"><code><span class="doccomment">//! The interpreter for Terbium.</span>
+</pre><pre class="rust"><code><span class="doccomment">//! The interpreter for Terbium.
 
-<span class="attribute">#![<span class="ident">feature</span>(<span class="ident">box_patterns</span>)]</span>
+</span><span class="attribute">#![feature(box_patterns)]
 
-<span class="kw">mod</span> <span class="ident">interner</span>;
+</span><span class="kw">mod </span>interner;
 
-<span class="kw">use</span> <span class="ident">std::collections::HashMap</span>;
-<span class="kw">use</span> <span class="ident">terbium_bytecode</span>::{<span class="ident">Addr</span>, <span class="ident">AddrRepr</span>, <span class="ident">EqComparableFloat</span>, <span class="ident">Instruction</span>, <span class="ident">Program</span>};
+<span class="kw">use </span>std::collections::HashMap;
+<span class="kw">use </span>terbium_bytecode::{Addr, AddrRepr, EqComparableFloat, Instruction, Program};
 
-<span class="kw">pub</span> <span class="kw">use</span> <span class="ident">interner::Interner</span>;
-<span class="kw">use</span> <span class="ident">interner::StringId</span>;
+<span class="kw">pub use </span>interner::Interner;
+<span class="kw">use </span>interner::StringId;
 
-<span class="doccomment">/// The integer type of the location of a `TerbiumObject`.</span>
-<span class="kw">pub</span> <span class="kw">type</span> <span class="ident">ObjectRef</span> <span class="op">=</span> <span class="ident">usize</span>;
+<span class="doccomment">/// The integer type of the location of a `TerbiumObject`.
+</span><span class="kw">pub type </span>ObjectRef = usize;
 
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Copy</span>, <span class="ident">Clone</span>, <span class="ident">Debug</span>, <span class="ident">Eq</span>, <span class="ident">PartialEq</span>)]</span>
-<span class="doccomment">/// The internal Terbium object model. These are created during the interpreter runtime.</span>
-<span class="kw">pub</span> <span class="kw">enum</span> <span class="ident">TerbiumObject</span> {
-    <span class="ident">Null</span>,
-    <span class="ident">Integer</span>(<span class="ident">i128</span>),
-    <span class="ident">Float</span>(<span class="ident">EqComparableFloat</span>),
-    <span class="ident">String</span>(<span class="ident">StringId</span>),
-    <span class="ident">Bool</span>(<span class="ident">bool</span>),
+<span class="attribute">#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+</span><span class="doccomment">/// The internal Terbium object model. These are created during the interpreter runtime.
+</span><span class="kw">pub enum </span>TerbiumObject {
+    Null,
+    Integer(i128),
+    Float(EqComparableFloat),
+    String(StringId),
+    Bool(bool),
 }
 
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>)]</span>
-<span class="doccomment">/// Represents stack wrapper around an array.</span>
-<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">Stack</span><span class="op">&lt;</span><span class="kw">const</span> <span class="ident">STACK_SIZE</span>: <span class="ident">usize</span> <span class="op">=</span> <span class="number">512</span><span class="op">&gt;</span> {
-    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="ident">inner</span>: [<span class="ident">ObjectRef</span>; <span class="ident">STACK_SIZE</span>],
-    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="ident">ptr</span>: <span class="ident">usize</span>,
+<span class="attribute">#[derive(Debug)]
+</span><span class="doccomment">/// Represents stack wrapper around an array.
+</span><span class="kw">pub struct </span>Stack&lt;<span class="kw">const </span>STACK_SIZE: usize = <span class="number">512</span>&gt; {
+    <span class="kw">pub</span>(<span class="kw">crate</span>) inner: [ObjectRef; STACK_SIZE],
+    <span class="kw">pub</span>(<span class="kw">crate</span>) ptr: usize,
 }
 
-<span class="kw">impl</span><span class="op">&lt;</span><span class="kw">const</span> <span class="ident">STACK_SIZE</span>: <span class="ident">usize</span><span class="op">&gt;</span> <span class="ident">Stack</span><span class="op">&lt;</span><span class="ident">STACK_SIZE</span><span class="op">&gt;</span> {
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="kw">pub</span> <span class="kw">const</span> <span class="kw">fn</span> <span class="ident">new</span>() -&gt; <span class="self">Self</span> {
-        <span class="self">Self</span> {
-            <span class="ident">inner</span>: [<span class="number">0</span>; <span class="ident">STACK_SIZE</span>],
-            <span class="ident">ptr</span>: <span class="number">0</span>,
+<span class="kw">impl</span>&lt;<span class="kw">const </span>STACK_SIZE: usize&gt; Stack&lt;STACK_SIZE&gt; {
+    <span class="attribute">#[must_use]
+    </span><span class="kw">pub const fn </span>new() -&gt; <span class="self">Self </span>{
+        <span class="self">Self </span>{
+            inner: [<span class="number">0</span>; STACK_SIZE],
+            ptr: <span class="number">0</span>,
         }
     }
 
-    <span class="doccomment">/// Pushes the given object to the stack.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">push</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">o</span>: <span class="ident">ObjectRef</span>) {
-        <span class="self">self</span>.<span class="ident">inner</span>[<span class="self">self</span>.<span class="ident">ptr</span>] <span class="op">=</span> <span class="ident">o</span>;
-        <span class="self">self</span>.<span class="ident">incr_ptr</span>();
+    <span class="doccomment">/// Pushes the given object to the stack.
+    </span><span class="kw">pub fn </span>push(<span class="kw-2">&amp;mut </span><span class="self">self</span>, o: ObjectRef) {
+        <span class="self">self</span>.inner[<span class="self">self</span>.ptr] = o;
+        <span class="self">self</span>.incr_ptr();
     }
 
-    <span class="doccomment">/// Increments `ptr` by 1.</span>
-    <span class="doccomment">///</span>
-    <span class="doccomment">/// # Panics</span>
-    <span class="doccomment">/// - The pointer has surpassed `STACK_SIZE`</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">incr_ptr</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>) {
-        <span class="self">self</span>.<span class="ident">ptr</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>;
+    <span class="doccomment">/// Increments `ptr` by 1.
+    ///
+    /// # Panics
+    /// - The pointer has surpassed `STACK_SIZE`
+    </span><span class="kw">pub fn </span>incr_ptr(<span class="kw-2">&amp;mut </span><span class="self">self</span>) {
+        <span class="self">self</span>.ptr += <span class="number">1</span>;
 
         <span class="macro">assert!</span>(
-            <span class="self">self</span>.<span class="ident">ptr</span> <span class="op">&lt;</span> <span class="ident">STACK_SIZE</span>,
+            <span class="self">self</span>.ptr &lt; STACK_SIZE,
             <span class="string">&quot;stack overflow (surpassed stack size of {})&quot;</span>,
-            <span class="ident">STACK_SIZE</span>
+            STACK_SIZE
         );
     }
 
-    <span class="doccomment">/// Decrements `ptr` by 1.</span>
-    <span class="doccomment">///</span>
-    <span class="doccomment">/// # Panics</span>
-    <span class="doccomment">/// - The pointer is below 0</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">decr_ptr</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>) {
-        <span class="self">self</span>.<span class="ident">ptr</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">ptr</span>.<span class="ident">checked_sub</span>(<span class="number">1</span>).<span class="ident">expect</span>(<span class="string">&quot;stack ptr already at 0&quot;</span>);
+    <span class="doccomment">/// Decrements `ptr` by 1.
+    ///
+    /// # Panics
+    /// - The pointer is below 0
+    </span><span class="kw">pub fn </span>decr_ptr(<span class="kw-2">&amp;mut </span><span class="self">self</span>) {
+        <span class="self">self</span>.ptr = <span class="self">self</span>.ptr.checked_sub(<span class="number">1</span>).expect(<span class="string">&quot;stack ptr already at 0&quot;</span>);
     }
 
-    <span class="doccomment">/// Pops the previous object in the stack and moves the pointer there.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">pop</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>) -&gt; <span class="ident">ObjectRef</span> {
-        <span class="self">self</span>.<span class="ident">decr_ptr</span>();
+    <span class="doccomment">/// Pops the previous object in the stack and moves the pointer there.
+    </span><span class="kw">pub fn </span>pop(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; ObjectRef {
+        <span class="self">self</span>.decr_ptr();
 
-        <span class="ident">std::mem::replace</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>.<span class="ident">inner</span>[<span class="self">self</span>.<span class="ident">ptr</span>], <span class="number">0</span>)
+        std::mem::replace(<span class="kw-2">&amp;mut </span><span class="self">self</span>.inner[<span class="self">self</span>.ptr], <span class="number">0</span>)
     }
 
-    <span class="doccomment">/// Gets a cloned version of the previous object in the stack,</span>
-    <span class="doccomment">/// but also moves the pointer there.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">pop_cloned</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>) -&gt; <span class="ident">ObjectRef</span> {
-        <span class="self">self</span>.<span class="ident">decr_ptr</span>();
+    <span class="doccomment">/// Gets a cloned version of the previous object in the stack,
+    /// but also moves the pointer there.
+    </span><span class="kw">pub fn </span>pop_cloned(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; ObjectRef {
+        <span class="self">self</span>.decr_ptr();
 
-        <span class="self">self</span>.<span class="ident">inner</span>[<span class="self">self</span>.<span class="ident">ptr</span>]
+        <span class="self">self</span>.inner[<span class="self">self</span>.ptr]
     }
 
-    <span class="doccomment">/// Retrieves a reference to the next free slot.</span>
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="kw">pub</span> <span class="kw">const</span> <span class="kw">fn</span> <span class="ident">next_free</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span><span class="ident">ObjectRef</span> {
-        <span class="kw-2">&amp;</span><span class="self">self</span>.<span class="ident">inner</span>[<span class="self">self</span>.<span class="ident">ptr</span>]
+    <span class="doccomment">/// Retrieves a reference to the next free slot.
+    </span><span class="attribute">#[must_use]
+    </span><span class="kw">pub const fn </span>next_free(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span>ObjectRef {
+        <span class="kw-2">&amp;</span><span class="self">self</span>.inner[<span class="self">self</span>.ptr]
     }
 
-    <span class="doccomment">/// Retrieves a mutable reference to the free slot.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">next_free_mut</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>) -&gt; <span class="kw-2">&amp;mut</span> <span class="ident">ObjectRef</span> {
-        <span class="kw-2">&amp;mut</span> <span class="self">self</span>.<span class="ident">inner</span>[<span class="self">self</span>.<span class="ident">ptr</span>]
-    }
-}
-
-<span class="kw">impl</span> <span class="ident">Default</span> <span class="kw">for</span> <span class="ident">Stack</span> {
-    <span class="kw">fn</span> <span class="ident">default</span>() -&gt; <span class="self">Self</span> {
-        <span class="ident"><span class="self">Self</span>::new</span>()
+    <span class="doccomment">/// Retrieves a mutable reference to the free slot.
+    </span><span class="kw">pub fn </span>next_free_mut(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;mut </span>ObjectRef {
+        <span class="kw-2">&amp;mut </span><span class="self">self</span>.inner[<span class="self">self</span>.ptr]
     }
 }
 
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>)]</span>
-<span class="doccomment">/// A wrapper around a `HashMap` that maps object locations to their actual objects.</span>
-<span class="doccomment">/// This owns all objects throughout the interpreter runtime.</span>
-<span class="doccomment">///</span>
-<span class="doccomment">/// # Note</span>
-<span class="doccomment">/// This was designed as a temporary solution; this struct may be removed in the future.</span>
-<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">ObjectStore</span>(<span class="kw">pub</span>(<span class="kw">crate</span>) <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">ObjectRef</span>, <span class="ident">TerbiumObject</span><span class="op">&gt;</span>);
-
-<span class="kw">impl</span> <span class="ident">ObjectStore</span> {
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">new</span>() -&gt; <span class="self">Self</span> {
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">inner</span> <span class="op">=</span> <span class="ident">HashMap::with_capacity</span>(<span class="number">1</span>);
-        <span class="ident">inner</span>.<span class="ident">insert</span>(<span class="number">0</span> <span class="kw">as</span> <span class="ident">ObjectRef</span>, <span class="ident">TerbiumObject::Null</span>);
-
-        <span class="self">Self</span>(<span class="ident">inner</span>)
-    }
-
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="doccomment">/// Resolves an object pointer into a reference of the object its pointing to.</span>
-    <span class="doccomment">///</span>
-    <span class="doccomment">/// # Panics</span>
-    <span class="doccomment">/// - There is no object stored at `loc`</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">resolve</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">loc</span>: <span class="ident">ObjectRef</span>) -&gt; <span class="kw-2">&amp;</span><span class="ident">TerbiumObject</span> {
-        <span class="self">self</span>.<span class="number">0</span>
-            .<span class="ident">get</span>(<span class="kw-2">&amp;</span><span class="ident">loc</span>)
-            .<span class="ident">expect</span>(<span class="kw-2">&amp;</span><span class="kw-2">*</span><span class="macro">format!</span>(<span class="string">&quot;no object at location {:0x}&quot;</span>, <span class="ident">loc</span>))
-    }
-
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="doccomment">/// Resolves an object pointer into a reference of the object its pointing to,</span>
-    <span class="doccomment">/// but returns `&amp;TerbiumObejct::Null` if no object is stored at `loc`.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">resolve_or_null</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">loc</span>: <span class="ident">ObjectRef</span>) -&gt; <span class="kw-2">&amp;</span><span class="ident">TerbiumObject</span> {
-        <span class="self">self</span>.<span class="number">0</span>.<span class="ident">get</span>(<span class="kw-2">&amp;</span><span class="ident">loc</span>).<span class="ident">unwrap_or</span>(<span class="kw-2">&amp;</span><span class="ident">TerbiumObject::Null</span>)
+<span class="kw">impl </span>Default <span class="kw">for </span>Stack {
+    <span class="kw">fn </span>default() -&gt; <span class="self">Self </span>{
+        <span class="self">Self</span>::new()
     }
 }
 
-<span class="kw">impl</span> <span class="ident">Default</span> <span class="kw">for</span> <span class="ident">ObjectStore</span> {
-    <span class="kw">fn</span> <span class="ident">default</span>() -&gt; <span class="self">Self</span> {
-        <span class="ident"><span class="self">Self</span>::new</span>()
+<span class="attribute">#[derive(Debug)]
+</span><span class="doccomment">/// A wrapper around a `HashMap` that maps object locations to their actual objects.
+/// This owns all objects throughout the interpreter runtime.
+///
+/// # Note
+/// This was designed as a temporary solution; this struct may be removed in the future.
+</span><span class="kw">pub struct </span>ObjectStore(<span class="kw">pub</span>(<span class="kw">crate</span>) HashMap&lt;ObjectRef, TerbiumObject&gt;);
+
+<span class="kw">impl </span>ObjectStore {
+    <span class="attribute">#[must_use]
+    </span><span class="kw">pub fn </span>new() -&gt; <span class="self">Self </span>{
+        <span class="kw">let </span><span class="kw-2">mut </span>inner = HashMap::with_capacity(<span class="number">1</span>);
+        inner.insert(<span class="number">0 </span><span class="kw">as </span>ObjectRef, TerbiumObject::Null);
+
+        <span class="self">Self</span>(inner)
+    }
+
+    <span class="attribute">#[must_use]
+    </span><span class="doccomment">/// Resolves an object pointer into a reference of the object its pointing to.
+    ///
+    /// # Panics
+    /// - There is no object stored at `loc`
+    </span><span class="kw">pub fn </span>resolve(<span class="kw-2">&amp;</span><span class="self">self</span>, loc: ObjectRef) -&gt; <span class="kw-2">&amp;</span>TerbiumObject {
+        <span class="self">self</span>.<span class="number">0
+            </span>.get(<span class="kw-2">&amp;</span>loc)
+            .expect(<span class="kw-2">&amp;*</span><span class="macro">format!</span>(<span class="string">&quot;no object at location {:0x}&quot;</span>, loc))
+    }
+
+    <span class="attribute">#[must_use]
+    </span><span class="doccomment">/// Resolves an object pointer into a reference of the object its pointing to,
+    /// but returns `&amp;TerbiumObejct::Null` if no object is stored at `loc`.
+    </span><span class="kw">pub fn </span>resolve_or_null(<span class="kw-2">&amp;</span><span class="self">self</span>, loc: ObjectRef) -&gt; <span class="kw-2">&amp;</span>TerbiumObject {
+        <span class="self">self</span>.<span class="number">0</span>.get(<span class="kw-2">&amp;</span>loc).unwrap_or(<span class="kw-2">&amp;</span>TerbiumObject::Null)
     }
 }
 
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>)]</span>
-<span class="doccomment">/// Represents an entry in a scope.</span>
-<span class="doccomment">///</span>
-<span class="doccomment">/// Apart from which object this entry references,</span>
-<span class="doccomment">/// it also stores metadata such was whether or not this</span>
-<span class="doccomment">/// entry is a constant or if it is mutable.</span>
-<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">ScopeEntry</span> {
-    <span class="kw">pub</span> <span class="ident">loc</span>: <span class="ident">ObjectRef</span>,
-    <span class="ident">r#mut</span>: <span class="ident">bool</span>,
-    <span class="ident">r#const</span>: <span class="ident">bool</span>,
-}
-
-<span class="kw">impl</span> <span class="ident">ScopeEntry</span> {
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="doccomment">/// Whether or not this entry is a constant.</span>
-    <span class="doccomment">///</span>
-    <span class="doccomment">/// Constant objects cannot be overwritten in its own scope,</span>
-    <span class="doccomment">/// reassigned to nor mutated.</span>
-    <span class="kw">pub</span> <span class="kw">const</span> <span class="kw">fn</span> <span class="ident">is_const</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident">bool</span> {
-        <span class="self">self</span>.<span class="ident">r#const</span>
-    }
-
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="doccomment">/// Whether or not this entry is mutable.</span>
-    <span class="doccomment">///</span>
-    <span class="doccomment">/// Objects which are **not** mutable are immutable,</span>
-    <span class="doccomment">/// and cannot be reassigned or mutated.</span>
-    <span class="doccomment">///</span>
-    <span class="doccomment">/// The difference between an immutable object and a constant</span>
-    <span class="doccomment">/// is that an immutable object can be overwritten in its own scope,</span>
-    <span class="doccomment">/// while a constant cannot be. In other words, Redefinition is</span>
-    <span class="doccomment">/// allowed with immutable variables but not with constants.</span>
-    <span class="kw">pub</span> <span class="kw">const</span> <span class="kw">fn</span> <span class="ident">is_mut</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident">bool</span> {
-        <span class="self">self</span>.<span class="ident">r#mut</span>
+<span class="kw">impl </span>Default <span class="kw">for </span>ObjectStore {
+    <span class="kw">fn </span>default() -&gt; <span class="self">Self </span>{
+        <span class="self">Self</span>::new()
     }
 }
 
-<span class="kw">impl</span> <span class="ident">From</span><span class="op">&lt;</span><span class="ident">ScopeEntry</span><span class="op">&gt;</span> <span class="kw">for</span> <span class="ident">ObjectRef</span> {
-    <span class="kw">fn</span> <span class="ident">from</span>(<span class="ident">s</span>: <span class="ident">ScopeEntry</span>) -&gt; <span class="self">Self</span> {
-        <span class="ident">s</span>.<span class="ident">loc</span>
+<span class="attribute">#[derive(Debug)]
+</span><span class="doccomment">/// Represents an entry in a scope.
+///
+/// Apart from which object this entry references,
+/// it also stores metadata such was whether or not this
+/// entry is a constant or if it is mutable.
+</span><span class="kw">pub struct </span>ScopeEntry {
+    <span class="kw">pub </span>loc: ObjectRef,
+    r#mut: bool,
+    r#const: bool,
+}
+
+<span class="kw">impl </span>ScopeEntry {
+    <span class="attribute">#[must_use]
+    </span><span class="doccomment">/// Whether or not this entry is a constant.
+    ///
+    /// Constant objects cannot be overwritten in its own scope,
+    /// reassigned to nor mutated.
+    </span><span class="kw">pub const fn </span>is_const(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
+        <span class="self">self</span>.r#const
+    }
+
+    <span class="attribute">#[must_use]
+    </span><span class="doccomment">/// Whether or not this entry is mutable.
+    ///
+    /// Objects which are **not** mutable are immutable,
+    /// and cannot be reassigned or mutated.
+    ///
+    /// The difference between an immutable object and a constant
+    /// is that an immutable object can be overwritten in its own scope,
+    /// while a constant cannot be. In other words, Redefinition is
+    /// allowed with immutable variables but not with constants.
+    </span><span class="kw">pub const fn </span>is_mut(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
+        <span class="self">self</span>.r#mut
     }
 }
 
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>)]</span>
-<span class="doccomment">/// Represents a scope of identifiers.</span>
-<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">Scope</span> {
-    <span class="kw">pub</span> <span class="ident">locals</span>: <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">usize</span>, <span class="ident">ScopeEntry</span><span class="op">&gt;</span>,
+<span class="kw">impl </span>From&lt;ScopeEntry&gt; <span class="kw">for </span>ObjectRef {
+    <span class="kw">fn </span>from(s: ScopeEntry) -&gt; <span class="self">Self </span>{
+        s.loc
+    }
 }
 
-<span class="kw">impl</span> <span class="ident">Scope</span> {
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">new</span>() -&gt; <span class="self">Self</span> {
-        <span class="self">Self</span> {
-            <span class="ident">locals</span>: <span class="ident">HashMap::new</span>(),
+<span class="attribute">#[derive(Debug)]
+</span><span class="doccomment">/// Represents a scope of identifiers.
+</span><span class="kw">pub struct </span>Scope {
+    <span class="kw">pub </span>locals: HashMap&lt;usize, ScopeEntry&gt;,
+}
+
+<span class="kw">impl </span>Scope {
+    <span class="attribute">#[must_use]
+    </span><span class="kw">pub fn </span>new() -&gt; <span class="self">Self </span>{
+        <span class="self">Self </span>{
+            locals: HashMap::new(),
         }
     }
 }
 
-<span class="kw">impl</span> <span class="ident">Default</span> <span class="kw">for</span> <span class="ident">Scope</span> {
-    <span class="kw">fn</span> <span class="ident">default</span>() -&gt; <span class="self">Self</span> {
-        <span class="ident"><span class="self">Self</span>::new</span>()
+<span class="kw">impl </span>Default <span class="kw">for </span>Scope {
+    <span class="kw">fn </span>default() -&gt; <span class="self">Self </span>{
+        <span class="self">Self</span>::new()
     }
 }
 
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>)]</span>
-<span class="doccomment">/// Represents an interpreter&#39;s context during runtime.</span>
-<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">Context</span><span class="op">&lt;</span><span class="kw">const</span> <span class="ident">STACK_SIZE</span>: <span class="ident">usize</span> <span class="op">=</span> <span class="number">512</span><span class="op">&gt;</span> {
-    <span class="kw">pub</span> <span class="ident">store</span>: <span class="ident">ObjectStore</span>,
-    <span class="kw">pub</span>(<span class="kw">crate</span>) <span class="ident">stack</span>: <span class="ident">Stack</span><span class="op">&lt;</span><span class="ident">STACK_SIZE</span><span class="op">&gt;</span>,
-    <span class="ident">scopes</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">Scope</span><span class="op">&gt;</span>,
-    <span class="ident">integer_lookup</span>: <span class="ident">HashMap</span><span class="op">&lt;</span><span class="ident">i128</span>, <span class="ident">ObjectRef</span><span class="op">&gt;</span>,
-    <span class="ident">bool_lookup</span>: [<span class="ident">ObjectRef</span>; <span class="number">2</span>],
+<span class="attribute">#[derive(Debug)]
+</span><span class="doccomment">/// Represents an interpreter&#39;s context during runtime.
+</span><span class="kw">pub struct </span>Context&lt;<span class="kw">const </span>STACK_SIZE: usize = <span class="number">512</span>&gt; {
+    <span class="kw">pub </span>store: ObjectStore,
+    <span class="kw">pub</span>(<span class="kw">crate</span>) stack: Stack&lt;STACK_SIZE&gt;,
+    scopes: Vec&lt;Scope&gt;,
+    integer_lookup: HashMap&lt;i128, ObjectRef&gt;,
+    bool_lookup: [ObjectRef; <span class="number">2</span>],
 }
 
-<span class="kw">impl</span><span class="op">&lt;</span><span class="kw">const</span> <span class="ident">STACK_SIZE</span>: <span class="ident">usize</span><span class="op">&gt;</span> <span class="ident">Context</span><span class="op">&lt;</span><span class="ident">STACK_SIZE</span><span class="op">&gt;</span> {
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">new</span>() -&gt; <span class="self">Self</span> {
-        <span class="self">Self</span> {
-            <span class="ident">store</span>: <span class="ident">ObjectStore::default</span>(),
-            <span class="ident">stack</span>: <span class="ident">Stack::new</span>(),
-            <span class="ident">scopes</span>: <span class="macro">vec!</span>[<span class="ident">Scope::default</span>()],
-            <span class="ident">integer_lookup</span>: <span class="ident">HashMap::new</span>(),
-            <span class="ident">bool_lookup</span>: [<span class="number">0</span>, <span class="number">0</span>],
+<span class="kw">impl</span>&lt;<span class="kw">const </span>STACK_SIZE: usize&gt; Context&lt;STACK_SIZE&gt; {
+    <span class="attribute">#[must_use]
+    </span><span class="kw">pub fn </span>new() -&gt; <span class="self">Self </span>{
+        <span class="self">Self </span>{
+            store: ObjectStore::default(),
+            stack: Stack::new(),
+            scopes: <span class="macro">vec!</span>[Scope::default()],
+            integer_lookup: HashMap::new(),
+            bool_lookup: [<span class="number">0</span>, <span class="number">0</span>],
         }
     }
 
-    <span class="doccomment">/// Pushes an object by location to the stack.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">push</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">o</span>: <span class="ident">ObjectRef</span>) {
-        <span class="self">self</span>.<span class="ident">stack</span>.<span class="ident">push</span>(<span class="ident">o</span>);
+    <span class="doccomment">/// Pushes an object by location to the stack.
+    </span><span class="kw">pub fn </span>push(<span class="kw-2">&amp;mut </span><span class="self">self</span>, o: ObjectRef) {
+        <span class="self">self</span>.stack.push(o);
     }
 
-    <span class="doccomment">/// Pops the last object from the stack and returns its location.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">pop_ref</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>) -&gt; <span class="ident">ObjectRef</span> {
-        <span class="self">self</span>.<span class="ident">stack</span>.<span class="ident">pop</span>()
+    <span class="doccomment">/// Pops the last object from the stack and returns its location.
+    </span><span class="kw">pub fn </span>pop_ref(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; ObjectRef {
+        <span class="self">self</span>.stack.pop()
     }
 
-    <span class="doccomment">/// Return `true` if the stack is empty</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">stack_is_empty</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="ident">bool</span> {
-        <span class="self">self</span>.<span class="ident">stack</span>.<span class="ident">ptr</span> <span class="op">==</span> <span class="number">0</span>
+    <span class="doccomment">/// Return `true` if the stack is empty
+    </span><span class="kw">pub fn </span>stack_is_empty(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; bool {
+        <span class="self">self</span>.stack.ptr == <span class="number">0
+    </span>}
+
+    <span class="doccomment">/// Pops the last object from the stack and returns a tuple containing
+    /// the location of the object in field 0 and a reference to the resolved
+    /// object in field 1.
+    </span><span class="kw">pub fn </span>pop_detailed(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; (ObjectRef, <span class="kw-2">&amp;</span>TerbiumObject) {
+        <span class="kw">let </span>loc = <span class="self">self</span>.stack.pop();
+
+        (loc, <span class="self">self</span>.store.resolve(loc))
     }
 
-    <span class="doccomment">/// Pops the last object from the stack and returns a tuple containing</span>
-    <span class="doccomment">/// the location of the object in field 0 and a reference to the resolved</span>
-    <span class="doccomment">/// object in field 1.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">pop_detailed</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>) -&gt; (<span class="ident">ObjectRef</span>, <span class="kw-2">&amp;</span><span class="ident">TerbiumObject</span>) {
-        <span class="kw">let</span> <span class="ident">loc</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">stack</span>.<span class="ident">pop</span>();
+    <span class="doccomment">/// Pops the last object from the stack and returns a reference to it.
+    </span><span class="kw">pub fn </span>pop(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span>TerbiumObject {
+        <span class="kw">let </span>loc = <span class="self">self</span>.pop_ref();
 
-        (<span class="ident">loc</span>, <span class="self">self</span>.<span class="ident">store</span>.<span class="ident">resolve</span>(<span class="ident">loc</span>))
+        <span class="self">self</span>.store.resolve(loc)
     }
 
-    <span class="doccomment">/// Pops the last object from the stack and returns a reference to it.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">pop</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span><span class="ident">TerbiumObject</span> {
-        <span class="kw">let</span> <span class="ident">loc</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">pop_ref</span>();
+    <span class="doccomment">/// Pops the last object from the stack and returns a reference to it.
+    ///
+    /// If any of the following happen, `&amp;TerbiumObject::Null` is returned instead:
+    ///
+    /// - Nothing is on the stack
+    /// - What was popped from the stack could not be resolved into an object
+    </span><span class="kw">pub fn </span>pop_or_null(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span>TerbiumObject {
+        <span class="kw">let </span>loc = <span class="self">self</span>.pop_ref();
 
-        <span class="self">self</span>.<span class="ident">store</span>.<span class="ident">resolve</span>(<span class="ident">loc</span>)
+        <span class="self">self</span>.store.resolve_or_null(loc)
     }
 
-    <span class="doccomment">/// Pops the last object from the stack and returns a reference to it.</span>
-    <span class="doccomment">///</span>
-    <span class="doccomment">/// If any of the following happen, `&amp;TerbiumObject::Null` is returned instead:</span>
-    <span class="doccomment">///</span>
-    <span class="doccomment">/// - Nothing is on the stack</span>
-    <span class="doccomment">/// - What was popped from the stack could not be resolved into an object</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">pop_or_null</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span><span class="ident">TerbiumObject</span> {
-        <span class="kw">let</span> <span class="ident">loc</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">pop_ref</span>();
-
-        <span class="self">self</span>.<span class="ident">store</span>.<span class="ident">resolve_or_null</span>(<span class="ident">loc</span>)
+    <span class="doccomment">/// Pops the last object from the stack, clones it, and returns it.
+    </span><span class="kw">pub fn </span>pop_cloned(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; TerbiumObject {
+        <span class="kw-2">*</span><span class="self">self</span>.store.resolve(<span class="self">self</span>.stack.pop_cloned())
     }
 
-    <span class="doccomment">/// Pops the last object from the stack, clones it, and returns it.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">pop_cloned</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>) -&gt; <span class="ident">TerbiumObject</span> {
-        <span class="kw-2">*</span><span class="self">self</span>.<span class="ident">store</span>.<span class="ident">resolve</span>(<span class="self">self</span>.<span class="ident">stack</span>.<span class="ident">pop_cloned</span>())
+    <span class="doccomment">/// Stores the object at the given location.
+    </span><span class="kw">pub fn </span>store(<span class="kw-2">&amp;mut </span><span class="self">self</span>, loc: ObjectRef, o: TerbiumObject) -&gt; ObjectRef {
+        <span class="self">self</span>.store.<span class="number">0</span>.insert(loc, o);
+
+        loc
     }
 
-    <span class="doccomment">/// Stores the object at the given location.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">store</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">loc</span>: <span class="ident">ObjectRef</span>, <span class="ident">o</span>: <span class="ident">TerbiumObject</span>) -&gt; <span class="ident">ObjectRef</span> {
-        <span class="self">self</span>.<span class="ident">store</span>.<span class="number">0</span>.<span class="ident">insert</span>(<span class="ident">loc</span>, <span class="ident">o</span>);
+    <span class="doccomment">/// Stores the object at a pre-determined location.
+    </span><span class="kw">pub fn </span>store_auto(<span class="kw-2">&amp;mut </span><span class="self">self</span>, o: TerbiumObject) -&gt; ObjectRef {
+        <span class="comment">// TODO: this is O(n), not really the best
+        </span><span class="kw">let </span>key = <span class="self">self</span>.store.<span class="number">0</span>.keys().max().unwrap_or(<span class="kw-2">&amp;</span><span class="number">0</span>) + <span class="number">1</span>;
+        <span class="self">self</span>.store(key, o);
 
-        <span class="ident">loc</span>
+        key
     }
 
-    <span class="doccomment">/// Stores the object at a pre-determined location.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">store_auto</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">o</span>: <span class="ident">TerbiumObject</span>) -&gt; <span class="ident">ObjectRef</span> {
-        <span class="comment">// TODO: this is O(n), not really the best</span>
-        <span class="kw">let</span> <span class="ident">key</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">store</span>.<span class="number">0</span>.<span class="ident">keys</span>().<span class="ident">max</span>().<span class="ident">unwrap_or</span>(<span class="kw-2">&amp;</span><span class="number">0</span>) <span class="op">+</span> <span class="number">1</span>;
-        <span class="self">self</span>.<span class="ident">store</span>(<span class="ident">key</span>, <span class="ident">o</span>);
+    <span class="doccomment">/// Loads the given integer and returns its location.
+    </span><span class="kw">pub fn </span>load_int(<span class="kw-2">&amp;mut </span><span class="self">self</span>, i: i128) -&gt; ObjectRef {
+        <span class="kw">let </span>loc = <span class="self">self</span>.store_auto(TerbiumObject::Integer(i));
 
-        <span class="ident">key</span>
+        <span class="kw-2">*</span><span class="self">self</span>.integer_lookup.entry(i).or_insert(loc)
     }
 
-    <span class="doccomment">/// Loads the given integer and returns its location.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">load_int</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">i</span>: <span class="ident">i128</span>) -&gt; <span class="ident">ObjectRef</span> {
-        <span class="kw">let</span> <span class="ident">loc</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">store_auto</span>(<span class="ident">TerbiumObject::Integer</span>(<span class="ident">i</span>));
+    <span class="doccomment">/// Loads the given bool and returns its location.
+    </span><span class="kw">pub fn </span>load_bool(<span class="kw-2">&amp;mut </span><span class="self">self</span>, b: bool) -&gt; ObjectRef {
+        <span class="kw">let </span>index = usize::from(b);
+        <span class="kw">let </span>ptr = <span class="self">self</span>.bool_lookup[index];
 
-        <span class="kw-2">*</span><span class="self">self</span>.<span class="ident">integer_lookup</span>.<span class="ident">entry</span>(<span class="ident">i</span>).<span class="ident">or_insert</span>(<span class="ident">loc</span>)
-    }
-
-    <span class="doccomment">/// Loads the given bool and returns its location.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">load_bool</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">b</span>: <span class="ident">bool</span>) -&gt; <span class="ident">ObjectRef</span> {
-        <span class="kw">let</span> <span class="ident">index</span> <span class="op">=</span> <span class="ident">usize::from</span>(<span class="ident">b</span>);
-        <span class="kw">let</span> <span class="ident">ptr</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">bool_lookup</span>[<span class="ident">index</span>];
-
-        <span class="kw">match</span> <span class="ident">ptr</span> {
-            <span class="number">0</span> =&gt; {
-                <span class="kw">let</span> <span class="ident">loc</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">store_auto</span>(<span class="ident">TerbiumObject::Bool</span>(<span class="ident">b</span>));
-                <span class="self">self</span>.<span class="ident">bool_lookup</span>[<span class="ident">index</span>] <span class="op">=</span> <span class="ident">loc</span>;
-                <span class="ident">loc</span>
+        <span class="kw">match </span>ptr {
+            <span class="number">0 </span>=&gt; {
+                <span class="kw">let </span>loc = <span class="self">self</span>.store_auto(TerbiumObject::Bool(b));
+                <span class="self">self</span>.bool_lookup[index] = loc;
+                loc
             }
-            <span class="kw">_</span> =&gt; <span class="ident">ptr</span>,
+            <span class="kw">_ </span>=&gt; ptr,
         }
     }
 
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="doccomment">/// Returns a reference to the current local scope.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">locals</span>(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span><span class="ident">Scope</span> {
-        <span class="self">self</span>.<span class="ident">scopes</span>.<span class="ident">last</span>().<span class="ident">unwrap_or_else</span>(<span class="op">|</span><span class="op">|</span> <span class="macro">unreachable!</span>())
+    <span class="attribute">#[must_use]
+    </span><span class="doccomment">/// Returns a reference to the current local scope.
+    </span><span class="kw">pub fn </span>locals(<span class="kw-2">&amp;</span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;</span>Scope {
+        <span class="self">self</span>.scopes.last().unwrap_or_else(|| <span class="macro">unreachable!</span>())
     }
 
-    <span class="doccomment">/// Returns a mutable reference to the current local scope.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">locals_mut</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>) -&gt; <span class="kw-2">&amp;mut</span> <span class="ident">Scope</span> {
-        <span class="self">self</span>.<span class="ident">scopes</span>.<span class="ident">last_mut</span>().<span class="ident">unwrap_or_else</span>(<span class="op">|</span><span class="op">|</span> <span class="macro">unreachable!</span>())
+    <span class="doccomment">/// Returns a mutable reference to the current local scope.
+    </span><span class="kw">pub fn </span>locals_mut(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;mut </span>Scope {
+        <span class="self">self</span>.scopes.last_mut().unwrap_or_else(|| <span class="macro">unreachable!</span>())
     }
 
-    <span class="doccomment">/// Stores the `ScopeEntry` in the given `key`</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">store_var</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">key</span>: <span class="ident">usize</span>, <span class="ident">entry</span>: <span class="ident">ScopeEntry</span>) {
-        <span class="self">self</span>.<span class="ident">locals_mut</span>().<span class="ident">locals</span>.<span class="ident">insert</span>(<span class="ident">key</span>, <span class="ident">entry</span>);
+    <span class="doccomment">/// Stores the `ScopeEntry` in the given `key`
+    </span><span class="kw">pub fn </span>store_var(<span class="kw-2">&amp;mut </span><span class="self">self</span>, key: usize, entry: ScopeEntry) {
+        <span class="self">self</span>.locals_mut().locals.insert(key, entry);
     }
 
-    <span class="doccomment">/// Reassigns the value at the given location to the given `key`.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">assign_var</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">key</span>: <span class="ident">usize</span>, <span class="ident">value</span>: <span class="ident">ObjectRef</span>) {
-        <span class="kw">let</span> <span class="ident">entry</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">lookup_var_mut</span>(<span class="ident">key</span>).<span class="ident">unwrap_or_else</span>(<span class="op">|</span><span class="op">|</span> {
-            <span class="comment">// TODO: variable not found, error</span>
-            <span class="macro">unimplemented!</span>();
+    <span class="doccomment">/// Reassigns the value at the given location to the given `key`.
+    </span><span class="kw">pub fn </span>assign_var(<span class="kw-2">&amp;mut </span><span class="self">self</span>, key: usize, value: ObjectRef) {
+        <span class="kw">let </span>entry = <span class="self">self</span>.lookup_var_mut(key).unwrap_or_else(|| {
+            <span class="comment">// TODO: variable not found, error
+            </span><span class="macro">unimplemented!</span>();
         });
 
-        <span class="kw">if</span> <span class="ident">entry</span>.<span class="ident">is_const</span>() <span class="op">|</span><span class="op">|</span> <span class="op">!</span><span class="ident">entry</span>.<span class="ident">is_mut</span>() {
-            <span class="comment">// TODO: variable is immutable or const, error</span>
-            <span class="macro">unimplemented!</span>();
+        <span class="kw">if </span>entry.is_const() || !entry.is_mut() {
+            <span class="comment">// TODO: variable is immutable or const, error
+            </span><span class="macro">unimplemented!</span>();
         }
 
-        <span class="ident">entry</span>.<span class="ident">loc</span> <span class="op">=</span> <span class="ident">value</span>;
+        entry.loc = value;
     }
 
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">lookup_var</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">key</span>: <span class="ident">usize</span>) -&gt; <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="kw-2">&amp;</span><span class="ident">ScopeEntry</span><span class="op">&gt;</span> {
-        <span class="kw">for</span> <span class="ident">scope</span> <span class="kw">in</span> <span class="self">self</span>.<span class="ident">scopes</span>.<span class="ident">iter</span>().<span class="ident">rev</span>() {
-            <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">entry</span>) <span class="op">=</span> <span class="ident">scope</span>.<span class="ident">locals</span>.<span class="ident">get</span>(<span class="kw-2">&amp;</span><span class="ident">key</span>) {
-                <span class="kw">return</span> <span class="prelude-val">Some</span>(<span class="ident">entry</span>);
-            }
-        }
-
-        <span class="prelude-val">None</span>
-    }
-
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">lookup_var_mut</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">key</span>: <span class="ident">usize</span>) -&gt; <span class="prelude-ty">Option</span><span class="op">&lt;</span><span class="kw-2">&amp;mut</span> <span class="ident">ScopeEntry</span><span class="op">&gt;</span> {
-        <span class="kw">for</span> <span class="ident">scope</span> <span class="kw">in</span> <span class="self">self</span>.<span class="ident">scopes</span>.<span class="ident">iter_mut</span>().<span class="ident">rev</span>() {
-            <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">entry</span>) <span class="op">=</span> <span class="ident">scope</span>.<span class="ident">locals</span>.<span class="ident">get_mut</span>(<span class="kw-2">&amp;</span><span class="ident">key</span>) {
-                <span class="kw">return</span> <span class="prelude-val">Some</span>(<span class="ident">entry</span>);
+    <span class="attribute">#[must_use]
+    </span><span class="kw">pub fn </span>lookup_var(<span class="kw-2">&amp;</span><span class="self">self</span>, key: usize) -&gt; <span class="prelude-ty">Option</span>&lt;<span class="kw-2">&amp;</span>ScopeEntry&gt; {
+        <span class="kw">for </span>scope <span class="kw">in </span><span class="self">self</span>.scopes.iter().rev() {
+            <span class="kw">if let </span><span class="prelude-val">Some</span>(entry) = scope.locals.get(<span class="kw-2">&amp;</span>key) {
+                <span class="kw">return </span><span class="prelude-val">Some</span>(entry);
             }
         }
 
-        <span class="prelude-val">None</span>
+        <span class="prelude-val">None
+    </span>}
+
+    <span class="kw">pub fn </span>lookup_var_mut(<span class="kw-2">&amp;mut </span><span class="self">self</span>, key: usize) -&gt; <span class="prelude-ty">Option</span>&lt;<span class="kw-2">&amp;mut </span>ScopeEntry&gt; {
+        <span class="kw">for </span>scope <span class="kw">in </span><span class="self">self</span>.scopes.iter_mut().rev() {
+            <span class="kw">if let </span><span class="prelude-val">Some</span>(entry) = scope.locals.get_mut(<span class="kw-2">&amp;</span>key) {
+                <span class="kw">return </span><span class="prelude-val">Some</span>(entry);
+            }
+        }
+
+        <span class="prelude-val">None
+    </span>}
+
+    <span class="kw">pub fn </span>enter_scope(<span class="kw-2">&amp;mut </span><span class="self">self</span>) {
+        <span class="self">self</span>.scopes.push(Scope::default());
     }
 
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">enter_scope</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>) {
-        <span class="self">self</span>.<span class="ident">scopes</span>.<span class="ident">push</span>(<span class="ident">Scope::default</span>());
-    }
-
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">exit_scope</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>) {
-        <span class="self">self</span>.<span class="ident">scopes</span>.<span class="ident">pop</span>();
+    <span class="kw">pub fn </span>exit_scope(<span class="kw-2">&amp;mut </span><span class="self">self</span>) {
+        <span class="self">self</span>.scopes.pop();
     }
 }
 
-<span class="kw">impl</span><span class="op">&lt;</span><span class="kw">const</span> <span class="ident">STACK_SIZE</span>: <span class="ident">usize</span><span class="op">&gt;</span> <span class="ident">Default</span> <span class="kw">for</span> <span class="ident">Context</span><span class="op">&lt;</span><span class="ident">STACK_SIZE</span><span class="op">&gt;</span> {
-    <span class="kw">fn</span> <span class="ident">default</span>() -&gt; <span class="self">Self</span> {
-        <span class="ident"><span class="self">Self</span>::new</span>()
+<span class="kw">impl</span>&lt;<span class="kw">const </span>STACK_SIZE: usize&gt; Default <span class="kw">for </span>Context&lt;STACK_SIZE&gt; {
+    <span class="kw">fn </span>default() -&gt; <span class="self">Self </span>{
+        <span class="self">Self</span>::new()
     }
 }
 
-<span class="attribute">#[<span class="ident">derive</span>(<span class="ident">Debug</span>)]</span>
-<span class="kw">pub</span> <span class="kw">struct</span> <span class="ident">Interpreter</span><span class="op">&lt;</span><span class="kw">const</span> <span class="ident">STACK_SIZE</span>: <span class="ident">usize</span> <span class="op">=</span> <span class="number">512</span><span class="op">&gt;</span> {
-    <span class="kw">pub</span> <span class="ident">ctx</span>: <span class="ident">Context</span><span class="op">&lt;</span><span class="ident">STACK_SIZE</span><span class="op">&gt;</span>,
-    <span class="ident">string_interner</span>: <span class="ident">Interner</span>,
+<span class="attribute">#[derive(Debug)]
+</span><span class="kw">pub struct </span>Interpreter&lt;<span class="kw">const </span>STACK_SIZE: usize = <span class="number">512</span>&gt; {
+    <span class="kw">pub </span>ctx: Context&lt;STACK_SIZE&gt;,
+    string_interner: Interner,
 }
 
-<span class="macro">macro_rules!</span> <span class="ident">pat_num_ops</span> {
-    (<span class="macro-nonterminal">$</span><span class="macro-nonterminal">ctx</span>:<span class="ident">expr</span>, <span class="macro-nonterminal">$</span><span class="macro-nonterminal">lhs</span>:<span class="ident">ident</span>, <span class="macro-nonterminal">$</span><span class="macro-nonterminal">rhs</span>:<span class="ident">ident</span>; <span class="macro-nonterminal">$</span><span class="macro-nonterminal">ii</span>:<span class="ident">expr</span>, <span class="macro-nonterminal">$</span><span class="macro-nonterminal">ff</span>:<span class="ident">expr</span>, <span class="macro-nonterminal">$</span><span class="kw">if</span>:<span class="macro-nonterminal">expr</span>, <span class="macro-nonterminal">$</span><span class="macro-nonterminal">fi</span>:<span class="ident">expr</span>; $(<span class="macro-nonterminal">$</span><span class="macro-nonterminal">pat</span>:<span class="ident">pat</span> =&gt; <span class="macro-nonterminal">$</span><span class="macro-nonterminal">result</span>:<span class="ident">expr</span>),<span class="kw-2">*</span>) =&gt; {{
-        <span class="kw">let</span> <span class="ident">first</span> <span class="op">=</span> <span class="macro-nonterminal">$</span><span class="macro-nonterminal">ctx</span>.<span class="ident">pop_ref</span>();
-        <span class="kw">let</span> <span class="ident">second</span> <span class="op">=</span> <span class="macro-nonterminal">$</span><span class="macro-nonterminal">ctx</span>.<span class="ident">pop_ref</span>();
+<span class="macro">macro_rules! </span>pat_num_ops {
+    (<span class="macro-nonterminal">$ctx</span>:expr, <span class="macro-nonterminal">$lhs</span>:ident, <span class="macro-nonterminal">$rhs</span>:ident; <span class="macro-nonterminal">$ii</span>:expr, <span class="macro-nonterminal">$ff</span>:expr, <span class="macro-nonterminal">$</span><span class="kw">if</span>:<span class="macro-nonterminal">expr</span>, <span class="macro-nonterminal">$fi</span>:expr; $(<span class="macro-nonterminal">$pat</span>:pat =&gt; <span class="macro-nonterminal">$result</span>:expr),<span class="kw-2">*</span>) =&gt; {{
+        <span class="kw">let </span>first = <span class="macro-nonterminal">$ctx</span>.pop_ref();
+        <span class="kw">let </span>second = <span class="macro-nonterminal">$ctx</span>.pop_ref();
 
-        <span class="kw">match</span> (<span class="macro-nonterminal">$</span><span class="macro-nonterminal">ctx</span>.<span class="ident">store</span>.<span class="ident">resolve</span>(<span class="ident">first</span>), <span class="macro-nonterminal">$</span><span class="macro-nonterminal">ctx</span>.<span class="ident">store</span>.<span class="ident">resolve</span>(<span class="ident">second</span>)) {
-            (<span class="ident">TerbiumObject::Integer</span>(<span class="macro-nonterminal">$</span><span class="macro-nonterminal">rhs</span>), <span class="ident">TerbiumObject::Integer</span>(<span class="macro-nonterminal">$</span><span class="macro-nonterminal">lhs</span>)) =&gt; {
-                <span class="kw">let</span> <span class="ident">result</span> <span class="op">=</span> <span class="macro-nonterminal">$</span><span class="macro-nonterminal">ii</span>;
-                <span class="macro-nonterminal">$</span><span class="macro-nonterminal">ctx</span>.<span class="ident">push</span>(<span class="ident">result</span>)
+        <span class="kw">match </span>(<span class="macro-nonterminal">$ctx</span>.store.resolve(first), <span class="macro-nonterminal">$ctx</span>.store.resolve(second)) {
+            (TerbiumObject::Integer(<span class="macro-nonterminal">$rhs</span>), TerbiumObject::Integer(<span class="macro-nonterminal">$lhs</span>)) =&gt; {
+                <span class="kw">let </span>result = <span class="macro-nonterminal">$ii</span>;
+                <span class="macro-nonterminal">$ctx</span>.push(result)
             }
-            (<span class="ident">TerbiumObject::Float</span>(<span class="macro-nonterminal">$</span><span class="macro-nonterminal">rhs</span>), <span class="ident">TerbiumObject::Float</span>(<span class="macro-nonterminal">$</span><span class="macro-nonterminal">lhs</span>)) =&gt; {
-                <span class="kw">let</span> <span class="ident">result</span> <span class="op">=</span> <span class="macro-nonterminal">$</span><span class="macro-nonterminal">ff</span>;
-                <span class="macro-nonterminal">$</span><span class="macro-nonterminal">ctx</span>.<span class="ident">push</span>(<span class="ident">result</span>)
+            (TerbiumObject::Float(<span class="macro-nonterminal">$rhs</span>), TerbiumObject::Float(<span class="macro-nonterminal">$lhs</span>)) =&gt; {
+                <span class="kw">let </span>result = <span class="macro-nonterminal">$ff</span>;
+                <span class="macro-nonterminal">$ctx</span>.push(result)
             }
-            (<span class="ident">TerbiumObject::Integer</span>(<span class="macro-nonterminal">$</span><span class="macro-nonterminal">rhs</span>), <span class="ident">TerbiumObject::Float</span>(<span class="macro-nonterminal">$</span><span class="macro-nonterminal">lhs</span>)) =&gt; {
-                <span class="kw">let</span> <span class="ident">result</span> <span class="op">=</span> <span class="macro-nonterminal">$</span><span class="macro-nonterminal">fi</span>;
-                <span class="macro-nonterminal">$</span><span class="macro-nonterminal">ctx</span>.<span class="ident">push</span>(<span class="ident">result</span>)
+            (TerbiumObject::Integer(<span class="macro-nonterminal">$rhs</span>), TerbiumObject::Float(<span class="macro-nonterminal">$lhs</span>)) =&gt; {
+                <span class="kw">let </span>result = <span class="macro-nonterminal">$fi</span>;
+                <span class="macro-nonterminal">$ctx</span>.push(result)
             }
-            (<span class="ident">TerbiumObject::Float</span>(<span class="macro-nonterminal">$</span><span class="macro-nonterminal">rhs</span>), <span class="ident">TerbiumObject::Integer</span>(<span class="macro-nonterminal">$</span><span class="macro-nonterminal">lhs</span>)) =&gt; {
-                <span class="kw">let</span> <span class="ident">result</span> <span class="op">=</span> <span class="macro-nonterminal">$</span><span class="kw">if</span>;
-                <span class="macro-nonterminal">$</span><span class="macro-nonterminal">ctx</span>.<span class="ident">push</span>(<span class="ident">result</span>)
+            (TerbiumObject::Float(<span class="macro-nonterminal">$rhs</span>), TerbiumObject::Integer(<span class="macro-nonterminal">$lhs</span>)) =&gt; {
+                <span class="kw">let </span>result = <span class="macro-nonterminal">$</span><span class="kw">if</span>;
+                <span class="macro-nonterminal">$ctx</span>.push(result)
             }
-            $(<span class="macro-nonterminal">$</span><span class="macro-nonterminal">pat</span> =&gt; <span class="macro-nonterminal">$</span><span class="macro-nonterminal">result</span>),<span class="op">*</span>
+            $(<span class="macro-nonterminal">$pat </span>=&gt; <span class="macro-nonterminal">$result</span>),*
         }
     }}
 }
 
-<span class="macro">macro_rules!</span> <span class="ident">deferred_method</span> {
-    (<span class="macro-nonterminal">$</span><span class="macro-nonterminal">ctx</span>:<span class="ident">expr</span>, <span class="macro-nonterminal">$</span><span class="macro-nonterminal">meth</span>:<span class="ident">ident</span>, <span class="macro-nonterminal">$</span><span class="macro-nonterminal">e</span>:<span class="ident">expr</span>) =&gt; {{
-        <span class="kw">let</span> <span class="ident">subject</span> <span class="op">=</span> <span class="macro-nonterminal">$</span><span class="macro-nonterminal">e</span>;
+<span class="macro">macro_rules! </span>deferred_method {
+    (<span class="macro-nonterminal">$ctx</span>:expr, <span class="macro-nonterminal">$meth</span>:ident, <span class="macro-nonterminal">$e</span>:expr) =&gt; {{
+        <span class="kw">let </span>subject = <span class="macro-nonterminal">$e</span>;
 
-        <span class="macro-nonterminal">$</span><span class="macro-nonterminal">ctx</span>.<span class="macro-nonterminal">$</span><span class="macro-nonterminal">meth</span>(<span class="ident">subject</span>)
+        <span class="macro-nonterminal">$ctx</span>.<span class="macro-nonterminal">$meth</span>(subject)
     }};
 }
 
-<span class="macro">macro_rules!</span> <span class="ident">store_auto</span> {
-    (<span class="macro-nonterminal">$</span><span class="macro-nonterminal">ctx</span>:<span class="ident">expr</span>, <span class="macro-nonterminal">$</span><span class="macro-nonterminal">e</span>:<span class="ident">expr</span>) =&gt; {
-        <span class="macro">deferred_method!</span>(<span class="macro-nonterminal">$</span><span class="macro-nonterminal">ctx</span>, <span class="ident">store_auto</span>, <span class="macro-nonterminal">$</span><span class="macro-nonterminal">e</span>)
+<span class="macro">macro_rules! </span>store_auto {
+    (<span class="macro-nonterminal">$ctx</span>:expr, <span class="macro-nonterminal">$e</span>:expr) =&gt; {
+        <span class="macro">deferred_method!</span>(<span class="macro-nonterminal">$ctx</span>, store_auto, <span class="macro-nonterminal">$e</span>)
     };
 }
 
-<span class="macro">macro_rules!</span> <span class="ident">load_int</span> {
-    (<span class="macro-nonterminal">$</span><span class="macro-nonterminal">ctx</span>:<span class="ident">expr</span>, <span class="macro-nonterminal">$</span><span class="macro-nonterminal">e</span>:<span class="ident">expr</span>) =&gt; {
-        <span class="macro">deferred_method!</span>(<span class="macro-nonterminal">$</span><span class="macro-nonterminal">ctx</span>, <span class="ident">load_int</span>, <span class="macro-nonterminal">$</span><span class="macro-nonterminal">e</span>)
+<span class="macro">macro_rules! </span>load_int {
+    (<span class="macro-nonterminal">$ctx</span>:expr, <span class="macro-nonterminal">$e</span>:expr) =&gt; {
+        <span class="macro">deferred_method!</span>(<span class="macro-nonterminal">$ctx</span>, load_int, <span class="macro-nonterminal">$e</span>)
     };
 }
 
-<span class="macro">macro_rules!</span> <span class="ident">load_bool</span> {
-    (<span class="macro-nonterminal">$</span><span class="macro-nonterminal">ctx</span>:<span class="ident">expr</span>, <span class="macro-nonterminal">$</span><span class="macro-nonterminal">e</span>:<span class="ident">expr</span>) =&gt; {
-        <span class="macro">deferred_method!</span>(<span class="macro-nonterminal">$</span><span class="macro-nonterminal">ctx</span>, <span class="ident">load_bool</span>, <span class="macro-nonterminal">$</span><span class="macro-nonterminal">e</span>)
+<span class="macro">macro_rules! </span>load_bool {
+    (<span class="macro-nonterminal">$ctx</span>:expr, <span class="macro-nonterminal">$e</span>:expr) =&gt; {
+        <span class="macro">deferred_method!</span>(<span class="macro-nonterminal">$ctx</span>, load_bool, <span class="macro-nonterminal">$e</span>)
     };
 }
 
-<span class="macro">macro_rules!</span> <span class="ident">push</span> {
-    (<span class="macro-nonterminal">$</span><span class="macro-nonterminal">ctx</span>:<span class="ident">expr</span>, <span class="macro-nonterminal">$</span><span class="macro-nonterminal">e</span>:<span class="ident">expr</span>) =&gt; {
-        <span class="macro">deferred_method!</span>(<span class="macro-nonterminal">$</span><span class="macro-nonterminal">ctx</span>, <span class="ident">push</span>, <span class="macro-nonterminal">$</span><span class="macro-nonterminal">e</span>)
+<span class="macro">macro_rules! </span>push {
+    (<span class="macro-nonterminal">$ctx</span>:expr, <span class="macro-nonterminal">$e</span>:expr) =&gt; {
+        <span class="macro">deferred_method!</span>(<span class="macro-nonterminal">$ctx</span>, push, <span class="macro-nonterminal">$e</span>)
     };
 }
 
-<span class="kw">impl</span><span class="op">&lt;</span><span class="kw">const</span> <span class="ident">STACK_SIZE</span>: <span class="ident">usize</span><span class="op">&gt;</span> <span class="ident">Interpreter</span><span class="op">&lt;</span><span class="ident">STACK_SIZE</span><span class="op">&gt;</span> {
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">new</span>() -&gt; <span class="self">Self</span> {
-        <span class="self">Self</span> {
-            <span class="ident">ctx</span>: <span class="ident">Context::new</span>(),
-            <span class="comment">// TODO: string length capacity to be interned could be configurable</span>
-            <span class="ident">string_interner</span>: <span class="ident">Interner::with_capacity</span>(<span class="number">128</span>),
+<span class="kw">impl</span>&lt;<span class="kw">const </span>STACK_SIZE: usize&gt; Interpreter&lt;STACK_SIZE&gt; {
+    <span class="attribute">#[must_use]
+    </span><span class="kw">pub fn </span>new() -&gt; <span class="self">Self </span>{
+        <span class="self">Self </span>{
+            ctx: Context::new(),
+            <span class="comment">// TODO: string length capacity to be interned could be configurable
+            </span>string_interner: Interner::with_capacity(<span class="number">128</span>),
         }
     }
 
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">stack</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>) -&gt; <span class="kw-2">&amp;mut</span> <span class="ident">Stack</span><span class="op">&lt;</span><span class="ident">STACK_SIZE</span><span class="op">&gt;</span> {
-        <span class="kw-2">&amp;mut</span> <span class="self">self</span>.<span class="ident">ctx</span>.<span class="ident">stack</span>
+    <span class="attribute">#[must_use]
+    </span><span class="kw">pub fn </span>stack(<span class="kw-2">&amp;mut </span><span class="self">self</span>) -&gt; <span class="kw-2">&amp;mut </span>Stack&lt;STACK_SIZE&gt; {
+        <span class="kw-2">&amp;mut </span><span class="self">self</span>.ctx.stack
     }
 
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">string_lookup</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">id</span>: <span class="ident">StringId</span>) -&gt; <span class="kw-2">&amp;</span><span class="ident">str</span> {
-        <span class="self">self</span>.<span class="ident">string_interner</span>.<span class="ident">lookup</span>(<span class="ident">id</span>)
+    <span class="attribute">#[must_use]
+    </span><span class="kw">pub fn </span>string_lookup(<span class="kw-2">&amp;</span><span class="self">self</span>, id: StringId) -&gt; <span class="kw-2">&amp;</span>str {
+        <span class="self">self</span>.string_interner.lookup(id)
     }
 
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">is_truthy</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">o</span>: <span class="kw-2">&amp;</span><span class="ident">TerbiumObject</span>) -&gt; <span class="ident">bool</span> {
-        <span class="kw">match</span> <span class="ident">o</span> {
-            <span class="ident">TerbiumObject::Bool</span>(<span class="ident">b</span>) =&gt; <span class="kw-2">*</span><span class="ident">b</span>,
-            <span class="ident">TerbiumObject::Integer</span>(<span class="ident">i</span>) =&gt; <span class="kw-2">*</span><span class="ident">i</span> <span class="op">!</span><span class="op">=</span> <span class="number">0</span>,
-            <span class="ident">TerbiumObject::Float</span>(<span class="ident">EqComparableFloat</span>(<span class="ident">f</span>)) =&gt; <span class="kw-2">*</span><span class="ident">f</span> <span class="op">!</span><span class="op">=</span> <span class="number">0_f64</span>,
-            <span class="ident">TerbiumObject::String</span>(<span class="ident">s</span>) =&gt; <span class="op">!</span><span class="self">self</span>.<span class="ident">string_interner</span>.<span class="ident">lookup</span>(<span class="kw-2">*</span><span class="ident">s</span>).<span class="ident">is_empty</span>(),
-            <span class="ident">TerbiumObject::Null</span> =&gt; <span class="bool-val">false</span>,
+    <span class="attribute">#[must_use]
+    </span><span class="kw">pub fn </span>is_truthy(<span class="kw-2">&amp;</span><span class="self">self</span>, o: <span class="kw-2">&amp;</span>TerbiumObject) -&gt; bool {
+        <span class="kw">match </span>o {
+            TerbiumObject::Bool(b) =&gt; <span class="kw-2">*</span>b,
+            TerbiumObject::Integer(i) =&gt; <span class="kw-2">*</span>i != <span class="number">0</span>,
+            TerbiumObject::Float(EqComparableFloat(f)) =&gt; <span class="kw-2">*</span>f != <span class="number">0_f64</span>,
+            TerbiumObject::String(s) =&gt; !<span class="self">self</span>.string_interner.lookup(<span class="kw-2">*</span>s).is_empty(),
+            TerbiumObject::Null =&gt; <span class="bool-val">false</span>,
         }
     }
 
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">get_bool_object</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">o</span>: <span class="kw-2">&amp;</span><span class="ident">TerbiumObject</span>) -&gt; <span class="ident">ObjectRef</span> {
-        <span class="macro">load_bool!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="self">self</span>.<span class="ident">is_truthy</span>(<span class="ident">o</span>))
+    <span class="attribute">#[must_use]
+    </span><span class="kw">pub fn </span>get_bool_object(<span class="kw-2">&amp;mut </span><span class="self">self</span>, o: <span class="kw-2">&amp;</span>TerbiumObject) -&gt; ObjectRef {
+        <span class="macro">load_bool!</span>(<span class="self">self</span>.ctx, <span class="self">self</span>.is_truthy(o))
     }
 
-    <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">clippy::too_many_lines</span>)]</span>
-    <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">clippy::missing_panics_doc</span>)]</span> <span class="comment">// Remove when todo is done</span>
-    <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">clippy::cast_possible_wrap</span>)]</span> <span class="comment">// Wrap is not possible because it is parsed as i128</span>
-    <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">clippy::cast_precision_loss</span>)]</span>
-    <span class="doccomment">/// Integers with a mantissa exceeding a width of 52 bits will be wrapped to</span>
-    <span class="doccomment">/// 340282366920938500000000000000000000000.</span>
-    <span class="doccomment">///</span>
-    <span class="doccomment">/// This will cause unexpected behavior because if it is compared with, for example,</span>
-    <span class="doccomment">/// 340282366920938463463374607431768211455 (`u128::MAX`), `true` is returned.</span>
-    <span class="doccomment">///</span>
-    <span class="doccomment">/// Furthermore, if it is compared with 340282366920938463463374607431768211454 (`u128::MAX` - 1),</span>
-    <span class="doccomment">/// true is also returned.</span>
-    <span class="doccomment">///</span>
-    <span class="doccomment">/// This is unexpected behavior as the three integers fundamentally do not equal each other,</span>
-    <span class="doccomment">/// however the interpreter thinks it is.</span>
-    <span class="doccomment">///</span>
-    <span class="doccomment">/// Currently, the solution is to let `terbium_analyzer` catch this as a hard error</span>
-    <span class="doccomment">/// to prevent this behavior from being executed.</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">run_bytecode</span>(<span class="kw-2">&amp;mut</span> <span class="self">self</span>, <span class="ident">code</span>: <span class="kw-2">&amp;</span><span class="ident">Program</span>) {
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">pos</span>: <span class="ident">AddrRepr</span> <span class="op">=</span> <span class="number">0</span>;
-        <span class="kw">let</span> <span class="kw-2">mut</span> <span class="ident">jump_history</span>: <span class="ident">Vec</span><span class="op">&lt;</span><span class="ident">AddrRepr</span><span class="op">&gt;</span> <span class="op">=</span> <span class="ident">Vec::new</span>();
-        <span class="kw">let</span> <span class="ident">instructions</span> <span class="op">=</span> <span class="ident">code</span>.<span class="ident">inner</span>().<span class="ident">collect</span>::<span class="op">&lt;</span><span class="ident">Vec</span><span class="op">&lt;</span><span class="kw">_</span><span class="op">&gt;</span><span class="op">&gt;</span>();
+    <span class="attribute">#[allow(clippy::too_many_lines)]
+    #[allow(clippy::missing_panics_doc)] </span><span class="comment">// Remove when todo is done
+    </span><span class="attribute">#[allow(clippy::cast_possible_wrap)] </span><span class="comment">// Wrap is not possible because it is parsed as i128
+    </span><span class="attribute">#[allow(clippy::cast_precision_loss)]
+    </span><span class="doccomment">/// Integers with a mantissa exceeding a width of 52 bits will be wrapped to
+    /// 340282366920938500000000000000000000000.
+    ///
+    /// This will cause unexpected behavior because if it is compared with, for example,
+    /// 340282366920938463463374607431768211455 (`u128::MAX`), `true` is returned.
+    ///
+    /// Furthermore, if it is compared with 340282366920938463463374607431768211454 (`u128::MAX` - 1),
+    /// true is also returned.
+    ///
+    /// This is unexpected behavior as the three integers fundamentally do not equal each other,
+    /// however the interpreter thinks it is.
+    ///
+    /// Currently, the solution is to let `terbium_analyzer` catch this as a hard error
+    /// to prevent this behavior from being executed.
+    </span><span class="kw">pub fn </span>run_bytecode(<span class="kw-2">&amp;mut </span><span class="self">self</span>, code: <span class="kw-2">&amp;</span>Program) {
+        <span class="kw">let </span><span class="kw-2">mut </span>pos: AddrRepr = <span class="number">0</span>;
+        <span class="kw">let </span><span class="kw-2">mut </span>jump_history: Vec&lt;AddrRepr&gt; = Vec::new();
+        <span class="kw">let </span>instructions = code.inner().collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;();
 
-        <span class="kw">loop</span> {
-            <span class="kw">let</span> <span class="ident">instr</span> <span class="op">=</span> <span class="ident">instructions</span>[<span class="ident">pos</span> <span class="kw">as</span> <span class="ident">usize</span>];
+        <span class="kw">loop </span>{
+            <span class="kw">let </span>instr = instructions[pos <span class="kw">as </span>usize];
 
-            <span class="comment">// let span = instr.span();</span>
-            <span class="kw">let</span> <span class="ident">instr</span> <span class="op">=</span> <span class="ident">instr</span>.<span class="ident">instr</span>();
+            <span class="comment">// let span = instr.span();
+            </span><span class="kw">let </span>instr = instr.instr();
 
-            <span class="kw">match</span> <span class="ident">instr</span>.<span class="ident">clone</span>() {
-                <span class="ident">Instruction::LoadInt</span>(<span class="ident">i</span>) =&gt; <span class="macro">push!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="macro">load_int!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="ident">i</span> <span class="kw">as</span> <span class="ident">i128</span>)),
-                <span class="ident">Instruction::LoadString</span>(<span class="ident">s</span>) =&gt; <span class="macro">push!</span>(
-                    <span class="self">self</span>.<span class="ident">ctx</span>,
+            <span class="kw">match </span>instr.clone() {
+                Instruction::LoadInt(i) =&gt; <span class="macro">push!</span>(<span class="self">self</span>.ctx, <span class="macro">load_int!</span>(<span class="self">self</span>.ctx, i <span class="kw">as </span>i128)),
+                Instruction::LoadString(s) =&gt; <span class="macro">push!</span>(
+                    <span class="self">self</span>.ctx,
                     <span class="macro">store_auto!</span>(
-                        <span class="self">self</span>.<span class="ident">ctx</span>,
-                        <span class="ident">TerbiumObject::String</span>(<span class="self">self</span>.<span class="ident">string_interner</span>.<span class="ident">intern</span>(<span class="ident">s</span>.<span class="ident">as_str</span>()),)
+                        <span class="self">self</span>.ctx,
+                        TerbiumObject::String(<span class="self">self</span>.string_interner.intern(s.as_str()),)
                     )
                 ),
-                <span class="ident">Instruction::LoadFloat</span>(<span class="ident">f</span>) =&gt; {
-                    <span class="macro">push!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="macro">store_auto!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="ident">TerbiumObject::Float</span>(<span class="ident">f</span>)));
+                Instruction::LoadFloat(f) =&gt; {
+                    <span class="macro">push!</span>(<span class="self">self</span>.ctx, <span class="macro">store_auto!</span>(<span class="self">self</span>.ctx, TerbiumObject::Float(f)));
                 }
-                <span class="ident">Instruction::LoadBool</span>(<span class="ident">b</span>) =&gt; <span class="macro">push!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="macro">load_bool!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="ident">b</span>)),
-                <span class="ident">Instruction::UnOpPos</span> =&gt; <span class="kw">match</span> <span class="self">self</span>.<span class="ident">ctx</span>.<span class="ident">pop_detailed</span>() {
-                    (<span class="ident">o</span>, <span class="ident">TerbiumObject::Integer</span>(<span class="kw">_</span>) <span class="op">|</span> <span class="ident">TerbiumObject::Float</span>(<span class="kw">_</span>)) =&gt; <span class="self">self</span>.<span class="ident">ctx</span>.<span class="ident">push</span>(<span class="ident">o</span>),
-                    <span class="kw">_</span> =&gt; <span class="macro">todo!</span>(),
+                Instruction::LoadBool(b) =&gt; <span class="macro">push!</span>(<span class="self">self</span>.ctx, <span class="macro">load_bool!</span>(<span class="self">self</span>.ctx, b)),
+                Instruction::UnOpPos =&gt; <span class="kw">match </span><span class="self">self</span>.ctx.pop_detailed() {
+                    (o, TerbiumObject::Integer(<span class="kw">_</span>) | TerbiumObject::Float(<span class="kw">_</span>)) =&gt; <span class="self">self</span>.ctx.push(o),
+                    <span class="kw">_ </span>=&gt; <span class="macro">todo!</span>(),
                 },
-                <span class="ident">Instruction::UnOpNeg</span> =&gt; <span class="kw">match</span> <span class="self">self</span>.<span class="ident">ctx</span>.<span class="ident">pop</span>() {
-                    <span class="ident">TerbiumObject::Integer</span>(<span class="ident">i</span>) =&gt; <span class="macro">push!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="macro">load_int!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="op">-</span><span class="kw-2">*</span><span class="ident">i</span>)),
-                    <span class="ident">TerbiumObject::Float</span>(<span class="ident">f</span>) =&gt; <span class="macro">push!</span>(
-                        <span class="self">self</span>.<span class="ident">ctx</span>,
-                        <span class="macro">store_auto!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="ident">TerbiumObject::Float</span>((<span class="op">-</span><span class="ident">f</span>.<span class="number">0</span>).<span class="ident">into</span>()))
+                Instruction::UnOpNeg =&gt; <span class="kw">match </span><span class="self">self</span>.ctx.pop() {
+                    TerbiumObject::Integer(i) =&gt; <span class="macro">push!</span>(<span class="self">self</span>.ctx, <span class="macro">load_int!</span>(<span class="self">self</span>.ctx, -<span class="kw-2">*</span>i)),
+                    TerbiumObject::Float(f) =&gt; <span class="macro">push!</span>(
+                        <span class="self">self</span>.ctx,
+                        <span class="macro">store_auto!</span>(<span class="self">self</span>.ctx, TerbiumObject::Float((-f.<span class="number">0</span>).into()))
                     ),
-                    <span class="kw">_</span> =&gt; <span class="macro">todo!</span>(),
+                    <span class="kw">_ </span>=&gt; <span class="macro">todo!</span>(),
                 },
-                <span class="ident">Instruction::BinOpAdd</span> =&gt; <span class="macro">pat_num_ops!</span>(
-                    <span class="self">self</span>.<span class="ident">ctx</span>, <span class="ident">lhs</span>, <span class="ident">rhs</span>;
-                    <span class="macro">load_int!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="kw-2">*</span><span class="ident">lhs</span> <span class="op">+</span> <span class="kw-2">*</span><span class="ident">rhs</span>),
-                    <span class="macro">store_auto!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="ident">TerbiumObject::Float</span>((<span class="ident">lhs</span>.<span class="number">0</span> <span class="op">+</span> <span class="ident">rhs</span>.<span class="number">0</span>).<span class="ident">into</span>())),
-                    <span class="macro">store_auto!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="ident">TerbiumObject::Float</span>((<span class="kw-2">*</span><span class="ident">lhs</span> <span class="kw">as</span> <span class="ident">f64</span> <span class="op">+</span> <span class="ident">rhs</span>.<span class="number">0</span>).<span class="ident">into</span>())),
-                    <span class="macro">store_auto!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="ident">TerbiumObject::Float</span>((<span class="ident">lhs</span>.<span class="number">0</span> <span class="op">+</span> <span class="kw-2">*</span><span class="ident">rhs</span> <span class="kw">as</span> <span class="ident">f64</span>).<span class="ident">into</span>()));
-                    (<span class="ident">TerbiumObject::String</span>(<span class="ident">rhs</span>), <span class="ident">TerbiumObject::String</span>(<span class="ident">lhs</span>)) =&gt; {
-                        <span class="kw">let</span> <span class="ident">loc</span> <span class="op">=</span> <span class="macro">store_auto!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="ident">TerbiumObject::String</span>(
-                            <span class="self">self</span>.<span class="ident">string_interner</span>.<span class="ident">intern</span>((
-                                <span class="self">self</span>.<span class="ident">string_interner</span>.<span class="ident">lookup</span>(<span class="kw-2">*</span><span class="ident">lhs</span>).<span class="ident">to_owned</span>()
-                                <span class="op">+</span> <span class="self">self</span>.<span class="ident">string_interner</span>.<span class="ident">lookup</span>(<span class="kw-2">*</span><span class="ident">rhs</span>)
-                            ).<span class="ident">as_str</span>())
+                Instruction::BinOpAdd =&gt; <span class="macro">pat_num_ops!</span>(
+                    <span class="self">self</span>.ctx, lhs, rhs;
+                    <span class="macro">load_int!</span>(<span class="self">self</span>.ctx, <span class="kw-2">*</span>lhs + <span class="kw-2">*</span>rhs),
+                    <span class="macro">store_auto!</span>(<span class="self">self</span>.ctx, TerbiumObject::Float((lhs.<span class="number">0 </span>+ rhs.<span class="number">0</span>).into())),
+                    <span class="macro">store_auto!</span>(<span class="self">self</span>.ctx, TerbiumObject::Float((<span class="kw-2">*</span>lhs <span class="kw">as </span>f64 + rhs.<span class="number">0</span>).into())),
+                    <span class="macro">store_auto!</span>(<span class="self">self</span>.ctx, TerbiumObject::Float((lhs.<span class="number">0 </span>+ <span class="kw-2">*</span>rhs <span class="kw">as </span>f64).into()));
+                    (TerbiumObject::String(rhs), TerbiumObject::String(lhs)) =&gt; {
+                        <span class="kw">let </span>loc = <span class="macro">store_auto!</span>(<span class="self">self</span>.ctx, TerbiumObject::String(
+                            <span class="self">self</span>.string_interner.intern((
+                                <span class="self">self</span>.string_interner.lookup(<span class="kw-2">*</span>lhs).to_owned()
+                                + <span class="self">self</span>.string_interner.lookup(<span class="kw-2">*</span>rhs)
+                            ).as_str())
                         ));
 
-                        <span class="self">self</span>.<span class="ident">ctx</span>.<span class="ident">push</span>(<span class="ident">loc</span>);
+                        <span class="self">self</span>.ctx.push(loc);
                     },
-                    <span class="kw">_</span> =&gt; {
-                        <span class="comment">// TODO: Call op function, raise error if not found</span>
-                    }
+                    <span class="kw">_ </span>=&gt; {
+                        <span class="comment">// TODO: Call op function, raise error if not found
+                    </span>}
                 ),
-                <span class="ident">Instruction::BinOpSub</span> =&gt; <span class="macro">pat_num_ops!</span>(
-                    <span class="self">self</span>.<span class="ident">ctx</span>, <span class="ident">lhs</span>, <span class="ident">rhs</span>;
-                    <span class="macro">load_int!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="kw-2">*</span><span class="ident">lhs</span> <span class="op">-</span> <span class="kw-2">*</span><span class="ident">rhs</span>),
-                    <span class="macro">store_auto!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="ident">TerbiumObject::Float</span>((<span class="ident">lhs</span>.<span class="number">0</span> <span class="op">-</span> <span class="ident">rhs</span>.<span class="number">0</span>).<span class="ident">into</span>())),
-                    <span class="macro">store_auto!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="ident">TerbiumObject::Float</span>((<span class="kw-2">*</span><span class="ident">lhs</span> <span class="kw">as</span> <span class="ident">f64</span> <span class="op">-</span> <span class="ident">rhs</span>.<span class="number">0</span>).<span class="ident">into</span>())),
-                    <span class="macro">store_auto!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="ident">TerbiumObject::Float</span>((<span class="ident">lhs</span>.<span class="number">0</span> <span class="op">-</span> <span class="kw-2">*</span><span class="ident">rhs</span> <span class="kw">as</span> <span class="ident">f64</span>).<span class="ident">into</span>()));
-                    <span class="kw">_</span> =&gt; {
-                        <span class="comment">// TODO</span>
-                    }
+                Instruction::BinOpSub =&gt; <span class="macro">pat_num_ops!</span>(
+                    <span class="self">self</span>.ctx, lhs, rhs;
+                    <span class="macro">load_int!</span>(<span class="self">self</span>.ctx, <span class="kw-2">*</span>lhs - <span class="kw-2">*</span>rhs),
+                    <span class="macro">store_auto!</span>(<span class="self">self</span>.ctx, TerbiumObject::Float((lhs.<span class="number">0 </span>- rhs.<span class="number">0</span>).into())),
+                    <span class="macro">store_auto!</span>(<span class="self">self</span>.ctx, TerbiumObject::Float((<span class="kw-2">*</span>lhs <span class="kw">as </span>f64 - rhs.<span class="number">0</span>).into())),
+                    <span class="macro">store_auto!</span>(<span class="self">self</span>.ctx, TerbiumObject::Float((lhs.<span class="number">0 </span>- <span class="kw-2">*</span>rhs <span class="kw">as </span>f64).into()));
+                    <span class="kw">_ </span>=&gt; {
+                        <span class="comment">// TODO
+                    </span>}
                 ),
-                <span class="ident">Instruction::BinOpMul</span> =&gt; <span class="macro">pat_num_ops!</span>(
-                    <span class="self">self</span>.<span class="ident">ctx</span>, <span class="ident">lhs</span>, <span class="ident">rhs</span>;
-                    <span class="macro">load_int!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="kw-2">*</span><span class="ident">lhs</span> <span class="op">*</span> <span class="kw-2">*</span><span class="ident">rhs</span>),
-                    <span class="macro">store_auto!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="ident">TerbiumObject::Float</span>((<span class="ident">lhs</span>.<span class="number">0</span> <span class="op">*</span> <span class="ident">rhs</span>.<span class="number">0</span>).<span class="ident">into</span>())),
-                    <span class="macro">store_auto!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="ident">TerbiumObject::Float</span>((<span class="kw-2">*</span><span class="ident">lhs</span> <span class="kw">as</span> <span class="ident">f64</span> <span class="op">-</span> <span class="ident">rhs</span>.<span class="number">0</span>).<span class="ident">into</span>())),
-                    <span class="macro">store_auto!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="ident">TerbiumObject::Float</span>((<span class="ident">lhs</span>.<span class="number">0</span> <span class="op">-</span> <span class="kw-2">*</span><span class="ident">rhs</span> <span class="kw">as</span> <span class="ident">f64</span>).<span class="ident">into</span>()));
-                    (<span class="ident">TerbiumObject::Integer</span>(<span class="ident">rhs</span>), <span class="ident">TerbiumObject::String</span>(<span class="ident">lhs</span>)) =&gt; {
-                        <span class="kw">let</span> <span class="ident">loc</span> <span class="op">=</span> <span class="macro">store_auto!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="ident">TerbiumObject::String</span>(
-                            <span class="self">self</span>.<span class="ident">string_interner</span>.<span class="ident">intern</span>(
-                                <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">clippy::cast_sign_loss</span>)]</span> <span class="comment">// Acts as a safety barrier to prevent overflow</span>
-                                <span class="self">self</span>.<span class="ident">string_interner</span>.<span class="ident">lookup</span>(<span class="kw-2">*</span><span class="ident">lhs</span>).<span class="ident">repeat</span>(<span class="kw-2">*</span><span class="ident">rhs</span> <span class="kw">as</span> <span class="ident">usize</span>).<span class="ident">as_str</span>(),
+                Instruction::BinOpMul =&gt; <span class="macro">pat_num_ops!</span>(
+                    <span class="self">self</span>.ctx, lhs, rhs;
+                    <span class="macro">load_int!</span>(<span class="self">self</span>.ctx, <span class="kw-2">*</span>lhs * <span class="kw-2">*</span>rhs),
+                    <span class="macro">store_auto!</span>(<span class="self">self</span>.ctx, TerbiumObject::Float((lhs.<span class="number">0 </span>* rhs.<span class="number">0</span>).into())),
+                    <span class="macro">store_auto!</span>(<span class="self">self</span>.ctx, TerbiumObject::Float((<span class="kw-2">*</span>lhs <span class="kw">as </span>f64 - rhs.<span class="number">0</span>).into())),
+                    <span class="macro">store_auto!</span>(<span class="self">self</span>.ctx, TerbiumObject::Float((lhs.<span class="number">0 </span>- <span class="kw-2">*</span>rhs <span class="kw">as </span>f64).into()));
+                    (TerbiumObject::Integer(rhs), TerbiumObject::String(lhs)) =&gt; {
+                        <span class="kw">let </span>loc = <span class="macro">store_auto!</span>(<span class="self">self</span>.ctx, TerbiumObject::String(
+                            <span class="self">self</span>.string_interner.intern(
+                                <span class="attribute">#[allow(clippy::cast_sign_loss)] </span><span class="comment">// Acts as a safety barrier to prevent overflow
+                                </span><span class="self">self</span>.string_interner.lookup(<span class="kw-2">*</span>lhs).repeat(<span class="kw-2">*</span>rhs <span class="kw">as </span>usize).as_str(),
                             )
                         ));
-                        <span class="self">self</span>.<span class="ident">ctx</span>.<span class="ident">push</span>(<span class="ident">loc</span>);
+                        <span class="self">self</span>.ctx.push(loc);
                     },
-                    <span class="kw">_</span> =&gt; {
-                        <span class="comment">// TODO</span>
-                    }
+                    <span class="kw">_ </span>=&gt; {
+                        <span class="comment">// TODO
+                    </span>}
                 ),
-                <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">unused_parens</span>)]</span>
-                <span class="ident">Instruction::OpEq</span> =&gt; <span class="macro">pat_num_ops!</span>(
-                    <span class="self">self</span>.<span class="ident">ctx</span>, <span class="ident">lhs</span>, <span class="ident">rhs</span>;
-                    <span class="macro">load_bool!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="kw-2">*</span><span class="ident">lhs</span> <span class="op">==</span> <span class="kw-2">*</span><span class="ident">rhs</span>),
-                    <span class="macro">load_bool!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="ident">lhs</span> <span class="op">==</span> <span class="ident">rhs</span>),
-                    <span class="macro">load_bool!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="ident">rhs</span>.<span class="ident">eq</span>(<span class="kw-2">&amp;</span>(<span class="kw-2">*</span><span class="ident">lhs</span> <span class="kw">as</span> <span class="ident">f64</span>))),
-                    <span class="macro">load_bool!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="ident">lhs</span>.<span class="ident">eq</span>(<span class="kw-2">&amp;</span>(<span class="kw-2">*</span><span class="ident">rhs</span> <span class="kw">as</span> <span class="ident">f64</span>)));
-                    (<span class="ident">TerbiumObject::String</span>(<span class="ident">rhs</span>), <span class="ident">TerbiumObject::String</span>(<span class="ident">lhs</span>)) =&gt; {
-                        <span class="kw">let</span> <span class="ident">b</span> <span class="op">=</span> <span class="macro">load_bool!</span>(<span class="self">self</span>.<span class="ident">ctx</span>,
-                            <span class="self">self</span>.<span class="ident">string_interner</span>.<span class="ident">lookup</span>(<span class="kw-2">*</span><span class="ident">lhs</span>)
-                            <span class="op">==</span> <span class="self">self</span>.<span class="ident">string_interner</span>.<span class="ident">lookup</span>(<span class="kw-2">*</span><span class="ident">rhs</span>)
+                <span class="attribute">#[allow(unused_parens)]
+                </span>Instruction::OpEq =&gt; <span class="macro">pat_num_ops!</span>(
+                    <span class="self">self</span>.ctx, lhs, rhs;
+                    <span class="macro">load_bool!</span>(<span class="self">self</span>.ctx, <span class="kw-2">*</span>lhs == <span class="kw-2">*</span>rhs),
+                    <span class="macro">load_bool!</span>(<span class="self">self</span>.ctx, lhs == rhs),
+                    <span class="macro">load_bool!</span>(<span class="self">self</span>.ctx, rhs.eq(<span class="kw-2">&amp;</span>(<span class="kw-2">*</span>lhs <span class="kw">as </span>f64))),
+                    <span class="macro">load_bool!</span>(<span class="self">self</span>.ctx, lhs.eq(<span class="kw-2">&amp;</span>(<span class="kw-2">*</span>rhs <span class="kw">as </span>f64)));
+                    (TerbiumObject::String(rhs), TerbiumObject::String(lhs)) =&gt; {
+                        <span class="kw">let </span>b = <span class="macro">load_bool!</span>(<span class="self">self</span>.ctx,
+                            <span class="self">self</span>.string_interner.lookup(<span class="kw-2">*</span>lhs)
+                            == <span class="self">self</span>.string_interner.lookup(<span class="kw-2">*</span>rhs)
                         );
-                        <span class="self">self</span>.<span class="ident">ctx</span>.<span class="ident">push</span>(<span class="ident">b</span>);
+                        <span class="self">self</span>.ctx.push(b);
                     },
-                    (<span class="ident">TerbiumObject::Bool</span>(<span class="ident">rhs</span>), <span class="ident">TerbiumObject::Bool</span>(<span class="ident">lhs</span>)) =&gt; {
-                        <span class="kw">let</span> <span class="ident">b</span> <span class="op">=</span> <span class="macro">load_bool!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="ident">lhs</span> <span class="op">==</span> <span class="ident">rhs</span>);
-                        <span class="self">self</span>.<span class="ident">ctx</span>.<span class="ident">push</span>(<span class="ident">b</span>);
+                    (TerbiumObject::Bool(rhs), TerbiumObject::Bool(lhs)) =&gt; {
+                        <span class="kw">let </span>b = <span class="macro">load_bool!</span>(<span class="self">self</span>.ctx, lhs == rhs);
+                        <span class="self">self</span>.ctx.push(b);
                     },
-                    (<span class="ident">TerbiumObject::Null</span>, <span class="ident">TerbiumObject::Null</span>) =&gt; {
-                        <span class="macro">push!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="macro">load_bool!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="bool-val">true</span>));
+                    (TerbiumObject::Null, TerbiumObject::Null) =&gt; {
+                        <span class="macro">push!</span>(<span class="self">self</span>.ctx, <span class="macro">load_bool!</span>(<span class="self">self</span>.ctx, <span class="bool-val">true</span>));
                     },
-                    ((<span class="ident">TerbiumObject::Null</span>, <span class="kw">_</span>) <span class="op">|</span> (<span class="kw">_</span>, <span class="ident">TerbiumObject::Null</span>)) =&gt; {
-                        <span class="macro">push!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="macro">load_bool!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="bool-val">false</span>));
+                    ((TerbiumObject::Null, <span class="kw">_</span>) | (<span class="kw">_</span>, TerbiumObject::Null)) =&gt; {
+                        <span class="macro">push!</span>(<span class="self">self</span>.ctx, <span class="macro">load_bool!</span>(<span class="self">self</span>.ctx, <span class="bool-val">false</span>));
                     },
-                    <span class="kw">_</span> =&gt; {
-                        <span class="comment">// TODO</span>
-                    }
+                    <span class="kw">_ </span>=&gt; {
+                        <span class="comment">// TODO
+                    </span>}
                 ),
-                <span class="attribute">#[<span class="ident">allow</span>(<span class="ident">unused_parens</span>)]</span>
-                <span class="ident">Instruction::OpNe</span> =&gt; <span class="macro">pat_num_ops!</span>(
-                    <span class="self">self</span>.<span class="ident">ctx</span>, <span class="ident">lhs</span>, <span class="ident">rhs</span>;
-                    <span class="macro">load_bool!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="kw-2">*</span><span class="ident">lhs</span> <span class="op">!</span><span class="op">=</span> <span class="kw-2">*</span><span class="ident">rhs</span>),
-                    <span class="macro">load_bool!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="ident">lhs</span> <span class="op">!</span><span class="op">=</span> <span class="ident">rhs</span>),
-                    <span class="macro">load_bool!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="op">!</span><span class="ident">rhs</span>.<span class="ident">eq</span>(<span class="kw-2">&amp;</span>(<span class="kw-2">*</span><span class="ident">lhs</span> <span class="kw">as</span> <span class="ident">f64</span>))),
-                    <span class="macro">load_bool!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="op">!</span><span class="ident">lhs</span>.<span class="ident">eq</span>(<span class="kw-2">&amp;</span>(<span class="kw-2">*</span><span class="ident">rhs</span> <span class="kw">as</span> <span class="ident">f64</span>)));
-                    (<span class="ident">TerbiumObject::String</span>(<span class="ident">rhs</span>), <span class="ident">TerbiumObject::String</span>(<span class="ident">lhs</span>)) =&gt; {
-                        <span class="kw">let</span> <span class="ident">b</span> <span class="op">=</span> <span class="macro">load_bool!</span>(<span class="self">self</span>.<span class="ident">ctx</span>,
-                            <span class="self">self</span>.<span class="ident">string_interner</span>.<span class="ident">lookup</span>(<span class="kw-2">*</span><span class="ident">lhs</span>)
-                            <span class="op">!</span><span class="op">=</span> <span class="self">self</span>.<span class="ident">string_interner</span>.<span class="ident">lookup</span>(<span class="kw-2">*</span><span class="ident">rhs</span>)
+                <span class="attribute">#[allow(unused_parens)]
+                </span>Instruction::OpNe =&gt; <span class="macro">pat_num_ops!</span>(
+                    <span class="self">self</span>.ctx, lhs, rhs;
+                    <span class="macro">load_bool!</span>(<span class="self">self</span>.ctx, <span class="kw-2">*</span>lhs != <span class="kw-2">*</span>rhs),
+                    <span class="macro">load_bool!</span>(<span class="self">self</span>.ctx, lhs != rhs),
+                    <span class="macro">load_bool!</span>(<span class="self">self</span>.ctx, !rhs.eq(<span class="kw-2">&amp;</span>(<span class="kw-2">*</span>lhs <span class="kw">as </span>f64))),
+                    <span class="macro">load_bool!</span>(<span class="self">self</span>.ctx, !lhs.eq(<span class="kw-2">&amp;</span>(<span class="kw-2">*</span>rhs <span class="kw">as </span>f64)));
+                    (TerbiumObject::String(rhs), TerbiumObject::String(lhs)) =&gt; {
+                        <span class="kw">let </span>b = <span class="macro">load_bool!</span>(<span class="self">self</span>.ctx,
+                            <span class="self">self</span>.string_interner.lookup(<span class="kw-2">*</span>lhs)
+                            != <span class="self">self</span>.string_interner.lookup(<span class="kw-2">*</span>rhs)
                         );
-                        <span class="self">self</span>.<span class="ident">ctx</span>.<span class="ident">push</span>(<span class="ident">b</span>);
+                        <span class="self">self</span>.ctx.push(b);
                     },
-                    (<span class="ident">TerbiumObject::Bool</span>(<span class="ident">rhs</span>), <span class="ident">TerbiumObject::Bool</span>(<span class="ident">lhs</span>)) =&gt; {
-                        <span class="kw">let</span> <span class="ident">b</span> <span class="op">=</span> <span class="macro">load_bool!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="ident">lhs</span> <span class="op">!</span><span class="op">=</span> <span class="ident">rhs</span>);
-                        <span class="self">self</span>.<span class="ident">ctx</span>.<span class="ident">push</span>(<span class="ident">b</span>);
+                    (TerbiumObject::Bool(rhs), TerbiumObject::Bool(lhs)) =&gt; {
+                        <span class="kw">let </span>b = <span class="macro">load_bool!</span>(<span class="self">self</span>.ctx, lhs != rhs);
+                        <span class="self">self</span>.ctx.push(b);
                     },
-                    (<span class="ident">TerbiumObject::Null</span>, <span class="ident">TerbiumObject::Null</span>) =&gt; {
-                        <span class="macro">push!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="macro">load_bool!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="bool-val">false</span>));
+                    (TerbiumObject::Null, TerbiumObject::Null) =&gt; {
+                        <span class="macro">push!</span>(<span class="self">self</span>.ctx, <span class="macro">load_bool!</span>(<span class="self">self</span>.ctx, <span class="bool-val">false</span>));
                     },
-                    ((<span class="ident">TerbiumObject::Null</span>, <span class="kw">_</span>) <span class="op">|</span> (<span class="kw">_</span>, <span class="ident">TerbiumObject::Null</span>)) =&gt; {
-                        <span class="macro">push!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="macro">load_bool!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="bool-val">true</span>));
+                    ((TerbiumObject::Null, <span class="kw">_</span>) | (<span class="kw">_</span>, TerbiumObject::Null)) =&gt; {
+                        <span class="macro">push!</span>(<span class="self">self</span>.ctx, <span class="macro">load_bool!</span>(<span class="self">self</span>.ctx, <span class="bool-val">true</span>));
                     },
-                    <span class="kw">_</span> =&gt; {
-                        <span class="comment">// TODO</span>
-                    }
+                    <span class="kw">_ </span>=&gt; {
+                        <span class="comment">// TODO
+                    </span>}
                 ),
-                <span class="ident">Instruction::OpLogicalNot</span> =&gt; {
-                    <span class="kw">let</span> <span class="ident">subject</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">ctx</span>.<span class="ident">pop_ref</span>();
-                    <span class="kw">let</span> <span class="ident">subject</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">ctx</span>.<span class="ident">store</span>.<span class="ident">resolve</span>(<span class="ident">subject</span>);
+                Instruction::OpLogicalNot =&gt; {
+                    <span class="kw">let </span>subject = <span class="self">self</span>.ctx.pop_ref();
+                    <span class="kw">let </span>subject = <span class="self">self</span>.ctx.store.resolve(subject);
 
-                    <span class="kw">match</span> <span class="ident">subject</span> {
-                        <span class="ident">TerbiumObject::Bool</span>(<span class="ident">b</span>) =&gt; <span class="macro">push!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="macro">load_bool!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="op">!</span><span class="kw-2">*</span><span class="ident">b</span>)),
-                        <span class="comment">// TODO: support custom not operation</span>
-                        <span class="ident">o</span> =&gt; <span class="macro">push!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="macro">load_bool!</span>(<span class="self">self</span>.<span class="ident">ctx</span>, <span class="op">!</span><span class="self">self</span>.<span class="ident">is_truthy</span>(<span class="ident">o</span>))),
+                    <span class="kw">match </span>subject {
+                        TerbiumObject::Bool(b) =&gt; <span class="macro">push!</span>(<span class="self">self</span>.ctx, <span class="macro">load_bool!</span>(<span class="self">self</span>.ctx, !<span class="kw-2">*</span>b)),
+                        <span class="comment">// TODO: support custom not operation
+                        </span>o =&gt; <span class="macro">push!</span>(<span class="self">self</span>.ctx, <span class="macro">load_bool!</span>(<span class="self">self</span>.ctx, !<span class="self">self</span>.is_truthy(o))),
                     }
                 }
-                <span class="ident">Instruction::Pop</span> =&gt; {
-                    <span class="self">self</span>.<span class="ident">ctx</span>.<span class="ident">pop_ref</span>();
+                Instruction::Pop =&gt; {
+                    <span class="self">self</span>.ctx.pop_ref();
                 }
-                <span class="ident">Instruction::Jump</span>(<span class="ident">addr</span>) =&gt; <span class="kw">match</span> <span class="ident">addr</span> {
-                    <span class="ident">Addr::Absolute</span>(<span class="ident">a</span>) =&gt; {
-                        <span class="ident">jump_history</span>.<span class="ident">push</span>(<span class="ident">pos</span>);
-                        <span class="ident">pos</span> <span class="op">=</span> <span class="ident">a</span>;
+                Instruction::Jump(addr) =&gt; <span class="kw">match </span>addr {
+                    Addr::Absolute(a) =&gt; {
+                        jump_history.push(pos);
+                        pos = a;
                         <span class="kw">continue</span>;
                     }
-                    <span class="kw">_</span> =&gt; <span class="macro">panic!</span>(<span class="string">&quot;attempted to run unresolved bytecode&quot;</span>),
+                    <span class="kw">_ </span>=&gt; <span class="macro">panic!</span>(<span class="string">&quot;attempted to run unresolved bytecode&quot;</span>),
                 },
-                <span class="ident">Instruction::JumpIf</span>(<span class="ident">addr</span>) =&gt; <span class="kw">match</span> <span class="ident">addr</span> {
-                    <span class="ident">Addr::Absolute</span>(<span class="ident">a</span>) =&gt; {
-                        <span class="kw">let</span> <span class="ident">popped</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">ctx</span>.<span class="ident">pop_ref</span>();
-                        <span class="kw">let</span> <span class="ident">popped</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">ctx</span>.<span class="ident">store</span>.<span class="ident">resolve</span>(<span class="ident">popped</span>);
+                Instruction::JumpIf(addr) =&gt; <span class="kw">match </span>addr {
+                    Addr::Absolute(a) =&gt; {
+                        <span class="kw">let </span>popped = <span class="self">self</span>.ctx.pop_ref();
+                        <span class="kw">let </span>popped = <span class="self">self</span>.ctx.store.resolve(popped);
 
-                        <span class="kw">if</span> <span class="self">self</span>.<span class="ident">is_truthy</span>(<span class="ident">popped</span>) {
-                            <span class="ident">jump_history</span>.<span class="ident">push</span>(<span class="ident">pos</span>);
-                            <span class="ident">pos</span> <span class="op">=</span> <span class="ident">a</span>;
+                        <span class="kw">if </span><span class="self">self</span>.is_truthy(popped) {
+                            jump_history.push(pos);
+                            pos = a;
                             <span class="kw">continue</span>;
                         }
                     }
-                    <span class="kw">_</span> =&gt; <span class="macro">panic!</span>(<span class="string">&quot;attempted to run unresolved bytecode&quot;</span>),
+                    <span class="kw">_ </span>=&gt; <span class="macro">panic!</span>(<span class="string">&quot;attempted to run unresolved bytecode&quot;</span>),
                 },
-                <span class="ident">Instruction::JumpIfElse</span>(<span class="ident">then</span>, <span class="ident">fb</span>) =&gt; <span class="kw">match</span> (<span class="ident">then</span>, <span class="ident">fb</span>) {
-                    (<span class="ident">Addr::Absolute</span>(<span class="ident">then</span>), <span class="ident">Addr::Absolute</span>(<span class="ident">fb</span>)) =&gt; {
-                        <span class="ident">jump_history</span>.<span class="ident">push</span>(<span class="ident">pos</span>);
-                        <span class="kw">let</span> <span class="ident">popped</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">ctx</span>.<span class="ident">pop_ref</span>();
-                        <span class="kw">let</span> <span class="ident">popped</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">ctx</span>.<span class="ident">store</span>.<span class="ident">resolve</span>(<span class="ident">popped</span>);
+                Instruction::JumpIfElse(then, fb) =&gt; <span class="kw">match </span>(then, fb) {
+                    (Addr::Absolute(then), Addr::Absolute(fb)) =&gt; {
+                        jump_history.push(pos);
+                        <span class="kw">let </span>popped = <span class="self">self</span>.ctx.pop_ref();
+                        <span class="kw">let </span>popped = <span class="self">self</span>.ctx.store.resolve(popped);
 
-                        <span class="ident">pos</span> <span class="op">=</span> <span class="kw">if</span> <span class="self">self</span>.<span class="ident">is_truthy</span>(<span class="ident">popped</span>) { <span class="ident">then</span> } <span class="kw">else</span> { <span class="ident">fb</span> };
+                        pos = <span class="kw">if </span><span class="self">self</span>.is_truthy(popped) { then } <span class="kw">else </span>{ fb };
                         <span class="kw">continue</span>;
                     }
-                    <span class="kw">_</span> =&gt; <span class="macro">panic!</span>(<span class="string">&quot;attempted to run unresolved bytecode&quot;</span>),
+                    <span class="kw">_ </span>=&gt; <span class="macro">panic!</span>(<span class="string">&quot;attempted to run unresolved bytecode&quot;</span>),
                 },
-                <span class="ident">Instruction::Ret</span> =&gt; {
-                    <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">back</span>) <span class="op">=</span> <span class="ident">jump_history</span>.<span class="ident">pop</span>() {
-                        <span class="ident">pos</span> <span class="op">=</span> <span class="ident">back</span>;
-                    } <span class="kw">else</span> {
+                Instruction::Ret =&gt; {
+                    <span class="kw">if let </span><span class="prelude-val">Some</span>(back) = jump_history.pop() {
+                        pos = back;
+                    } <span class="kw">else </span>{
                         <span class="kw">break</span>;
                     }
                 }
-                <span class="ident">Instruction::RetNull</span> =&gt; {
-                    <span class="self">self</span>.<span class="ident">ctx</span>.<span class="ident">push</span>(<span class="number">0</span>); <span class="comment">// 0 is null</span>
-                    <span class="kw">if</span> <span class="kw">let</span> <span class="prelude-val">Some</span>(<span class="ident">back</span>) <span class="op">=</span> <span class="ident">jump_history</span>.<span class="ident">pop</span>() {
-                        <span class="ident">pos</span> <span class="op">=</span> <span class="ident">back</span>;
-                    } <span class="kw">else</span> {
+                Instruction::RetNull =&gt; {
+                    <span class="self">self</span>.ctx.push(<span class="number">0</span>); <span class="comment">// 0 is null
+                    </span><span class="kw">if let </span><span class="prelude-val">Some</span>(back) = jump_history.pop() {
+                        pos = back;
+                    } <span class="kw">else </span>{
                         <span class="kw">break</span>;
                     }
                 }
-                <span class="ident">Instruction::Halt</span> =&gt; {
+                Instruction::Halt =&gt; {
                     <span class="kw">break</span>;
                 }
-                <span class="ident">Instruction::EnterScope</span> =&gt; <span class="self">self</span>.<span class="ident">ctx</span>.<span class="ident">enter_scope</span>(),
-                <span class="ident">Instruction::ExitScope</span> =&gt; <span class="self">self</span>.<span class="ident">ctx</span>.<span class="ident">exit_scope</span>(),
-                <span class="ident">Instruction::LoadVar</span>(<span class="ident">key</span>) =&gt; {
+                Instruction::EnterScope =&gt; <span class="self">self</span>.ctx.enter_scope(),
+                Instruction::ExitScope =&gt; <span class="self">self</span>.ctx.exit_scope(),
+                Instruction::LoadVar(key) =&gt; {
                     <span class="macro">push!</span>(
-                        <span class="self">self</span>.<span class="ident">ctx</span>,
-                        <span class="kw">match</span> <span class="self">self</span>.<span class="ident">ctx</span>.<span class="ident">lookup_var</span>(<span class="ident">key</span>) {
-                            <span class="prelude-val">Some</span>(<span class="ident">ScopeEntry</span> { <span class="ident">loc</span>, .. }) =&gt; <span class="kw-2">*</span><span class="ident">loc</span>,
-                            <span class="prelude-val">None</span> =&gt; {
-                                <span class="macro">todo!</span>(); <span class="comment">// TODO error if variable is not found</span>
-                            }
+                        <span class="self">self</span>.ctx,
+                        <span class="kw">match </span><span class="self">self</span>.ctx.lookup_var(key) {
+                            <span class="prelude-val">Some</span>(ScopeEntry { loc, .. }) =&gt; <span class="kw-2">*</span>loc,
+                            <span class="prelude-val">None </span>=&gt; {
+                                <span class="macro">todo!</span>(); <span class="comment">// TODO error if variable is not found
+                            </span>}
                         }
                     );
                 }
-                <span class="kw-2">ref</span> <span class="ident">instr</span> @ (<span class="ident">Instruction::StoreVar</span>(<span class="ident">key</span>)
-                <span class="op">|</span> <span class="ident">Instruction::StoreMutVar</span>(<span class="ident">key</span>)
-                <span class="op">|</span> <span class="ident">Instruction::StoreConstVar</span>(<span class="ident">key</span>)) =&gt; {
-                    <span class="kw">let</span> <span class="ident">loc</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">ctx</span>.<span class="ident">pop_ref</span>();
+                <span class="kw-2">ref </span>instr @ (Instruction::StoreVar(key)
+                | Instruction::StoreMutVar(key)
+                | Instruction::StoreConstVar(key)) =&gt; {
+                    <span class="kw">let </span>loc = <span class="self">self</span>.ctx.pop_ref();
 
-                    <span class="self">self</span>.<span class="ident">ctx</span>.<span class="ident">store_var</span>(
-                        <span class="ident">key</span>,
-                        <span class="ident">ScopeEntry</span> {
-                            <span class="ident">loc</span>,
-                            <span class="ident">r#mut</span>: <span class="macro">matches!</span>(<span class="ident">instr</span>, <span class="ident">Instruction::StoreMutVar</span>(<span class="kw">_</span>)),
-                            <span class="ident">r#const</span>: <span class="macro">matches!</span>(<span class="ident">instr</span>, <span class="ident">Instruction::StoreConstVar</span>(<span class="kw">_</span>)),
+                    <span class="self">self</span>.ctx.store_var(
+                        key,
+                        ScopeEntry {
+                            loc,
+                            r#mut: <span class="macro">matches!</span>(instr, Instruction::StoreMutVar(<span class="kw">_</span>)),
+                            r#const: <span class="macro">matches!</span>(instr, Instruction::StoreConstVar(<span class="kw">_</span>)),
                         },
                     );
                 }
-                <span class="ident">Instruction::AssignVar</span>(<span class="ident">key</span>) =&gt; {
-                    <span class="kw">let</span> <span class="ident">loc</span> <span class="op">=</span> <span class="self">self</span>.<span class="ident">ctx</span>.<span class="ident">pop_ref</span>();
+                Instruction::AssignVar(key) =&gt; {
+                    <span class="kw">let </span>loc = <span class="self">self</span>.ctx.pop_ref();
 
-                    <span class="self">self</span>.<span class="ident">ctx</span>.<span class="ident">assign_var</span>(<span class="ident">key</span>, <span class="ident">loc</span>);
+                    <span class="self">self</span>.ctx.assign_var(key, loc);
                 }
-                <span class="kw">_</span> =&gt; <span class="macro">todo!</span>(),
+                <span class="kw">_ </span>=&gt; <span class="macro">todo!</span>(),
             }
 
-            <span class="ident">pos</span> <span class="op">+</span><span class="op">=</span> <span class="number">1</span>;
+            pos += <span class="number">1</span>;
         }
     }
 
-    <span class="attribute">#[<span class="ident">must_use</span>]</span>
-    <span class="kw">pub</span> <span class="kw">fn</span> <span class="ident">get_object_repr</span>(<span class="kw-2">&amp;</span><span class="self">self</span>, <span class="ident">o</span>: <span class="kw-2">&amp;</span><span class="ident">TerbiumObject</span>) -&gt; <span class="ident">String</span> {
-        <span class="kw">match</span> <span class="ident">o</span> {
-            <span class="ident">TerbiumObject::Integer</span>(<span class="ident">i</span>) =&gt; <span class="ident">i</span>.<span class="ident">to_string</span>(),
-            <span class="ident">TerbiumObject::Float</span>(<span class="ident">f</span>) =&gt; <span class="ident">f</span>.<span class="number">0</span>.<span class="ident">to_string</span>(),
-            <span class="ident">TerbiumObject::String</span>(<span class="ident">s_id</span>) =&gt; <span class="macro">format!</span>(<span class="string">&quot;{:?}&quot;</span>, <span class="self">self</span>.<span class="ident">string_lookup</span>(<span class="kw-2">*</span><span class="ident">s_id</span>)),
-            <span class="ident">TerbiumObject::Bool</span>(<span class="ident">b</span>) =&gt; <span class="ident">b</span>.<span class="ident">to_string</span>(),
-            <span class="ident">TerbiumObject::Null</span> =&gt; <span class="string">&quot;null&quot;</span>.<span class="ident">to_string</span>(),
+    <span class="attribute">#[must_use]
+    </span><span class="kw">pub fn </span>get_object_repr(<span class="kw-2">&amp;</span><span class="self">self</span>, o: <span class="kw-2">&amp;</span>TerbiumObject) -&gt; String {
+        <span class="kw">match </span>o {
+            TerbiumObject::Integer(i) =&gt; i.to_string(),
+            TerbiumObject::Float(f) =&gt; f.<span class="number">0</span>.to_string(),
+            TerbiumObject::String(s_id) =&gt; <span class="macro">format!</span>(<span class="string">&quot;{:?}&quot;</span>, <span class="self">self</span>.string_lookup(<span class="kw-2">*</span>s_id)),
+            TerbiumObject::Bool(b) =&gt; b.to_string(),
+            TerbiumObject::Null =&gt; <span class="string">&quot;null&quot;</span>.to_string(),
         }
     }
 }
 
-<span class="kw">impl</span> <span class="ident">Default</span> <span class="kw">for</span> <span class="ident">Interpreter</span> {
-    <span class="kw">fn</span> <span class="ident">default</span>() -&gt; <span class="self">Self</span> {
-        <span class="ident"><span class="self">Self</span>::new</span>()
+<span class="kw">impl </span>Default <span class="kw">for </span>Interpreter {
+    <span class="kw">fn </span>default() -&gt; <span class="self">Self </span>{
+        <span class="self">Self</span>::new()
     }
 }
 
-<span class="kw">pub</span> <span class="kw">type</span> <span class="ident">DefaultInterpreter</span> <span class="op">=</span> <span class="ident">Interpreter</span><span class="op">&lt;</span><span class="number">512</span><span class="op">&gt;</span>;
+<span class="kw">pub type </span>DefaultInterpreter = Interpreter&lt;<span class="number">512</span>&gt;;
 </code></pre></div>
-</section></div></main><div id="rustdoc-vars" data-root-path="../../" data-current-crate="terbium_interpreter" data-themes="ayu,dark,light" data-resource-suffix="" data-rustdoc-version="1.64.0-nightly (f6f9d5e73 2022-08-04)" ></div></body></html>
+</section></div></main><div id="rustdoc-vars" data-root-path="../../" data-current-crate="terbium_interpreter" data-themes="ayu,dark,light" data-resource-suffix="" data-rustdoc-version="1.66.0-nightly (1898c34e9 2022-10-26)" ></div></body></html>
