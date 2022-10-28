@@ -362,9 +362,44 @@ impl Parser {
             }))
     }
 
+    /// Parses and consumes the next binary multiplication, division, or modulus expression.
+    pub fn consume_product(&mut self) -> Result<Spanned<Expr>> {
+        let original = self.consume_pow()?;
+
+        #[allow(unused_parens, reason = "parentheses are required as per macro rules")]
+        Ok(std::iter::repeat_with(|| {
+            consume_token!(
+                self,
+                (TokenInfo::Asterisk | TokenInfo::Divide | TokenInfo::Modulus)
+            )
+            .and_then(|op| Ok((self.consume_pow()?, op)))
+        })
+        .map_while(Result::ok)
+        .fold(original, |current, (expr, op)| {
+            let span = current.span().merge(expr.span());
+            let (op, op_span) = op.into_inner();
+            let op = match op {
+                TokenInfo::Asterisk => BinaryOp::Mul,
+                TokenInfo::Divide => BinaryOp::Div,
+                TokenInfo::Modulus => BinaryOp::Mod,
+                // SAFETY: checked when op token was consumed
+                _ => unsafe { std::hint::unreachable_unchecked() },
+            };
+
+            Spanned(
+                Expr::BinaryOp {
+                    left: box current,
+                    op: Spanned(op, op_span),
+                    right: box expr,
+                },
+                span,
+            )
+        }))
+    }
+
     /// Parses and consumes the next expression.
     pub fn consume_expr(&mut self) -> Result<Spanned<Expr>> {
-        self.consume_pow()
+        self.consume_product()
     }
 
     /// Parses and consumes the next node.
