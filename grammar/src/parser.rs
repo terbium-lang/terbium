@@ -131,10 +131,9 @@ macro_rules! expr_infix_impl {
         Ok(
             std::iter::repeat_with(|| $consume_op.and_then(|op| Ok(($consume_expr?, op))))
                 .map_while(Result::ok)
-                .fold(original, |current, (expr, op)| {
+                .fold(original, |current, (expr, $op_ident_name)| {
                     let span = current.span().merge(expr.span());
-                    let ($op_ident_name, op_span) = op.into_inner();
-                    let op = $transform_op;
+                    let (op, op_span) = $transform_op;
 
                     Spanned(
                         Expr::BinaryOp {
@@ -147,6 +146,16 @@ macro_rules! expr_infix_impl {
                 }),
         )
     }};
+    ($consume_expr:expr, @single($self:ident) $consume_op:pat, $op_ident_name:ident => $transform_op:expr) => {
+        expr_infix_impl!(
+            $consume_expr,
+            consume_token!($self, $consume_op),
+            op => {
+                let ($op_ident_name, op_span) = op.into_inner();
+                ($transform_op, op_span)
+            }
+        )
+    }
 }
 
 impl Parser {
@@ -306,45 +315,6 @@ impl Parser {
         }))
     }
 
-    /// Parses and consumes the next unary expression.
-    pub fn consume_unary(&mut self) -> Result<Spanned<Expr>> {
-        #[allow(clippy::needless_collect, reason = "see comment below")]
-        #[allow(unused_parens, reason = "parentheses are required as per macro rules")]
-        let tokens = std::iter::repeat_with(|| {
-            consume_token!(
-                self,
-                (TokenInfo::Plus | TokenInfo::Minus | TokenInfo::Not | TokenInfo::Tilde)
-            )
-        })
-        .map_while(Result::ok)
-        .collect::<Vec<_>>();
-
-        // We must collect then re-iterate over the tokens since otherwise there will be two
-        // mutable borrows of self.
-        Ok(tokens
-            .into_iter()
-            .rfold(self.consume_attr_access()?, |expr, op| {
-                let (op, op_span) = op.into_inner();
-                let op = match op {
-                    TokenInfo::Plus => UnaryOp::Plus,
-                    TokenInfo::Minus => UnaryOp::Minus,
-                    TokenInfo::Not => UnaryOp::Not,
-                    TokenInfo::Tilde => UnaryOp::BitNot,
-                    // SAFETY: checked when op token was consumed
-                    _ => unsafe { std::hint::unreachable_unchecked() },
-                };
-                let (expr, span) = expr.into_inner();
-
-                Spanned(
-                    Expr::UnaryOp {
-                        op: Spanned(op, op_span),
-                        expr: box Spanned(expr, span),
-                    },
-                    op_span.merge(span),
-                )
-            }))
-    }
-
     /// Parses and consumes the next binary power expression.
     pub fn consume_pow(&mut self) -> Result<Spanned<Expr>> {
         #[allow(clippy::needless_collect, reason = "see comment in consume_unary")]
@@ -353,7 +323,7 @@ impl Parser {
             let fallback = self.tokens.pos;
 
             // To conform to right-associtivity, we must immediately begin consuming tokens
-            self.consume_unary()
+            self.consume_attr_access()
                 .and_then(|expr| {
                     let op_span = consume_token!(self, TokenInfo::Asterisk)?.span();
                     Ok((expr, op_span))
@@ -369,9 +339,9 @@ impl Parser {
         .map_while(Result::ok)
         .collect::<Vec<_>>();
 
-        Ok(tokens
-            .into_iter()
-            .rfold(self.consume_unary()?, |current, (expr, mut op_span)| {
+        Ok(tokens.into_iter().rfold(
+            self.consume_attr_access()?,
+            |current, (expr, mut op_span)| {
                 let (expr, expr_span) = expr.into_inner();
                 let (current, current_span) = current.into_inner();
                 // This accounts for the second asterisk
@@ -385,14 +355,52 @@ impl Parser {
                     },
                     current_span.merge(expr_span),
                 )
-            }))
+            },
+        ))
+    }
+
+    /// Parses and consumes the next unary expression. This does not include the logical not
+    /// operator, that comes lower in precedence.
+    pub fn consume_unary(&mut self) -> Result<Spanned<Expr>> {
+        #[allow(clippy::needless_collect, reason = "see comment below")]
+        #[allow(unused_parens, reason = "parentheses are required as per macro rules")]
+        let tokens = std::iter::repeat_with(|| {
+            consume_token!(
+                self,
+                (TokenInfo::Plus | TokenInfo::Minus | TokenInfo::Tilde)
+            )
+        })
+        .map_while(Result::ok)
+        .collect::<Vec<_>>();
+
+        // We must collect then re-iterate over the tokens since otherwise there will be two
+        // mutable borrows of self.
+        Ok(tokens.into_iter().rfold(self.consume_pow()?, |expr, op| {
+            let (op, op_span) = op.into_inner();
+            let op = match op {
+                TokenInfo::Plus => UnaryOp::Plus,
+                TokenInfo::Minus => UnaryOp::Minus,
+                TokenInfo::Tilde => UnaryOp::BitNot,
+                // SAFETY: checked when op token was consumed
+                _ => unsafe { std::hint::unreachable_unchecked() },
+            };
+            let (expr, span) = expr.into_inner();
+
+            Spanned(
+                Expr::UnaryOp {
+                    op: Spanned(op, op_span),
+                    expr: box Spanned(expr, span),
+                },
+                op_span.merge(span),
+            )
+        }))
     }
 
     /// Parses and consumes the next binary multiplication, division, or modulus expression.
     pub fn consume_product(&mut self) -> Result<Spanned<Expr>> {
         expr_infix_impl!(
-            self.consume_pow(),
-            consume_token!(self, (TokenInfo::Asterisk | TokenInfo::Divide | TokenInfo::Modulus)),
+            self.consume_unary(),
+            @single(self) (TokenInfo::Asterisk | TokenInfo::Divide | TokenInfo::Modulus),
             op => match op {
                 TokenInfo::Asterisk => BinaryOp::Mul,
                 TokenInfo::Divide => BinaryOp::Div,
@@ -407,7 +415,7 @@ impl Parser {
     pub fn consume_sum(&mut self) -> Result<Spanned<Expr>> {
         expr_infix_impl!(
             self.consume_product(),
-            consume_token!(self, (TokenInfo::Plus | TokenInfo::Minus)),
+            @single(self) (TokenInfo::Plus | TokenInfo::Minus),
             op => match op {
                 TokenInfo::Plus => BinaryOp::Add,
                 TokenInfo::Minus => BinaryOp::Sub,
@@ -417,9 +425,57 @@ impl Parser {
         )
     }
 
+    /// Parses and consumes the next bitwise shift expression.
+    pub fn consume_bitwise_shift(&mut self) -> Result<Spanned<Expr>> {
+        expr_infix_impl!(
+            self.consume_sum(),
+            consume_token!(self, TokenInfo::Lt)
+                .and_then(|_| consume_token!(@no_ws self, TokenInfo::Lt))
+                .map_span(|_, span| (BinaryOp::Shl, span))
+                .or_else(|_| {
+                    consume_token!(self, TokenInfo::Gt)
+                        .and_then(|_| consume_token!(@no_ws self, TokenInfo::Gt))
+                        .map_span(|_, span| (BinaryOp::Shr, span))
+                })
+                .map(|(op, mut span)| {
+                    // This accounts for the second token
+                    span.start -= 1;
+                    (op, span)
+                }),
+            op => op
+        )
+    }
+
+    /// Parses and consumes the next bitwise AND expression.
+    pub fn consume_bitwise_and(&mut self) -> Result<Spanned<Expr>> {
+        expr_infix_impl!(
+            self.consume_bitwise_shift(),
+            @single(self) TokenInfo::And,
+            _op => BinaryOp::BitAnd
+        )
+    }
+
+    /// Parses and consumes the next bitwise XOR expression.
+    pub fn consume_bitwise_xor(&mut self) -> Result<Spanned<Expr>> {
+        expr_infix_impl!(
+            self.consume_bitwise_and(),
+            @single(self) TokenInfo::Caret,
+            _op => BinaryOp::BitXor
+        )
+    }
+
+    /// Parses and consumes the next bitwise OR expression.
+    pub fn consume_bitwise_or(&mut self) -> Result<Spanned<Expr>> {
+        expr_infix_impl!(
+            self.consume_bitwise_xor(),
+            @single(self) TokenInfo::Or,
+            _op => BinaryOp::BitOr
+        )
+    }
+
     /// Parses and consumes the next expression.
     pub fn consume_expr(&mut self) -> Result<Spanned<Expr>> {
-        self.consume_sum()
+        self.consume_bitwise_or()
     }
 
     /// Parses and consumes the next node.
