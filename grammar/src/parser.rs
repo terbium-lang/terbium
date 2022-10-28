@@ -123,6 +123,32 @@ macro_rules! assert_token {
     }};
 }
 
+macro_rules! expr_infix_impl {
+    ($consume_expr:expr, $consume_op:expr, $op_ident_name:ident => $transform_op:expr) => {{
+        let original = $consume_expr?;
+
+        #[allow(unused_parens, reason = "parentheses are required as per macro rules")]
+        Ok(
+            std::iter::repeat_with(|| $consume_op.and_then(|op| Ok(($consume_expr?, op))))
+                .map_while(Result::ok)
+                .fold(original, |current, (expr, op)| {
+                    let span = current.span().merge(expr.span());
+                    let ($op_ident_name, op_span) = op.into_inner();
+                    let op = $transform_op;
+
+                    Spanned(
+                        Expr::BinaryOp {
+                            left: box current,
+                            op: Spanned(op, op_span),
+                            right: box expr,
+                        },
+                        span,
+                    )
+                }),
+        )
+    }};
+}
+
 impl Parser {
     /// Skips all whitespace tokens.
     pub fn skip_ws(&mut self) {
@@ -364,42 +390,36 @@ impl Parser {
 
     /// Parses and consumes the next binary multiplication, division, or modulus expression.
     pub fn consume_product(&mut self) -> Result<Spanned<Expr>> {
-        let original = self.consume_pow()?;
-
-        #[allow(unused_parens, reason = "parentheses are required as per macro rules")]
-        Ok(std::iter::repeat_with(|| {
-            consume_token!(
-                self,
-                (TokenInfo::Asterisk | TokenInfo::Divide | TokenInfo::Modulus)
-            )
-            .and_then(|op| Ok((self.consume_pow()?, op)))
-        })
-        .map_while(Result::ok)
-        .fold(original, |current, (expr, op)| {
-            let span = current.span().merge(expr.span());
-            let (op, op_span) = op.into_inner();
-            let op = match op {
+        expr_infix_impl!(
+            self.consume_pow(),
+            consume_token!(self, (TokenInfo::Asterisk | TokenInfo::Divide | TokenInfo::Modulus)),
+            op => match op {
                 TokenInfo::Asterisk => BinaryOp::Mul,
                 TokenInfo::Divide => BinaryOp::Div,
                 TokenInfo::Modulus => BinaryOp::Mod,
                 // SAFETY: checked when op token was consumed
                 _ => unsafe { std::hint::unreachable_unchecked() },
-            };
+            }
+        )
+    }
 
-            Spanned(
-                Expr::BinaryOp {
-                    left: box current,
-                    op: Spanned(op, op_span),
-                    right: box expr,
-                },
-                span,
-            )
-        }))
+    /// Parses and consumes the next binary addition or subtraction expression.
+    pub fn consume_sum(&mut self) -> Result<Spanned<Expr>> {
+        expr_infix_impl!(
+            self.consume_product(),
+            consume_token!(self, (TokenInfo::Plus | TokenInfo::Minus)),
+            op => match op {
+                TokenInfo::Plus => BinaryOp::Add,
+                TokenInfo::Minus => BinaryOp::Sub,
+                // SAFETY: checked when op token was consumed
+                _ => unsafe { std::hint::unreachable_unchecked() },
+            }
+        )
     }
 
     /// Parses and consumes the next expression.
     pub fn consume_expr(&mut self) -> Result<Spanned<Expr>> {
-        self.consume_product()
+        self.consume_sum()
     }
 
     /// Parses and consumes the next node.
