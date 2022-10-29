@@ -103,6 +103,13 @@ impl Span {
             .reduce(Self::merge)
             .expect("Cannot create a span from an empty iterator")
     }
+
+    /// Extends the span one character to the left.
+    #[must_use]
+    pub(crate) const fn extend_back(mut self) -> Self {
+        self.start -= 1;
+        self
+    }
 }
 
 impl<R: sealed::RangeInclusiveExt> From<R> for Span {
