@@ -78,19 +78,17 @@ impl<T> ResultExt<T> for Result<Spanned<T>> {
 }
 
 macro_rules! consume_token {
-    (@no_ws $self:expr, $p:pat) => {{
-        loop {
-            match $self.tokens.peek() {
-                Some(t @ Spanned($p, _)) => {
-                    $self.tokens.next();
-                    break Ok(t);
-                }
-                Some(other) => break Err(Error::UnexpectedToken(other)),
-                None => break Err(Error::UnexpectedEof),
+    (@no_ws $self:ident, $p:pat) => {{
+        match $self.tokens.peek() {
+            Some(t @ Spanned($p, _)) => {
+                $self.tokens.next();
+                Ok(t)
             }
+            Some(other) => Err(Error::UnexpectedToken(other)),
+            None => Err(Error::UnexpectedEof),
         }
     }};
-    ($self:expr, $p:pat) => {{
+    ($self:ident, $p:pat) => {{
         loop {
             match $self.tokens.peek() {
                 Some(Spanned(TokenInfo::Whitespace, _)) => {
@@ -124,30 +122,50 @@ macro_rules! assert_token {
 }
 
 macro_rules! expr_infix_impl {
-    ($consume_expr:expr, $consume_op:expr, $op_ident_name:ident => $transform_op:expr) => {{
+    (
+        $self:ident,
+        $consume_expr:expr,
+        $consume_op:expr,
+        $op_ident_name:ident => $transform_op:expr
+    ) => {{
         let original = $consume_expr?;
 
         #[allow(unused_parens, reason = "parentheses are required as per macro rules")]
         Ok(
-            std::iter::repeat_with(|| $consume_op.and_then(|op| Ok(($consume_expr?, op))))
-                .map_while(Result::ok)
-                .fold(original, |current, (expr, $op_ident_name)| {
-                    let span = current.span().merge(expr.span());
-                    let (op, op_span) = $transform_op;
+            std::iter::repeat_with(||
+                {
+                    let fallback = $self.tokens.pos;
+                    $consume_op.map_err(|e| {
+                        $self.tokens.pos = fallback;
+                        e
+                    })
+                }
+                .and_then(|op| Ok(($consume_expr?, op)))
+            )
+            .map_while(Result::ok)
+            .fold(original, |current, (expr, $op_ident_name)| {
+                let span = current.span().merge(expr.span());
+                let (op, op_span) = $transform_op;
 
-                    Spanned(
-                        Expr::BinaryOp {
-                            left: box current,
-                            op: Spanned(op, op_span),
-                            right: box expr,
-                        },
-                        span,
-                    )
-                }),
+                Spanned(
+                    Expr::BinaryOp {
+                        left: box current,
+                        op: Spanned(op, op_span),
+                        right: box expr,
+                    },
+                    span,
+                )
+            }),
         )
     }};
-    ($consume_expr:expr, @single($self:ident) $consume_op:pat, $op_ident_name:ident => $transform_op:expr) => {
+    (
+        $self:ident,
+        $consume_expr:expr,
+        @single $consume_op:pat,
+        $op_ident_name:ident => $transform_op:expr
+    ) => {
         expr_infix_impl!(
+            $self,
             $consume_expr,
             consume_token!($self, $consume_op),
             op => {
@@ -399,8 +417,9 @@ impl Parser {
     /// Parses and consumes the next binary multiplication, division, or modulus expression.
     pub fn consume_product(&mut self) -> Result<Spanned<Expr>> {
         expr_infix_impl!(
+            self,
             self.consume_unary(),
-            @single(self) (TokenInfo::Asterisk | TokenInfo::Divide | TokenInfo::Modulus),
+            @single (TokenInfo::Asterisk | TokenInfo::Divide | TokenInfo::Modulus),
             op => match op {
                 TokenInfo::Asterisk => BinaryOp::Mul,
                 TokenInfo::Divide => BinaryOp::Div,
@@ -414,8 +433,9 @@ impl Parser {
     /// Parses and consumes the next binary addition or subtraction expression.
     pub fn consume_sum(&mut self) -> Result<Spanned<Expr>> {
         expr_infix_impl!(
+            self,
             self.consume_product(),
-            @single(self) (TokenInfo::Plus | TokenInfo::Minus),
+            @single (TokenInfo::Plus | TokenInfo::Minus),
             op => match op {
                 TokenInfo::Plus => BinaryOp::Add,
                 TokenInfo::Minus => BinaryOp::Sub,
@@ -428,6 +448,7 @@ impl Parser {
     /// Parses and consumes the next bitwise shift expression.
     pub fn consume_bitwise_shift(&mut self) -> Result<Spanned<Expr>> {
         expr_infix_impl!(
+            self,
             self.consume_sum(),
             consume_token!(self, TokenInfo::Lt)
                 .and_then(|_| consume_token!(@no_ws self, TokenInfo::Lt))
@@ -437,11 +458,7 @@ impl Parser {
                         .and_then(|_| consume_token!(@no_ws self, TokenInfo::Gt))
                         .map_span(|_, span| (BinaryOp::Shr, span))
                 })
-                .map(|(op, mut span)| {
-                    // This accounts for the second token
-                    span.start -= 1;
-                    (op, span)
-                }),
+                .map(|(op, span)| (op, span.extend_back())),
             op => op
         )
     }
@@ -449,8 +466,9 @@ impl Parser {
     /// Parses and consumes the next bitwise AND expression.
     pub fn consume_bitwise_and(&mut self) -> Result<Spanned<Expr>> {
         expr_infix_impl!(
+            self,
             self.consume_bitwise_shift(),
-            @single(self) TokenInfo::And,
+            @single TokenInfo::And,
             _op => BinaryOp::BitAnd
         )
     }
@@ -458,8 +476,9 @@ impl Parser {
     /// Parses and consumes the next bitwise XOR expression.
     pub fn consume_bitwise_xor(&mut self) -> Result<Spanned<Expr>> {
         expr_infix_impl!(
+            self,
             self.consume_bitwise_and(),
-            @single(self) TokenInfo::Caret,
+            @single TokenInfo::Caret,
             _op => BinaryOp::BitXor
         )
     }
@@ -467,15 +486,49 @@ impl Parser {
     /// Parses and consumes the next bitwise OR expression.
     pub fn consume_bitwise_or(&mut self) -> Result<Spanned<Expr>> {
         expr_infix_impl!(
+            self,
             self.consume_bitwise_xor(),
-            @single(self) TokenInfo::Or,
+            @single TokenInfo::Or,
             _op => BinaryOp::BitOr
+        )
+    }
+
+    /// Parses and consumes the next logical comparison expression.
+    pub fn consume_logical_comparison(&mut self) -> Result<Spanned<Expr>> {
+        expr_infix_impl!(
+            self,
+            self.consume_bitwise_or(),
+            consume_token!(self, TokenInfo::Equals)
+                .and_then(|_| consume_token!(@no_ws self, TokenInfo::Equals))
+                .map_span(|_, span| (BinaryOp::Eq, span.extend_back()))
+                .or_else(|_| {
+                    consume_token!(self, TokenInfo::Not)
+                        .and_then(|_| consume_token!(@no_ws self, TokenInfo::Equals))
+                        .map_span(|_, span| (BinaryOp::Ne, span.extend_back()))
+                })
+                .or_else(|_| {
+                    consume_token!(self, TokenInfo::Lt)
+                        .and_then_span(|_, lt_span| {
+                            consume_token!(@no_ws self, TokenInfo::Equals)
+                                .map_span(|_, eq_span| (BinaryOp::Le, eq_span.extend_back()))
+                                .or_else(|_| Ok((BinaryOp::Lt, lt_span)))
+                        })
+                })
+                .or_else(|_| {
+                    consume_token!(self, TokenInfo::Gt)
+                        .and_then_span(|_, gt_span| {
+                            consume_token!(@no_ws self, TokenInfo::Equals)
+                                .map_span(|_, eq_span| (BinaryOp::Ge, eq_span.extend_back()))
+                                .or_else(|_| Ok((BinaryOp::Gt, gt_span)))
+                        })
+                }),
+            op => op
         )
     }
 
     /// Parses and consumes the next expression.
     pub fn consume_expr(&mut self) -> Result<Spanned<Expr>> {
-        self.consume_bitwise_or()
+        self.consume_logical_comparison()
     }
 
     /// Parses and consumes the next node.
