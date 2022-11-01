@@ -1,3 +1,5 @@
 /target
 .gitpod.yml
 .idea
+.DS_Store
+.vscode

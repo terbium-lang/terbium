@@ -135,12 +135,11 @@ macro_rules! expr_infix_impl {
             std::iter::repeat_with(||
                 {
                     let fallback = $self.tokens.pos;
-                    $consume_op.map_err(|e| {
+                    $consume_op.and_then(|op| Ok(($consume_expr?, op))).map_err(|e| {
                         $self.tokens.pos = fallback;
                         e
                     })
                 }
-                .and_then(|op| Ok(($consume_expr?, op)))
             )
             .map_while(Result::ok)
             .fold(original, |current, (expr, $op_ident_name)| {
@@ -526,9 +525,59 @@ impl Parser {
         )
     }
 
+    /// Parses and consumes the next logical not expression.
+    pub fn consume_logical_not(&mut self) -> Result<Spanned<Expr>> {
+        #[allow(clippy::needless_collect, reason = "see comment below")]
+        #[allow(unused_parens, reason = "parentheses are required as per macro rules")]
+        let tokens = std::iter::repeat_with(|| consume_token!(self, TokenInfo::Not))
+            .map_while(Result::ok)
+            .collect::<Vec<_>>();
+
+        // We must collect then re-iterate over the tokens since otherwise there will be two
+        // mutable borrows of self.
+        Ok(tokens
+            .into_iter()
+            .rfold(self.consume_logical_comparison()?, |expr, op| {
+                let op_span = op.span();
+                let (expr, span) = expr.into_inner();
+
+                Spanned(
+                    Expr::UnaryOp {
+                        op: Spanned(UnaryOp::Not, op_span),
+                        expr: box Spanned(expr, span),
+                    },
+                    op_span.merge(span),
+                )
+            }))
+    }
+
+    /// Parses and consumes the next logical and expression.
+    pub fn consume_logical_and(&mut self) -> Result<Spanned<Expr>> {
+        expr_infix_impl!(
+            self,
+            self.consume_logical_not(),
+            consume_token!(self, TokenInfo::And)
+                .and_then(|_| consume_token!(@no_ws self, TokenInfo::And))
+                .map_span(|_, span| (BinaryOp::LogicalAnd, span.extend_back())),
+            op => op
+        )
+    }
+
+    /// Parses and consumes the next logical or expression.
+    pub fn consume_logical_or(&mut self) -> Result<Spanned<Expr>> {
+        expr_infix_impl!(
+            self,
+            self.consume_logical_and(),
+            consume_token!(self, TokenInfo::Or)
+                .and_then(|_| consume_token!(@no_ws self, TokenInfo::Or))
+                .map_span(|_, span| (BinaryOp::LogicalOr, span.extend_back())),
+            op => op
+        )
+    }
+
     /// Parses and consumes the next expression.
     pub fn consume_expr(&mut self) -> Result<Spanned<Expr>> {
-        self.consume_logical_comparison()
+        self.consume_logical_or()
     }
 
     /// Parses and consumes the next node.

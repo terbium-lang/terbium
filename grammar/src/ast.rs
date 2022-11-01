@@ -264,6 +264,27 @@ pub enum Expr {
         /// The attribute being accessed.
         attr: String,
     },
+    /// A range expression.
+    ///
+    /// A range expression can be represented by one of the following:
+    /// * `start..end` -> `[start, end)`
+    /// * `start..=end` -> `[start, end]`
+    /// * `..end` -> `[?, end)` (where `?` varies based on context)
+    /// * `..=end` -> `[?, end]` (where `?` varies based on context)
+    /// * `start..` -> `[start, ?)` (where `?` varies based on context)
+    /// * `start..=` -> `[start, ?]` (where `?` varies based on context)
+    /// * `..` -> `[?, ?)` (where `?` varies based on context)
+    /// * `..=` -> `[?, ?]` (where `?` varies based on context)
+    Range {
+        /// The start value of the range. There might not be a start.
+        start: Option<Box<Spanned<Expr>>>,
+        /// The span of the `..` or `..=` token.
+        sep: Span,
+        /// Whether the range is inclusive.
+        inclusive: bool,
+        /// The end value of the range. There might not be an end.
+        end: Option<Box<Spanned<Expr>>>,
+    },
 }
 
 impl fmt::Display for Expr {
@@ -292,6 +313,20 @@ impl fmt::Display for Expr {
             Self::UnaryOp { op, expr } => write!(f, "({}{})", op, expr),
             Self::BinaryOp { left, op, right } => write!(f, "({} {} {})", left, op, right),
             Self::Attr { subject, attr, .. } => write!(f, "({}.{})", subject, attr),
+            Self::Range {
+                start,
+                inclusive,
+                end,
+                ..
+            } => {
+                write!(
+                    f,
+                    "({}..{}{})",
+                    start.as_ref().map(ToString::to_string).unwrap_or_default(),
+                    if *inclusive { "=" } else { "" },
+                    end.as_ref().map(ToString::to_string).unwrap_or_default()
+                )
+            }
         }
     }
 }
