@@ -135,7 +135,15 @@ macro_rules! expr_infix_impl {
             std::iter::repeat_with(||
                 {
                     let fallback = $self.tokens.pos;
-                    $consume_op.and_then(|op| Ok(($consume_expr?, op))).map_err(|e| {
+                    $consume_op.and_then(|op| Ok(
+                        (
+                            $self.consume_unary()
+                                .or_else(|_| $self.consume_logical_not())
+                                .or_else(|_| $consume_expr)?,
+                            op,
+                        ),
+                    ))
+                    .map_err(|e| {
                         $self.tokens.pos = fallback;
                         e
                     })
