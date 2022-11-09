@@ -12,10 +12,10 @@ pub enum Error {
     /// An error occured during tokenization.
     Tokenization(TokenizationError),
     /// An unexpected token was encountered.
-    UnexpectedToken(Token),
+    UnexpectedToken { expected: String, found: Token },
     /// Encountered the end of the input.
     UnexpectedEof,
-    /// An unmatched closing parenthesis was encountered.
+    /// An unmatched closing delimiter was encountered.
     /// The span is the span of the starting delimiter.
     UnmatchedDelimiter(Delimiter, Span),
     /// Unknown escape sequence encountered.
@@ -78,17 +78,20 @@ impl<T> ResultExt<T> for Result<Spanned<T>> {
 }
 
 macro_rules! consume_token {
-    (@no_ws $self:ident, $p:pat) => {{
+    (@no_ws $self:ident, $p:pat, $expecting:expr) => {{
         match $self.tokens.peek() {
             Some(t @ Spanned($p, _)) => {
                 $self.tokens.next();
                 Ok(t)
             }
-            Some(other) => Err(Error::UnexpectedToken(other)),
+            Some(other) => Err(Error::UnexpectedToken {
+                expected: $expecting.to_string(),
+                found: other,
+            }),
             None => Err(Error::UnexpectedEof),
         }
     }};
-    ($self:ident, $p:pat) => {{
+    ($self:ident, $p:pat, $expecting:expr) => {{
         loop {
             match $self.tokens.peek() {
                 Some(Spanned(TokenInfo::Whitespace, _)) => {
@@ -98,7 +101,12 @@ macro_rules! consume_token {
                     $self.tokens.next();
                     break Ok(t);
                 }
-                Some(other) => break Err(Error::UnexpectedToken(other)),
+                Some(other) => {
+                    break Err(Error::UnexpectedToken {
+                        expected: $expecting.to_string(),
+                        found: other,
+                    })
+                }
                 None => break Err(Error::UnexpectedEof),
             }
         }
@@ -169,18 +177,29 @@ macro_rules! expr_infix_impl {
         $self:ident,
         $consume_expr:expr,
         @single $consume_op:pat,
+        $expecting:expr,
         $op_ident_name:ident => $transform_op:expr
     ) => {
         expr_infix_impl!(
             $self,
             $consume_expr,
-            consume_token!($self, $consume_op),
+            consume_token!($self, $consume_op, $expecting),
             op => {
                 let ($op_ident_name, op_span) = op.into_inner();
                 ($transform_op, op_span)
             }
         )
     }
+}
+
+macro_rules! fallback {
+    ($self:ident, $consume:expr) => {{
+        let fallback = $self.tokens.pos;
+        $consume.map_err(|e| {
+            $self.tokens.pos = fallback;
+            e
+        })
+    }};
 }
 
 impl Parser {
@@ -251,13 +270,83 @@ impl Parser {
         Ok(result)
     }
 
+    /// Parses expressions separated by the given separator.
+    pub fn separated_by<T>(
+        &mut self,
+        mut consumer: impl FnMut(&mut Self) -> Result<T>,
+        separator: &TokenInfo,
+    ) -> Result<(Vec<T>, bool)> {
+        let mut result = Vec::new();
+        let mut is_empty = true;
+
+        loop {
+            if let Ok(res) = fallback!(self, consumer(self)) {
+                result.push(res);
+            } else {
+                return Ok((result, is_empty));
+            }
+
+            self.skip_ws();
+            match self.tokens.peek() {
+                Some(token) if &token.0 == separator => {
+                    is_empty = false;
+                    self.tokens.next();
+                }
+                _ => return Ok((result, false)),
+            }
+        }
+    }
+
+    /// Parses expressions delimited by the given delimiter. Fallbacks for this must be handled
+    /// by the caller.
+    fn delimited_by<T>(
+        &mut self,
+        consumer: impl FnOnce(&mut Self) -> Result<T>,
+        delimiter: Delimiter,
+    ) -> Result<(Span, T, Span)> {
+        self.skip_ws();
+        let open_span = match self.tokens.peek() {
+            Some(Spanned(token, span)) if token == delimiter.open_token() => {
+                self.tokens.next();
+                span
+            }
+            Some(found) => {
+                return Err(Error::UnexpectedToken {
+                    expected: format!("opening delimiter `{}`", delimiter.open()),
+                    found,
+                })
+            }
+            None => return Err(Error::UnexpectedEof),
+        };
+
+        self.skip_ws();
+        let result = consumer(self)?;
+
+        self.skip_ws();
+        let close_span = match self.tokens.peek() {
+            Some(Spanned(token, span)) if token == delimiter.close_token() => {
+                self.tokens.next();
+                span
+            }
+            Some(found) => {
+                return Err(Error::UnexpectedToken {
+                    expected: format!("closing delimiter `{}`", delimiter.close()),
+                    found,
+                })
+            }
+            None => return Err(Error::UnmatchedDelimiter(delimiter, open_span)),
+        };
+
+        Ok((open_span, result, close_span))
+    }
+
     /// Parses and consumes the next atom. An atom is the most basic unit of an expression that
     /// cannot be broken down into other expressions any further.
     ///
     /// For example, 1 is an atom, as is "hello" - but 1 + 1 is not, since that can be further
     /// broken down into two expressions.
     pub fn consume_atom(&mut self) -> Result<Spanned<Atom>> {
-        consume_token!(self, TokenInfo::IntLiteral(..)).map_span(|info, span| {
+        consume_token!(self, TokenInfo::IntLiteral(..), "integer literal").map_span(|info, span| {
             Spanned(
                 {
                     let (val, radix) =
@@ -268,14 +357,14 @@ impl Parser {
             )
         })
         .or_else(|_| {
-            consume_token!(self, TokenInfo::FloatLiteral(_))
+            consume_token!(self, TokenInfo::FloatLiteral(_), "float literal")
                 .map_span(|info, span| Spanned(
                     Atom::Float(assert_token!(@unsafe info: TokenInfo::FloatLiteral(i) => i)),
                     span,
                 ))
         })
         .or_else(|_| {
-            consume_token!(self, TokenInfo::Ident(..))
+            consume_token!(self, TokenInfo::Ident(..), "identifier")
                 .map_span(|info, span| Spanned(
                     match assert_token!(@unsafe info: TokenInfo::Ident(i) => i).as_str() {
                         "true" => Atom::Bool(true),
@@ -286,7 +375,7 @@ impl Parser {
                 ))
         })
         .or_else(|_| {
-            consume_token!(self, TokenInfo::StringLiteral(..))
+            consume_token!(self, TokenInfo::StringLiteral(..), "string literal")
                 .and_then_span(|info, span| Ok(Spanned(
                     Atom::String(assert_token!(
                         @unsafe info: TokenInfo::StringLiteral(s, flags, content_span)
@@ -297,23 +386,42 @@ impl Parser {
         })
     }
 
+    /// Parses the next comma-separated delimited expression.
+    pub fn consume_comma_separated_delimited(
+        &mut self,
+        delimiter: Delimiter,
+        wrapper: impl FnOnce(Vec<Spanned<Expr>>) -> Expr,
+    ) -> Result<Spanned<Expr>> {
+        let res = self.delimited_by(
+            |parser| {
+                parser
+                    .separated_by(Self::consume_expr, &TokenInfo::Comma)
+                    .map(|res| res.0)
+            },
+            delimiter,
+        );
+        let (open_span, elements, close_span) = fallback!(self, res)?;
+        Ok(Spanned(wrapper(elements), open_span.merge(close_span)))
+    }
+
     /// Parses and consumes the next expression that does not have to be orderly disambiguated
     /// against.
     pub fn consume_unambiguous_expr(&mut self) -> Result<Spanned<Expr>> {
         // Parenthesized expression
-        consume_token!(self, TokenInfo::LeftParen)
-            .and_then_span(|_, span| {
-                let expr = self.consume_expr()?;
-                consume_token!(self, TokenInfo::RightParen)
-                    .map_err(|_| Error::UnmatchedDelimiter(Delimiter::Paren, span))?;
-
-                Ok(expr)
-            })
-            // Atom
-            .or_else(|_| {
-                self.consume_atom()
-                    .map_span(|atom, span| Spanned(Expr::Atom(atom), span))
-            })
+        fallback!(
+            self,
+            self.delimited_by(Self::consume_expr, Delimiter::Paren)
+        )
+        .map(|(_, expr, _)| expr)
+        // Tuple
+        .or_else(|_| self.consume_comma_separated_delimited(Delimiter::Paren, Expr::Tuple))
+        // Array
+        .or_else(|_| self.consume_comma_separated_delimited(Delimiter::Bracket, Expr::Array))
+        // Atom
+        .or_else(|_| {
+            self.consume_atom()
+                .map_span(|atom, span| Spanned(Expr::Atom(atom), span))
+        })
     }
 
     /// Parses the next attribute access expression.
@@ -321,8 +429,9 @@ impl Parser {
         let original = self.consume_unambiguous_expr()?;
 
         Ok(std::iter::repeat_with(|| {
-            consume_token!(self, TokenInfo::Dot).and_then_span(|_, dot| {
-                consume_token!(self, TokenInfo::Ident(_)).map_span(|token, span| (token, span, dot))
+            consume_token!(self, TokenInfo::Dot, ".").and_then_span(|_, dot| {
+                consume_token!(self, TokenInfo::Ident(_), "identifier")
+                    .map_span(|token, span| (token, span, dot))
             })
         })
         .map_while(Result::ok)
@@ -350,10 +459,10 @@ impl Parser {
             // To conform to right-associtivity, we must immediately begin consuming tokens
             self.consume_attr_access()
                 .and_then(|expr| {
-                    let op_span = consume_token!(self, TokenInfo::Asterisk)?.span();
+                    let op_span = consume_token!(self, TokenInfo::Asterisk, "*")?.span();
                     Ok((expr, op_span))
                 })
-                .and_then(|o| consume_token!(@no_ws self, TokenInfo::Asterisk).map(|_| o))
+                .and_then(|o| consume_token!(@no_ws self, TokenInfo::Asterisk, "**").map(|_| o))
                 // ...however, if there is a problem consuming, reset the token stream to the
                 // previous position.
                 .map_err(|e| {
@@ -392,7 +501,8 @@ impl Parser {
         let tokens = std::iter::repeat_with(|| {
             consume_token!(
                 self,
-                (TokenInfo::Plus | TokenInfo::Minus | TokenInfo::Tilde)
+                (TokenInfo::Plus | TokenInfo::Minus | TokenInfo::Tilde),
+                "unary operator (+, -, ~)"
             )
         })
         .map_while(Result::ok)
@@ -427,6 +537,7 @@ impl Parser {
             self,
             self.consume_unary(),
             @single (TokenInfo::Asterisk | TokenInfo::Divide | TokenInfo::Modulus),
+            "multiplication, division, or modulus operator",
             op => match op {
                 TokenInfo::Asterisk => BinaryOp::Mul,
                 TokenInfo::Divide => BinaryOp::Div,
@@ -443,6 +554,7 @@ impl Parser {
             self,
             self.consume_product(),
             @single (TokenInfo::Plus | TokenInfo::Minus),
+            "addition or subtraction operator",
             op => match op {
                 TokenInfo::Plus => BinaryOp::Add,
                 TokenInfo::Minus => BinaryOp::Sub,
@@ -457,12 +569,12 @@ impl Parser {
         expr_infix_impl!(
             self,
             self.consume_sum(),
-            consume_token!(self, TokenInfo::Lt)
-                .and_then(|_| consume_token!(@no_ws self, TokenInfo::Lt))
+            consume_token!(self, TokenInfo::Lt, "<")
+                .and_then(|_| consume_token!(@no_ws self, TokenInfo::Lt, "<<"))
                 .map_span(|_, span| (BinaryOp::Shl, span))
                 .or_else(|_| {
-                    consume_token!(self, TokenInfo::Gt)
-                        .and_then(|_| consume_token!(@no_ws self, TokenInfo::Gt))
+                    consume_token!(self, TokenInfo::Gt, ">")
+                        .and_then(|_| consume_token!(@no_ws self, TokenInfo::Gt, ">>"))
                         .map_span(|_, span| (BinaryOp::Shr, span))
                 })
                 .map(|(op, span)| (op, span.extend_back())),
@@ -476,6 +588,7 @@ impl Parser {
             self,
             self.consume_bitwise_shift(),
             @single TokenInfo::And,
+            "bitwise and operator",
             _op => BinaryOp::BitAnd
         )
     }
@@ -486,6 +599,7 @@ impl Parser {
             self,
             self.consume_bitwise_and(),
             @single TokenInfo::Caret,
+            "bitwise xor operator",
             _op => BinaryOp::BitXor
         )
     }
@@ -496,6 +610,7 @@ impl Parser {
             self,
             self.consume_bitwise_xor(),
             @single TokenInfo::Or,
+            "bitwise or operator",
             _op => BinaryOp::BitOr
         )
     }
@@ -505,26 +620,26 @@ impl Parser {
         expr_infix_impl!(
             self,
             self.consume_bitwise_or(),
-            consume_token!(self, TokenInfo::Equals)
-                .and_then(|_| consume_token!(@no_ws self, TokenInfo::Equals))
+            consume_token!(self, TokenInfo::Equals, "=")
+                .and_then(|_| consume_token!(@no_ws self, TokenInfo::Equals, "=="))
                 .map_span(|_, span| (BinaryOp::Eq, span.extend_back()))
                 .or_else(|_| {
-                    consume_token!(self, TokenInfo::Not)
-                        .and_then(|_| consume_token!(@no_ws self, TokenInfo::Equals))
+                    consume_token!(self, TokenInfo::Not, "!")
+                        .and_then(|_| consume_token!(@no_ws self, TokenInfo::Equals, "!="))
                         .map_span(|_, span| (BinaryOp::Ne, span.extend_back()))
                 })
                 .or_else(|_| {
-                    consume_token!(self, TokenInfo::Lt)
+                    consume_token!(self, TokenInfo::Lt, "<")
                         .and_then_span(|_, lt_span| {
-                            consume_token!(@no_ws self, TokenInfo::Equals)
+                            consume_token!(@no_ws self, TokenInfo::Equals, "<=")
                                 .map_span(|_, eq_span| (BinaryOp::Le, eq_span.extend_back()))
                                 .or_else(|_| Ok((BinaryOp::Lt, lt_span)))
                         })
                 })
                 .or_else(|_| {
-                    consume_token!(self, TokenInfo::Gt)
+                    consume_token!(self, TokenInfo::Gt, ">")
                         .and_then_span(|_, gt_span| {
-                            consume_token!(@no_ws self, TokenInfo::Equals)
+                            consume_token!(@no_ws self, TokenInfo::Equals, ">=")
                                 .map_span(|_, eq_span| (BinaryOp::Ge, eq_span.extend_back()))
                                 .or_else(|_| Ok((BinaryOp::Gt, gt_span)))
                         })
@@ -537,7 +652,7 @@ impl Parser {
     pub fn consume_logical_not(&mut self) -> Result<Spanned<Expr>> {
         #[allow(clippy::needless_collect, reason = "see comment below")]
         #[allow(unused_parens, reason = "parentheses are required as per macro rules")]
-        let tokens = std::iter::repeat_with(|| consume_token!(self, TokenInfo::Not))
+        let tokens = std::iter::repeat_with(|| consume_token!(self, TokenInfo::Not, "!"))
             .map_while(Result::ok)
             .collect::<Vec<_>>();
 
@@ -564,8 +679,8 @@ impl Parser {
         expr_infix_impl!(
             self,
             self.consume_logical_not(),
-            consume_token!(self, TokenInfo::And)
-                .and_then(|_| consume_token!(@no_ws self, TokenInfo::And))
+            consume_token!(self, TokenInfo::And, "&")
+                .and_then(|_| consume_token!(@no_ws self, TokenInfo::And, "&&"))
                 .map_span(|_, span| (BinaryOp::LogicalAnd, span.extend_back())),
             op => op
         )
@@ -576,8 +691,8 @@ impl Parser {
         expr_infix_impl!(
             self,
             self.consume_logical_and(),
-            consume_token!(self, TokenInfo::Or)
-                .and_then(|_| consume_token!(@no_ws self, TokenInfo::Or))
+            consume_token!(self, TokenInfo::Or, "|")
+                .and_then(|_| consume_token!(@no_ws self, TokenInfo::Or, "||"))
                 .map_span(|_, span| (BinaryOp::LogicalOr, span.extend_back())),
             op => op
         )

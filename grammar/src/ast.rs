@@ -1,6 +1,7 @@
 //! Models representing the abstract syntax tree.
 
 use super::{Radix, Span};
+use crate::TokenInfo;
 use std::fmt::{self, Formatter};
 
 /// A compound of a span and a value.
@@ -176,6 +177,28 @@ impl Delimiter {
             Self::Bracket => ']',
             Self::Brace => '}',
             Self::Angle => '>',
+        }
+    }
+
+    /// Returns the opening delimiter as a token.
+    #[must_use]
+    pub const fn open_token(self) -> TokenInfo {
+        match self {
+            Self::Paren => TokenInfo::LeftParen,
+            Self::Bracket => TokenInfo::LeftBracket,
+            Self::Brace => TokenInfo::LeftBrace,
+            Self::Angle => TokenInfo::Lt,
+        }
+    }
+
+    /// Returns the closing delimiter as a token.
+    #[must_use]
+    pub const fn close_token(self) -> TokenInfo {
+        match self {
+            Self::Paren => TokenInfo::RightParen,
+            Self::Bracket => TokenInfo::RightBracket,
+            Self::Brace => TokenInfo::RightBrace,
+            Self::Angle => TokenInfo::Gt,
         }
     }
 }
