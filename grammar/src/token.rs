@@ -1,5 +1,5 @@
 use super::{Span, Spanned};
-use std::str::Chars;
+use std::{fmt, str::Chars};
 use unicode_xid::UnicodeXID;
 
 /// Bitflags representing extra flags about a string (i.e. interpolated, raw).
@@ -157,6 +157,17 @@ pub struct Error {
     /// The kind of error this is.
     pub kind: ErrorKind,
 }
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: ", self.span)?;
+        match self.kind {
+            ErrorKind::UnexpectedCharacter(c) => write!(f, "unexpected character '{c}'"),
+        }
+    }
+}
+
+impl std::error::Error for Error {}
 
 /// A wrapped iterator over a `Char` iterator.
 #[derive(Clone)]

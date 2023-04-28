@@ -14,11 +14,13 @@
 #![feature(const_trait_impl)]
 #![feature(lint_reasons)]
 #![feature(never_type)]
+#![feature(let_chains)]
 
 pub mod ast;
 pub mod parser;
 mod token;
 
+use std::fmt;
 pub use ast::Spanned;
 pub use parser::Parser;
 pub use token::{
@@ -32,6 +34,12 @@ pub struct Span {
     pub start: usize,
     /// One more than the index of the last byte of the span.
     pub end: usize,
+}
+
+impl fmt::Display for Span {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}..{}", self.start, self.end)
+    }
 }
 
 mod sealed {
