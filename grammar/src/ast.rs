@@ -220,13 +220,13 @@ impl fmt::Display for Delimiter {
 /// it is composed of two expressions.
 #[derive(Clone, Debug)]
 pub enum Atom {
-    /// An integer.
+    /// An integer litereal.
     Int(String, Radix),
-    /// A floating-point number.
+    /// A floating-point number literal.
     Float(String),
-    /// A string. For string literals, this is after resolving escape sequences.
+    /// A string literal. This is after resolving escape sequences.
     String(String),
-    /// A boolean.
+    /// A boolean literal.
     Bool(bool),
     /// A non-keyword identifier.
     Ident(String),

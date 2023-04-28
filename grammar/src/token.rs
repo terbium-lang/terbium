@@ -81,6 +81,10 @@ pub enum TokenInfo {
     /// This accounts for all strings, i.e. "normal", ~"raw", #"multiline"#, $"interpolated",
     /// and even ~$#"combinations of them all"#.
     StringLiteral(String, StringLiteralFlags, Span),
+    /// A byte-string literal, such as b"sample". These may not be valid UTF-8.
+    ByteStringLiteral(Vec<u8>, StringLiteralFlags, Span),
+    /// A character literal, such as c'a'.
+    CharLiteral(char, Span),
     /// An integer literal, such as 123, 0, or 0x123.
     IntLiteral(String, Radix),
     /// A float literal, such as 1.23, 0.0, or 1e-10.

@@ -12,7 +12,6 @@
     reason = "items are not usually accessed directly"
 )]
 #![feature(const_trait_impl)]
-#![feature(box_syntax)]
 #![feature(lint_reasons)]
 #![feature(never_type)]
 

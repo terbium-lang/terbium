@@ -60,6 +60,7 @@ impl Iterator for TokenCursor {
 #[derive(Clone)]
 pub struct Parser {
     tokens: TokenCursor,
+    pub errors: Vec<Error>,
 }
 
 trait ResultExt<T> {
@@ -84,11 +85,11 @@ macro_rules! consume_token {
                 $self.tokens.next();
                 Ok(t)
             }
-            Some(other) => Err(Error::UnexpectedToken {
+            Some(other) => Err($self.save_err(Error::UnexpectedToken {
                 expected: $expecting.to_string(),
                 found: other,
-            }),
-            None => Err(Error::UnexpectedEof),
+            })),
+            None => Err($self.save_err(Error::UnexpectedEof)),
         }
     }};
     ($self:ident, $p:pat, $expecting:expr) => {{
@@ -102,12 +103,12 @@ macro_rules! consume_token {
                     break Ok(t);
                 }
                 Some(other) => {
-                    break Err(Error::UnexpectedToken {
+                    break Err($self.save_err(Error::UnexpectedToken {
                         expected: $expecting.to_string(),
                         found: other,
-                    })
+                    }))
                 }
-                None => break Err(Error::UnexpectedEof),
+                None => break Err($self.save_err(Error::UnexpectedEof)),
             }
         }
     }};
@@ -164,9 +165,9 @@ macro_rules! expr_infix_impl {
 
                 Spanned(
                     Expr::BinaryOp {
-                        left: box current,
+                        left: Box::new(current),
                         op: Spanned(op, op_span),
-                        right: box expr,
+                        right: Box::new(expr),
                     },
                     span,
                 )
@@ -203,6 +204,12 @@ macro_rules! fallback {
 }
 
 impl Parser {
+    #[inline]
+    fn save_err(&mut self, e: Error) -> Error {
+        self.errors.push(e.clone());
+        e
+    }
+
     /// Skips all whitespace tokens.
     pub fn skip_ws(&mut self) {
         while let Some(Spanned(TokenInfo::Whitespace, _)) = self.tokens.peek() {
@@ -311,12 +318,12 @@ impl Parser {
                 span
             }
             Some(found) => {
-                return Err(Error::UnexpectedToken {
+                return Err(self.save_err(Error::UnexpectedToken {
                     expected: format!("opening delimiter `{}`", delimiter.open()),
                     found,
-                })
+                }));
             }
-            None => return Err(Error::UnexpectedEof),
+            None => return Err(self.save_err(Error::UnexpectedEof)),
         };
 
         self.skip_ws();
@@ -329,10 +336,10 @@ impl Parser {
                 span
             }
             Some(found) => {
-                return Err(Error::UnexpectedToken {
+                return Err(self.save_err(Error::UnexpectedToken {
                     expected: format!("closing delimiter `{}`", delimiter.close()),
                     found,
-                })
+                }))
             }
             None => return Err(Error::UnmatchedDelimiter(delimiter, open_span)),
         };
@@ -440,7 +447,7 @@ impl Parser {
 
             Spanned(
                 Expr::Attr {
-                    subject: box current,
+                    subject: Box::new(current),
                     dot,
                     attr: assert_token!(@unsafe attr: TokenInfo::Ident(i) => i),
                 },
@@ -483,9 +490,9 @@ impl Parser {
 
                 Spanned(
                     Expr::BinaryOp {
-                        left: box Spanned(expr, expr_span),
+                        left: Box::new(Spanned(expr, expr_span)),
                         op: Spanned(BinaryOp::Pow, op_span),
-                        right: box Spanned(current, current_span),
+                        right: Box::new(Spanned(current, current_span)),
                     },
                     current_span.merge(expr_span),
                 )
@@ -524,7 +531,7 @@ impl Parser {
             Spanned(
                 Expr::UnaryOp {
                     op: Spanned(op, op_span),
-                    expr: box Spanned(expr, span),
+                    expr: Box::new(Spanned(expr, span)),
                 },
                 op_span.merge(span),
             )
@@ -667,7 +674,7 @@ impl Parser {
                 Spanned(
                     Expr::UnaryOp {
                         op: Spanned(UnaryOp::Not, op_span),
-                        expr: box Spanned(expr, span),
+                        expr: Box::new(Spanned(expr, span)),
                     },
                     op_span.merge(span),
                 )
@@ -715,6 +722,7 @@ impl Parser {
     pub fn new(source: &str) -> StdResult<Self, TokenizationError> {
         Ok(Self {
             tokens: TokenCursor::new(TokenReader::new(source).collect::<StdResult<Vec<_>, _>>()?),
+            errors: Vec::new(),
         })
     }
 }
