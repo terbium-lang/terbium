@@ -20,9 +20,9 @@ pub mod ast;
 pub mod parser;
 mod token;
 
-use std::fmt;
 pub use ast::Spanned;
 pub use parser::Parser;
+use std::fmt;
 pub use token::{
     Error as TokenizationError, Radix, StringLiteralFlags, Token, TokenInfo, TokenReader,
 };

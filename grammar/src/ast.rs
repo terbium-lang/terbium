@@ -358,12 +358,42 @@ impl fmt::Display for Expr {
 pub enum Node {
     /// An expression represented as a statement.
     Expr(Spanned<Expr>),
+    /// A variable declaration.
+    Decl {
+        /// The span of the declaration keyword (i.e. let, const).
+        kw: Span,
+        /// Whether the declaration is a const declaration.
+        is_const: bool,
+        /// If the declaration is mutable, this is the span of the mut keyword.
+        mut_kw: Option<Span>,
+        /// The identifier being declared. (TODO: allow destructuring)
+        ident: Spanned<String>,
+        // /// The type of the variable, if it is specified.
+        // ty: Option<Box<Spanned<Type>>>, (TODO: type ast)
+        /// The value of the variable, if it is specified.
+        /// This is always specified for const declarations.
+        value: Option<Box<Spanned<Expr>>>,
+    }
 }
 
 impl fmt::Display for Node {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Expr(e) => write!(f, "{};", e),
+            Self::Decl { is_const, mut_kw, ident, value, .. } => {
+                write!(f, "{}", if *is_const { "const" } else { "let" })?;
+                if let Some(mut_kw) = mut_kw {
+                    write!(f, " {}", mut_kw)?;
+                }
+                write!(f, " {ident}")?;
+                // if let Some(ty) = ty {
+                //     write!(f, ": {ty}")?;
+                // }
+                if let Some(value) = value {
+                    write!(f, " = {value}")?;
+                }
+                write!(f, ";")
+            }
         }
     }
 }

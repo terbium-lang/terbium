@@ -11,8 +11,8 @@ type Result<T> = StdResult<T, Error>;
 pub enum Error {
     /// An error occured during tokenization.
     Tokenization(TokenizationError),
-    /// An unexpected token was encountered.
-    UnexpectedToken { expected: String, found: Token, recoverable: bool },
+    /// An unexpected token or item was encountered.
+    Unexpected { expected: String, found: Token },
     /// Encountered the end of the input.
     UnexpectedEof,
     /// An unmatched closing delimiter was encountered.
@@ -24,11 +24,18 @@ pub enum Error {
     InvalidHexEscapeSequence(String, Span),
 }
 
+impl Error {
+    /// Whether the error is continuous.
+    pub const fn is_continuous(&self) -> bool {
+        matches!(self, Self::Unexpected { .. })
+    }
+}
+
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Tokenization(err) => err.fmt(f),
-            Self::UnexpectedToken { expected, found, .. } => {
+            Self::Unexpected { expected, found } => {
                 write!(f, "{}: expected {expected}, found {:?}", found.span(), found.value())
             }
             Self::UnexpectedEof => write!(f, "unexpected end of file"),
@@ -83,8 +90,6 @@ impl Iterator for TokenCursor {
 #[derive(Clone)]
 pub struct Parser {
     tokens: TokenCursor,
-    /// Accumulated errors generated when parsing, which allows for better error recovery.
-    pub errors: Vec<Error>,
 }
 
 trait ResultExt<T> {
@@ -102,13 +107,13 @@ impl<T> ResultExt<T> for Result<Spanned<T>> {
     }
 }
 
-trait ResultRecoverableExt<T> {
-    fn or_if_recoverable(self, f: impl FnOnce(Error) -> Result<T>) -> Result<T>;
+trait ContinuousResultExt<T> {
+    fn or_if_continuous(self, f: impl FnOnce(Error) -> Result<T>) -> Result<T>;
 }
 
-impl<T> ResultRecoverableExt<T> for Result<T> {
-    fn or_if_recoverable(self, f: impl FnOnce(Error) -> Result<T>) -> Result<T> {
-        self.or_else(|e| if let Error::UnexpectedToken { recoverable, .. } = e && recoverable { f(e) } else { Err(e) })
+impl<T> ContinuousResultExt<T> for Result<T> {
+    fn or_if_continuous(self, f: impl FnOnce(Error) -> Result<T>) -> Result<T> {
+        self.or_else(|e| if e.is_continuous() { f(e) } else { Err(e) })
     }
 }
 
@@ -119,12 +124,11 @@ macro_rules! consume_token {
                 $self.tokens.next();
                 Ok(t)
             }
-            Some(other) => Err($self.save_err(Error::UnexpectedToken {
+            Some(other) => Err(Error::Unexpected {
                 expected: $expecting.to_string(),
                 found: other,
-                recoverable: true,
-            })),
-            None => Err($self.save_err(Error::UnexpectedEof)),
+            }),
+            None => Err(Error::UnexpectedEof),
         }
     }};
     ($self:ident, $p:pat, $expecting:expr) => {{
@@ -138,16 +142,39 @@ macro_rules! consume_token {
                     break Ok(t);
                 }
                 Some(other) => {
-                    break Err($self.save_err(Error::UnexpectedToken {
+                    break Err(Error::Unexpected {
                         expected: $expecting.to_string(),
                         found: other,
-                        recoverable: true,
-                    }))
+                    })
                 }
-                None => break Err($self.save_err(Error::UnexpectedEof)),
+                None => break Err(Error::UnexpectedEof),
             }
         }
     }};
+}
+
+macro_rules! comsume_kw {
+    ($self:ident, $kw:literal) => {{
+        loop {
+            match $self.tokens.peek() {
+                Some(Spanned(TokenInfo::Whitespace, _)) => {
+                    $self.tokens.next();
+                }
+                Some(t @ Spanned(TokenInfo::Ident(i), _)) if i == $kw => {
+                    $self.tokens.next();
+                    break Ok(t);
+                }
+                Some(other) => {
+                    break Err(Error::Unexpected {
+                        expected: format!("keyword \"{}\"", $kw),
+                        found: other,
+                    })
+                }
+                None => break Err(Error::UnexpectedEof),
+            }
+        }
+    }};
+    ($self:ident, $kw:ident) => { consume_kw!($self, stringify!($kw) ) };
 }
 
 macro_rules! assert_token {
@@ -183,8 +210,8 @@ macro_rules! expr_infix_impl {
                     $consume_op.and_then(|op| Ok(
                         (
                             $self.consume_unary()
-                                .or_if_recoverable(|_| $self.consume_logical_not())
-                                .or_if_recoverable(|_| $consume_expr)?,
+                                .or_if_continuous(|_| $self.consume_logical_not())
+                                .or_if_continuous(|_| $consume_expr)?,
                             op,
                         ),
                     ))
@@ -240,12 +267,6 @@ macro_rules! fallback {
 }
 
 impl Parser {
-    #[inline]
-    fn save_err(&mut self, e: Error) -> Error {
-        self.errors.push(e.clone());
-        e
-    }
-
     /// Skips all whitespace tokens.
     pub fn skip_ws(&mut self) {
         while let Some(Spanned(TokenInfo::Whitespace, _)) = self.tokens.peek() {
@@ -354,13 +375,12 @@ impl Parser {
                 span
             }
             Some(found) => {
-                return Err(self.save_err(Error::UnexpectedToken {
+                return Err(Error::Unexpected {
                     expected: format!("opening delimiter `{}`", delimiter.open()),
                     found,
-                    recoverable: true,
-                }));
+                });
             }
-            None => return Err(self.save_err(Error::UnexpectedEof)),
+            None => return Err(Error::UnexpectedEof),
         };
 
         self.skip_ws();
@@ -373,11 +393,10 @@ impl Parser {
                 span
             }
             Some(found) => {
-                return Err(self.save_err(Error::UnexpectedToken {
+                return Err(Error::Unexpected {
                     expected: format!("closing delimiter `{}`", delimiter.close()),
                     found,
-                    recoverable: false,
-                }))
+                });
             }
             None => return Err(Error::UnmatchedDelimiter(delimiter, open_span)),
         };
@@ -401,14 +420,14 @@ impl Parser {
                 span,
             )
         })
-        .or_if_recoverable(|_| {
+        .or_if_continuous(|_| {
             consume_token!(self, TokenInfo::FloatLiteral(_), "float literal")
                 .map_span(|info, span| Spanned(
                     Atom::Float(assert_token!(@unsafe info: TokenInfo::FloatLiteral(i) => i)),
                     span,
                 ))
         })
-        .or_if_recoverable(|_| {
+        .or_if_continuous(|_| {
             consume_token!(self, TokenInfo::Ident(..), "identifier")
                 .map_span(|info, span| Spanned(
                     match assert_token!(@unsafe info: TokenInfo::Ident(i) => i).as_str() {
@@ -419,7 +438,7 @@ impl Parser {
                     span,
                 ))
         })
-        .or_if_recoverable(|_| {
+        .or_if_continuous(|_| {
             consume_token!(self, TokenInfo::StringLiteral(..), "string literal")
                 .and_then_span(|info, span| Ok(Spanned(
                     Atom::String(assert_token!(
@@ -459,11 +478,11 @@ impl Parser {
         )
         .map(|(_, expr, _)| expr)
         // Tuple
-        .or_if_recoverable(|_| self.consume_comma_separated_delimited(Delimiter::Paren, Expr::Tuple))
+        .or_if_continuous(|_| self.consume_comma_separated_delimited(Delimiter::Paren, Expr::Tuple))
         // Array
-        .or_if_recoverable(|_| self.consume_comma_separated_delimited(Delimiter::Bracket, Expr::Array))
+        .or_if_continuous(|_| self.consume_comma_separated_delimited(Delimiter::Bracket, Expr::Array))
         // Atom
-        .or_if_recoverable(|_| {
+        .or_if_continuous(|_| {
             self.consume_atom()
                 .map_span(|atom, span| Spanned(Expr::Atom(atom), span))
         })
@@ -501,7 +520,7 @@ impl Parser {
         let tokens = std::iter::repeat_with(|| {
             let fallback = self.tokens.pos;
 
-            // To conform to right-associtivity, we must immediately begin consuming tokens
+            // To conform to right-associativity, we must immediately begin consuming tokens
             self.consume_attr_access()
                 .and_then(|expr| {
                     let op_span = consume_token!(self, TokenInfo::Asterisk, "*")?.span();
@@ -617,7 +636,7 @@ impl Parser {
             consume_token!(self, TokenInfo::Lt, "<")
                 .and_then(|_| consume_token!(@no_ws self, TokenInfo::Lt, "<<"))
                 .map_span(|_, span| (BinaryOp::Shl, span))
-                .or_if_recoverable(|_| {
+                .or_if_continuous(|_| {
                     consume_token!(self, TokenInfo::Gt, ">")
                         .and_then(|_| consume_token!(@no_ws self, TokenInfo::Gt, ">>"))
                         .map_span(|_, span| (BinaryOp::Shr, span))
@@ -668,25 +687,25 @@ impl Parser {
             consume_token!(self, TokenInfo::Equals, "=")
                 .and_then(|_| consume_token!(@no_ws self, TokenInfo::Equals, "=="))
                 .map_span(|_, span| (BinaryOp::Eq, span.extend_back()))
-                .or_if_recoverable(|_| {
+                .or_if_continuous(|_| {
                     consume_token!(self, TokenInfo::Not, "!")
                         .and_then(|_| consume_token!(@no_ws self, TokenInfo::Equals, "!="))
                         .map_span(|_, span| (BinaryOp::Ne, span.extend_back()))
                 })
-                .or_if_recoverable(|_| {
+                .or_if_continuous(|_| {
                     consume_token!(self, TokenInfo::Lt, "<")
                         .and_then_span(|_, lt_span| {
                             consume_token!(@no_ws self, TokenInfo::Equals, "<=")
                                 .map_span(|_, eq_span| (BinaryOp::Le, eq_span.extend_back()))
-                                .or_if_recoverable(|_| Ok((BinaryOp::Lt, lt_span)))
+                                .or_if_continuous(|_| Ok((BinaryOp::Lt, lt_span)))
                         })
                 })
-                .or_if_recoverable(|_| {
+                .or_if_continuous(|_| {
                     consume_token!(self, TokenInfo::Gt, ">")
                         .and_then_span(|_, gt_span| {
                             consume_token!(@no_ws self, TokenInfo::Equals, ">=")
                                 .map_span(|_, eq_span| (BinaryOp::Ge, eq_span.extend_back()))
-                                .or_if_recoverable(|_| Ok((BinaryOp::Gt, gt_span)))
+                                .or_if_continuous(|_| Ok((BinaryOp::Gt, gt_span)))
                         })
                 }),
             op => op
@@ -760,7 +779,6 @@ impl Parser {
     pub fn new(source: &str) -> StdResult<Self, TokenizationError> {
         Ok(Self {
             tokens: TokenCursor::new(TokenReader::new(source).collect::<StdResult<Vec<_>, _>>()?),
-            errors: Vec::new(),
         })
     }
 }
