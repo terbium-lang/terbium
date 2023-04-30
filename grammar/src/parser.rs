@@ -1,784 +1,369 @@
-use super::{
-    ast::{Atom, BinaryOp, Delimiter, Expr, Node, Spanned, UnaryOp},
-    Span, StringLiteralFlags, Token, TokenInfo, TokenReader, TokenizationError,
-};
-use std::{fmt, result::Result as StdResult};
+use crate::ast::{Atom, BinaryOp, Expr, TypeExpr, UnaryOp};
+use crate::error::{Error, TargetKind};
+use crate::{Span, Spanned, StringLiteralFlags, Token, TokenInfo};
+use chumsky::combinator::{IgnoreThen, OrNot, Repeated, ThenIgnore};
+use chumsky::prelude::*;
+use chumsky::primitive::Just;
 
-type Result<T> = StdResult<T, Error>;
+pub type Result<T> = std::result::Result<T, Error>;
+pub type RecursiveParser<'a, T> = Recursive<'a, TokenInfo, T, Error>;
 
-/// Represents an error that occured during parsing.
-#[derive(Clone, Debug)]
-pub enum Error {
-    /// An error occured during tokenization.
-    Tokenization(TokenizationError),
-    /// An unexpected token or item was encountered.
-    Unexpected { expected: String, found: Token },
-    /// Encountered the end of the input.
-    UnexpectedEof,
-    /// An unmatched closing delimiter was encountered.
-    /// The span is the span of the starting delimiter.
-    UnmatchedDelimiter(Delimiter, Span),
-    /// Unknown escape sequence encountered.
-    UnknownEscapeSequence(char, Span),
-    /// Invalid hex escape sequence encountered.
-    InvalidHexEscapeSequence(String, Span),
+type JustToken = Just<TokenInfo, TokenInfo, Error>;
+type RepeatedToken = Repeated<JustToken>;
+type PadWsTy<T, O> = ThenIgnore<
+    IgnoreThen<RepeatedToken, T, Vec<TokenInfo>, O>,
+    RepeatedToken,
+    O,
+    Vec<TokenInfo>,
+>;
+
+trait WsPadExt<T, O> {
+    fn pad_ws(self) -> PadWsTy<T, O>;
 }
 
-impl Error {
-    /// Whether the error is continuous.
-    pub const fn is_continuous(&self) -> bool {
-        matches!(self, Self::Unexpected { .. })
+impl<O, T: Parser<TokenInfo, O, Error = Error>> WsPadExt<T, O> for T {
+    #[inline] // Maybe inline is a bad idea
+    fn pad_ws(self) -> PadWsTy<T, O> {
+        self.padded_by(just(TokenInfo::Whitespace).repeated())
     }
 }
 
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Tokenization(err) => err.fmt(f),
-            Self::Unexpected { expected, found } => {
-                write!(f, "{}: expected {expected}, found {:?}", found.span(), found.value())
-            }
-            Self::UnexpectedEof => write!(f, "unexpected end of file"),
-            Self::UnmatchedDelimiter(delimiter, span) => {
-                write!(f, "{span}: unmatched delimiter {delimiter:?}")
-            }
-            Self::UnknownEscapeSequence(c, span) => {
-                write!(f, "{span}: unknown escape sequence \\{c}")
-            }
-            Self::InvalidHexEscapeSequence(s, span) => {
-                write!(f, "{span}: invalid hex escape sequence \\x{s}")
-            }
-        }
-    }
+macro_rules! lparen {
+    () => {{ just(TokenInfo::LeftParen).pad_ws() }};
+}
+macro_rules! rparen {
+    () => {{ just(TokenInfo::RightParen).pad_ws() }};
 }
 
-impl std::error::Error for Error {}
-
-/// A cursor over a collection of tokens.
-#[derive(Clone, Default)]
-pub struct TokenCursor {
-    tokens: Vec<Token>,
-    pos: usize,
-}
-
-impl TokenCursor {
-    fn new(tokens: Vec<Token>) -> Self {
-        Self {
-            tokens,
-            ..Default::default()
-        }
+// Parses a string.
+fn resolve_string(content: String, flags: StringLiteralFlags, span: Span) -> Result<String> {
+    if flags.is_raw() {
+        return Ok(content);
     }
 
-    /// Peeks at the next token.
-    #[must_use]
-    pub fn peek(&self) -> Option<Token> {
-        self.tokens.get(self.pos).cloned()
-    }
-}
+    let mut result = String::with_capacity(content.len());
+    let mut chars = content.chars();
+    let mut pos = span.start;
 
-impl Iterator for TokenCursor {
-    type Item = Token;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let token = self.tokens.get(self.pos)?;
-        self.pos += 1;
-        Some(token.clone())
-    }
-}
-
-/// Parses a token stream into an AST.
-#[derive(Clone)]
-pub struct Parser {
-    tokens: TokenCursor,
-}
-
-trait ResultExt<T> {
-    fn map_span<U>(self, f: impl FnOnce(T, Span) -> U) -> Result<U>;
-    fn and_then_span<U>(self, f: impl FnOnce(T, Span) -> Result<U>) -> Result<U>;
-}
-
-impl<T> ResultExt<T> for Result<Spanned<T>> {
-    fn map_span<U>(self, f: impl FnOnce(T, Span) -> U) -> Result<U> {
-        self.map(|Spanned(value, span)| f(value, span))
-    }
-
-    fn and_then_span<U>(self, f: impl FnOnce(T, Span) -> Result<U>) -> Result<U> {
-        self.and_then(|Spanned(value, span)| f(value, span))
-    }
-}
-
-trait ContinuousResultExt<T> {
-    fn or_if_continuous(self, f: impl FnOnce(Error) -> Result<T>) -> Result<T>;
-}
-
-impl<T> ContinuousResultExt<T> for Result<T> {
-    fn or_if_continuous(self, f: impl FnOnce(Error) -> Result<T>) -> Result<T> {
-        self.or_else(|e| if e.is_continuous() { f(e) } else { Err(e) })
-    }
-}
-
-macro_rules! consume_token {
-    (@no_ws $self:ident, $p:pat, $expecting:expr) => {{
-        match $self.tokens.peek() {
-            Some(t @ Spanned($p, _)) => {
-                $self.tokens.next();
-                Ok(t)
-            }
-            Some(other) => Err(Error::Unexpected {
-                expected: $expecting.to_string(),
-                found: other,
-            }),
-            None => Err(Error::UnexpectedEof),
-        }
-    }};
-    ($self:ident, $p:pat, $expecting:expr) => {{
-        loop {
-            match $self.tokens.peek() {
-                Some(Spanned(TokenInfo::Whitespace, _)) => {
-                    $self.tokens.next();
-                }
-                Some(t @ Spanned($p, _)) => {
-                    $self.tokens.next();
-                    break Ok(t);
-                }
-                Some(other) => {
-                    break Err(Error::Unexpected {
-                        expected: $expecting.to_string(),
-                        found: other,
-                    })
-                }
-                None => break Err(Error::UnexpectedEof),
-            }
-        }
-    }};
-}
-
-macro_rules! comsume_kw {
-    ($self:ident, $kw:literal) => {{
-        loop {
-            match $self.tokens.peek() {
-                Some(Spanned(TokenInfo::Whitespace, _)) => {
-                    $self.tokens.next();
-                }
-                Some(t @ Spanned(TokenInfo::Ident(i), _)) if i == $kw => {
-                    $self.tokens.next();
-                    break Ok(t);
-                }
-                Some(other) => {
-                    break Err(Error::Unexpected {
-                        expected: format!("keyword \"{}\"", $kw),
-                        found: other,
-                    })
-                }
-                None => break Err(Error::UnexpectedEof),
-            }
-        }
-    }};
-    ($self:ident, $kw:ident) => { consume_kw!($self, stringify!($kw) ) };
-}
-
-macro_rules! assert_token {
-    ($info:ident: $p:pat => $out:expr) => {{
-        match $info {
-            $p => $out,
-            _ => unreachable!("should not have encountered this token"),
-        }
-    }};
-    (@unsafe $info:ident: $p:pat => $out:expr) => {{
-        match $info {
-            $p => $out,
-            // SAFETY: upheld by the user
-            _ => unsafe { std::hint::unreachable_unchecked() },
-        }
-    }};
-}
-
-macro_rules! expr_infix_impl {
-    (
-        $self:ident,
-        $consume_expr:expr,
-        $consume_op:expr,
-        $op_ident_name:ident => $transform_op:expr
-    ) => {{
-        let original = $consume_expr?;
-
-        #[allow(unused_parens, reason = "parentheses are required as per macro rules")]
-        Ok(
-            std::iter::repeat_with(||
-                {
-                    let fallback = $self.tokens.pos;
-                    $consume_op.and_then(|op| Ok(
-                        (
-                            $self.consume_unary()
-                                .or_if_continuous(|_| $self.consume_logical_not())
-                                .or_if_continuous(|_| $consume_expr)?,
-                            op,
-                        ),
-                    ))
-                    .map_err(|e| {
-                        $self.tokens.pos = fallback;
-                        e
-                    })
-                }
-            )
-            .map_while(Result::ok)
-            .fold(original, |current, (expr, $op_ident_name)| {
-                let span = current.span().merge(expr.span());
-                let (op, op_span) = $transform_op;
-
-                Spanned(
-                    Expr::BinaryOp {
-                        left: Box::new(current),
-                        op: Spanned(op, op_span),
-                        right: Box::new(expr),
-                    },
-                    span,
-                )
-            }),
-        )
-    }};
-    (
-        $self:ident,
-        $consume_expr:expr,
-        @single $consume_op:pat,
-        $expecting:expr,
-        $op_ident_name:ident => $transform_op:expr
-    ) => {
-        expr_infix_impl!(
-            $self,
-            $consume_expr,
-            consume_token!($self, $consume_op, $expecting),
-            op => {
-                let ($op_ident_name, op_span) = op.into_inner();
-                ($transform_op, op_span)
-            }
-        )
-    }
-}
-
-macro_rules! fallback {
-    ($self:ident, $consume:expr) => {{
-        let fallback = $self.tokens.pos;
-        $consume.map_err(|e| {
-            $self.tokens.pos = fallback;
-            e
-        })
-    }};
-}
-
-impl Parser {
-    /// Skips all whitespace tokens.
-    pub fn skip_ws(&mut self) {
-        while let Some(Spanned(TokenInfo::Whitespace, _)) = self.tokens.peek() {
-            self.tokens.next();
-        }
-    }
-
-    /// Resolves the string after escaping all escape sequences.
-    pub fn resolve_string(
-        content: String,
-        flags: StringLiteralFlags,
-        span: Span,
-    ) -> Result<String> {
-        if flags.is_raw() {
-            return Ok(content);
-        }
-
-        let mut result = String::with_capacity(content.len());
-        let mut chars = content.chars();
-        let mut pos = span.start;
-
-        while let Some(mut c) = chars.next() {
-            if c == '\\' {
-                pos += 1;
-
-                macro_rules! hex_sequence {
-                    ($length:literal) => {{
-                        let sequence = chars.by_ref().take($length).collect::<String>();
-                        let value = u32::from_str_radix(&sequence, 16).map_err(|_| {
-                            Error::InvalidHexEscapeSequence(
-                                sequence.clone(),
-                                Span::new(pos - 1, pos + 1 + $length),
-                            )
-                        })?;
-
-                        pos += $length;
-                        char::from_u32(value).ok_or(Error::InvalidHexEscapeSequence(
-                            sequence,
-                            Span::new(pos - 1, pos + 1 + $length),
-                        ))?
-                    }};
-                }
-
-                c = match chars.next().ok_or(Error::UnexpectedEof)? {
-                    'n' => '\n',
-                    'r' => '\r',
-                    't' => '\t',
-                    'b' => '\x08',
-                    'f' => '\x0c',
-                    '0' => '\0',
-                    '\'' => '\'',
-                    '"' => '"',
-                    '\\' => '\\',
-                    'x' => hex_sequence!(2),
-                    'u' => hex_sequence!(4),
-                    'U' => hex_sequence!(8),
-                    c => return Err(Error::UnknownEscapeSequence(c, Span::new(pos - 1, pos + 1))),
-                };
-            }
-
-            result.push(c);
+    while let Some(mut c) = chars.next() {
+        if c == '\\' {
             pos += 1;
-        }
 
-        Ok(result)
-    }
+            macro_rules! hex_sequence {
+                ($length:literal) => {{
+                    let sequence = chars.by_ref().take($length).collect::<String>();
+                    let value = u32::from_str_radix(&sequence, 16).map_err(|_| {
+                        Error::invalid_hex_escape_sequence(
+                            sequence.clone(),
+                            Span::new(pos - 1, pos + 1 + $length),
+                        )
+                    })?;
 
-    /// Parses expressions separated by the given separator.
-    pub fn separated_by<T>(
-        &mut self,
-        mut consumer: impl FnMut(&mut Self) -> Result<T>,
-        separator: &TokenInfo,
-    ) -> Result<(Vec<T>, bool)> {
-        let mut result = Vec::new();
-        let mut is_empty = true;
-
-        loop {
-            if let Ok(res) = fallback!(self, consumer(self)) {
-                result.push(res);
-            } else {
-                return Ok((result, is_empty));
+                    pos += $length;
+                    char::from_u32(value).ok_or(Error::invalid_hex_escape_sequence(
+                        sequence,
+                        Span::new(pos - 1, pos + 1 + $length),
+                    ))?
+                }};
             }
 
-            self.skip_ws();
-            match self.tokens.peek() {
-                Some(token) if &token.0 == separator => {
-                    is_empty = false;
-                    self.tokens.next();
+            c = match chars.next().ok_or_else(|| {
+                Error::unexpected_eof(pos, Some(('n', "insert an escape sequence")))
+            })? {
+                'n' => '\n',
+                'r' => '\r',
+                't' => '\t',
+                'b' => '\x08',
+                'f' => '\x0c',
+                '0' => '\0',
+                '\'' => '\'',
+                '"' => '"',
+                '\\' => '\\',
+                'x' => hex_sequence!(2),
+                'u' => hex_sequence!(4),
+                'U' => hex_sequence!(8),
+                c => {
+                    return Err(Error::unknown_escape_sequence(
+                        c,
+                        Span::new(pos - 1, pos + 1),
+                    ))
                 }
-                _ => return Ok((result, false)),
-            }
+            };
         }
+
+        result.push(c);
+        pos += 1;
     }
 
-    /// Parses expressions delimited by the given delimiter. Fallbacks for this must be handled
-    /// by the caller.
-    fn delimited_by<T>(
-        &mut self,
-        consumer: impl FnOnce(&mut Self) -> Result<T>,
-        delimiter: Delimiter,
-    ) -> Result<(Span, T, Span)> {
-        self.skip_ws();
-        let open_span = match self.tokens.peek() {
-            Some(Spanned(token, span)) if token == delimiter.open_token() => {
-                self.tokens.next();
-                span
-            }
-            Some(found) => {
-                return Err(Error::Unexpected {
-                    expected: format!("opening delimiter `{}`", delimiter.open()),
-                    found,
-                });
-            }
-            None => return Err(Error::UnexpectedEof),
-        };
+    Ok(result)
+}
 
-        self.skip_ws();
-        let result = consumer(self)?;
+pub fn type_expr_parser<'a>() -> RecursiveParser<'a, Spanned<TypeExpr>> {
+    recursive(|ty| {
+        let ident = select! {
+            TokenInfo::Ident(name) => TypeExpr::Ident(name),
+        }
+        .pad_ws()
+        .map_with_span(Spanned);
 
-        self.skip_ws();
-        let close_span = match self.tokens.peek() {
-            Some(Spanned(token, span)) if token == delimiter.close_token() => {
-                self.tokens.next();
-                span
-            }
-            Some(found) => {
-                return Err(Error::Unexpected {
-                    expected: format!("closing delimiter `{}`", delimiter.close()),
-                    found,
-                });
-            }
-            None => return Err(Error::UnmatchedDelimiter(delimiter, open_span)),
-        };
+        ident
+    })
+}
 
-        Ok((open_span, result, close_span))
-    }
+pub fn expr_parser<'a>() -> RecursiveParser<'a, Spanned<Expr>> {
+    let ty = type_expr_parser();
 
-    /// Parses and consumes the next atom. An atom is the most basic unit of an expression that
-    /// cannot be broken down into other expressions any further.
-    ///
-    /// For example, 1 is an atom, as is "hello" - but 1 + 1 is not, since that can be further
-    /// broken down into two expressions.
-    pub fn consume_atom(&mut self) -> Result<Spanned<Atom>> {
-        consume_token!(self, TokenInfo::IntLiteral(..), "integer literal").map_span(|info, span| {
-            Spanned(
-                {
-                    let (val, radix) =
-                        assert_token!(@unsafe info: TokenInfo::IntLiteral(i, radix) => (i, radix));
-                    Atom::Int(val, radix)
-                },
-                span,
-            )
-        })
-        .or_if_continuous(|_| {
-            consume_token!(self, TokenInfo::FloatLiteral(_), "float literal")
-                .map_span(|info, span| Spanned(
-                    Atom::Float(assert_token!(@unsafe info: TokenInfo::FloatLiteral(i) => i)),
-                    span,
-                ))
-        })
-        .or_if_continuous(|_| {
-            consume_token!(self, TokenInfo::Ident(..), "identifier")
-                .map_span(|info, span| Spanned(
-                    match assert_token!(@unsafe info: TokenInfo::Ident(i) => i).as_str() {
-                        "true" => Atom::Bool(true),
-                        "false" => Atom::Bool(false),
-                        i => Atom::Ident(i.to_string()),
-                    },
-                    span,
-                ))
-        })
-        .or_if_continuous(|_| {
-            consume_token!(self, TokenInfo::StringLiteral(..), "string literal")
-                .and_then_span(|info, span| Ok(Spanned(
-                    Atom::String(assert_token!(
-                        @unsafe info: TokenInfo::StringLiteral(s, flags, content_span)
-                            => Self::resolve_string(s, flags, content_span)?
-                    )),
-                    span,
-                )))
-        })
-    }
-
-    /// Parses the next comma-separated delimited expression.
-    pub fn consume_comma_separated_delimited(
-        &mut self,
-        delimiter: Delimiter,
-        wrapper: impl FnOnce(Vec<Spanned<Expr>>) -> Expr,
-    ) -> Result<Spanned<Expr>> {
-        let res = self.delimited_by(
-            |parser| {
-                parser
-                    .separated_by(Self::consume_expr, &TokenInfo::Comma)
-                    .map(|res| res.0)
-            },
-            delimiter,
-        );
-        let (open_span, elements, close_span) = fallback!(self, res)?;
-        Ok(Spanned(wrapper(elements), open_span.merge(close_span)))
-    }
-
-    /// Parses and consumes the next expression that does not have to be orderly disambiguated
-    /// against.
-    pub fn consume_unambiguous_expr(&mut self) -> Result<Spanned<Expr>> {
-        // Parenthesized expression
-        fallback!(
-            self,
-            self.delimited_by(Self::consume_expr, Delimiter::Paren)
-        )
-        .map(|(_, expr, _)| expr)
-        // Tuple
-        .or_if_continuous(|_| self.consume_comma_separated_delimited(Delimiter::Paren, Expr::Tuple))
-        // Array
-        .or_if_continuous(|_| self.consume_comma_separated_delimited(Delimiter::Bracket, Expr::Array))
-        // Atom
-        .or_if_continuous(|_| {
-            self.consume_atom()
-                .map_span(|atom, span| Spanned(Expr::Atom(atom), span))
-        })
-    }
-
-    /// Parses the next attribute access expression.
-    pub fn consume_attr_access(&mut self) -> Result<Spanned<Expr>> {
-        let original = self.consume_unambiguous_expr()?;
-
-        Ok(std::iter::repeat_with(|| {
-            consume_token!(self, TokenInfo::Dot, ".").and_then_span(|_, dot| {
-                consume_token!(self, TokenInfo::Ident(_), "identifier")
-                    .map_span(|token, span| (token, span, dot))
+    recursive(|expr: Recursive<TokenInfo, Spanned<Expr>, _>| {
+        // An identifier
+        let ident = select! {
+            TokenInfo::Ident(name) => Expr::Atom(match name.as_str() {
+                "true" => Atom::Bool(true),
+                "false" => Atom::Bool(false),
+                _ => Atom::Ident(name),
             })
-        })
-        .map_while(Result::ok)
-        .fold(original, |current, (attr, span, dot)| {
-            let span = current.span().merge(span);
+        }
+        .map_with_span(Spanned);
 
-            Spanned(
-                Expr::Attr {
-                    subject: Box::new(current),
-                    dot,
-                    attr: assert_token!(@unsafe attr: TokenInfo::Ident(i) => i),
-                },
+        // Parses and consumes the next atom. An atom is the most basic unit of an expression that
+        // cannot be broken down into other expressions any further.
+        //
+        // For example, 1 is an atom, as is "hello" - but 1 + 1 is not, since that can be further
+        // broken down into two expressions.
+        let atom = filter_map(|span, token| {
+            Ok(Spanned(
+                Expr::Atom(match token {
+                    TokenInfo::IntLiteral(val, radix) => Atom::Int(val, radix),
+                    TokenInfo::FloatLiteral(val) => Atom::Float(val),
+                    TokenInfo::StringLiteral(content, flags, inner_span) => {
+                        Atom::String(resolve_string(content, flags, inner_span)?)
+                    }
+                    _ => return Err(Error::expected_input_found(span, None, Some(token))),
+                }),
                 span,
-            )
-        }))
-    }
-
-    /// Parses and consumes the next binary power expression.
-    pub fn consume_pow(&mut self) -> Result<Spanned<Expr>> {
-        #[allow(clippy::needless_collect, reason = "see comment in consume_unary")]
-        // This case is a bit special, since this operator is right-associative.
-        let tokens = std::iter::repeat_with(|| {
-            let fallback = self.tokens.pos;
-
-            // To conform to right-associativity, we must immediately begin consuming tokens
-            self.consume_attr_access()
-                .and_then(|expr| {
-                    let op_span = consume_token!(self, TokenInfo::Asterisk, "*")?.span();
-                    Ok((expr, op_span))
-                })
-                .and_then(|o| consume_token!(@no_ws self, TokenInfo::Asterisk, "**").map(|_| o))
-                // ...however, if there is a problem consuming, reset the token stream to the
-                // previous position.
-                .map_err(|e| {
-                    self.tokens.pos = fallback;
-                    e
-                })
+            ))
         })
-        .map_while(Result::ok)
-        .collect::<Vec<_>>();
+        .or(ident)
+        .pad_ws()
+        .labelled("atom");
 
-        Ok(tokens.into_iter().rfold(
-            self.consume_attr_access()?,
-            |current, (expr, mut op_span)| {
-                let (expr, expr_span) = expr.into_inner();
-                let (current, current_span) = current.into_inner();
-                // This accounts for the second asterisk
-                op_span.end += 1;
+        // Intermediate parser to consume comma-separated sequences, e.g. 1, 2, 3
+        let comma_separated = expr
+            .clone()
+            .separated_by(just(TokenInfo::Comma).pad_ws())
+            .allow_trailing();
+
+        // Parses expressions that do not have to be orderly disambiguated against
+        let unambiguous = expr
+            .delimited_by(lparen!(), rparen!())
+            .or(comma_separated
+                .clone()
+                .delimited_by(lparen!(), rparen!())
+                .map_with_span(|exprs, span| Spanned(Expr::Tuple(exprs), span)))
+            .labelled("tuple")
+            .or(comma_separated
+                .delimited_by(just(TokenInfo::LeftBracket).pad_ws(), just(TokenInfo::RightBracket).pad_ws())
+                .map_with_span(|exprs, span| Spanned(Expr::Array(exprs), span)))
+            .labelled("array")
+            .or(atom.clone())
+            .labelled("unambiguous expression");
+
+        // Attribute access: a.b.c
+        let attr = unambiguous
+            .clone()
+            .then(
+                just(TokenInfo::Dot)
+                    .map_with_span(|_, span: Span| span)
+                    .then(ident)
+                    .repeated(),
+            )
+            .foldl(|expr, (dot, ident)| {
+                let span = expr.span();
 
                 Spanned(
-                    Expr::BinaryOp {
-                        left: Box::new(Spanned(expr, expr_span)),
-                        op: Spanned(BinaryOp::Pow, op_span),
-                        right: Box::new(Spanned(current, current_span)),
+                    Expr::Attr {
+                        subject: Box::new(expr),
+                        dot,
+                        attr: ident.to_string(),
                     },
-                    current_span.merge(expr_span),
+                    span.merge(ident.span()),
                 )
-            },
-        ))
-    }
+            })
+            .labelled("attribute access");
 
-    /// Parses and consumes the next unary expression. This does not include the logical not
-    /// operator, that comes lower in precedence.
-    pub fn consume_unary(&mut self) -> Result<Spanned<Expr>> {
-        #[allow(clippy::needless_collect, reason = "see comment below")]
-        #[allow(unused_parens, reason = "parentheses are required as per macro rules")]
-        let tokens = std::iter::repeat_with(|| {
-            consume_token!(
-                self,
-                (TokenInfo::Plus | TokenInfo::Minus | TokenInfo::Tilde),
-                "unary operator (+, -, ~)"
+        // Function call: a(b, c)
+        let call = attr
+            .clone()
+            .map(Ok)
+            .then(
+                select!(TokenInfo::Ident(ident) => ident)
+                    .then_ignore(just(TokenInfo::Colon))
+                    .or_not()
+                    .pad_ws()
+                    .then(expr.clone())
+                    .separated_by(just(TokenInfo::Comma).pad_ws())
+                    .allow_trailing()
+                    .delimited_by(lparen!(), rparen!())
+                    .map_with_span(Spanned)
+                    .repeated(),
             )
-        })
-        .map_while(Result::ok)
-        .collect::<Vec<_>>();
+            .foldl(|lhs, Spanned(mut args, span)| {
+                let lhs = lhs?;
+                let mut partition = args
+                    .iter()
+                    .position(|(name, _)| name.is_some())
+                    .unwrap_or_else(|| args.len());
+                let kwargs = args.split_off(partition);
 
-        // We must collect then re-iterate over the tokens since otherwise there will be two
-        // mutable borrows of self.
-        Ok(tokens.into_iter().rfold(self.consume_pow()?, |expr, op| {
-            let (op, op_span) = op.into_inner();
-            let op = match op {
-                TokenInfo::Plus => UnaryOp::Plus,
-                TokenInfo::Minus => UnaryOp::Minus,
-                TokenInfo::Tilde => UnaryOp::BitNot,
-                // SAFETY: checked when op token was consumed
-                _ => unsafe { std::hint::unreachable_unchecked() },
-            };
-            let (expr, span) = expr.into_inner();
+                Ok(Spanned(
+                    Expr::Call {
+                        func: Box::new(lhs),
+                        args: args.into_iter().map(|(_, arg)| arg).collect(),
+                        kwargs: kwargs
+                            .into_iter()
+                            .map(|(name, arg)| {
+                                Ok((
+                                    name.ok_or_else(|| {
+                                        Error::unexpected_positional_argument(arg.span())
+                                    })?,
+                                    arg,
+                                ))
+                            })
+                            .collect::<Result<Vec<_>>>()?,
+                    },
+                    lhs.span().merge(span),
+                ))
+            })
+            .try_map(|e, span| e)
+            .labelled("function call");
 
-            Spanned(
-                Expr::UnaryOp {
-                    op: Spanned(op, op_span),
-                    expr: Box::new(Spanned(expr, span)),
-                },
-                op_span.merge(span),
-            )
-        }))
-    }
-
-    /// Parses and consumes the next binary multiplication, division, or modulus expression.
-    pub fn consume_product(&mut self) -> Result<Spanned<Expr>> {
-        expr_infix_impl!(
-            self,
-            self.consume_unary(),
-            @single (TokenInfo::Asterisk | TokenInfo::Divide | TokenInfo::Modulus),
-            "multiplication, division, or modulus operator",
-            op => match op {
-                TokenInfo::Asterisk => BinaryOp::Mul,
-                TokenInfo::Divide => BinaryOp::Div,
-                TokenInfo::Modulus => BinaryOp::Mod,
-                // SAFETY: checked when op token was consumed
-                _ => unsafe { std::hint::unreachable_unchecked() },
-            }
-        )
-    }
-
-    /// Parses and consumes the next binary addition or subtraction expression.
-    pub fn consume_sum(&mut self) -> Result<Spanned<Expr>> {
-        expr_infix_impl!(
-            self,
-            self.consume_product(),
-            @single (TokenInfo::Plus | TokenInfo::Minus),
-            "addition or subtraction operator",
-            op => match op {
-                TokenInfo::Plus => BinaryOp::Add,
-                TokenInfo::Minus => BinaryOp::Sub,
-                // SAFETY: checked when op token was consumed
-                _ => unsafe { std::hint::unreachable_unchecked() },
-            }
-        )
-    }
-
-    /// Parses and consumes the next bitwise shift expression.
-    pub fn consume_bitwise_shift(&mut self) -> Result<Spanned<Expr>> {
-        expr_infix_impl!(
-            self,
-            self.consume_sum(),
-            consume_token!(self, TokenInfo::Lt, "<")
-                .and_then(|_| consume_token!(@no_ws self, TokenInfo::Lt, "<<"))
-                .map_span(|_, span| (BinaryOp::Shl, span))
-                .or_if_continuous(|_| {
-                    consume_token!(self, TokenInfo::Gt, ">")
-                        .and_then(|_| consume_token!(@no_ws self, TokenInfo::Gt, ">>"))
-                        .map_span(|_, span| (BinaryOp::Shr, span))
-                })
-                .map(|(op, span)| (op, span.extend_back())),
-            op => op
-        )
-    }
-
-    /// Parses and consumes the next bitwise AND expression.
-    pub fn consume_bitwise_and(&mut self) -> Result<Spanned<Expr>> {
-        expr_infix_impl!(
-            self,
-            self.consume_bitwise_shift(),
-            @single TokenInfo::And,
-            "bitwise and operator",
-            _op => BinaryOp::BitAnd
-        )
-    }
-
-    /// Parses and consumes the next bitwise XOR expression.
-    pub fn consume_bitwise_xor(&mut self) -> Result<Spanned<Expr>> {
-        expr_infix_impl!(
-            self,
-            self.consume_bitwise_and(),
-            @single TokenInfo::Caret,
-            "bitwise xor operator",
-            _op => BinaryOp::BitXor
-        )
-    }
-
-    /// Parses and consumes the next bitwise OR expression.
-    pub fn consume_bitwise_or(&mut self) -> Result<Spanned<Expr>> {
-        expr_infix_impl!(
-            self,
-            self.consume_bitwise_xor(),
-            @single TokenInfo::Or,
-            "bitwise or operator",
-            _op => BinaryOp::BitOr
-        )
-    }
-
-    /// Parses and consumes the next logical comparison expression.
-    pub fn consume_logical_comparison(&mut self) -> Result<Spanned<Expr>> {
-        expr_infix_impl!(
-            self,
-            self.consume_bitwise_or(),
-            consume_token!(self, TokenInfo::Equals, "=")
-                .and_then(|_| consume_token!(@no_ws self, TokenInfo::Equals, "=="))
-                .map_span(|_, span| (BinaryOp::Eq, span.extend_back()))
-                .or_if_continuous(|_| {
-                    consume_token!(self, TokenInfo::Not, "!")
-                        .and_then(|_| consume_token!(@no_ws self, TokenInfo::Equals, "!="))
-                        .map_span(|_, span| (BinaryOp::Ne, span.extend_back()))
-                })
-                .or_if_continuous(|_| {
-                    consume_token!(self, TokenInfo::Lt, "<")
-                        .and_then_span(|_, lt_span| {
-                            consume_token!(@no_ws self, TokenInfo::Equals, "<=")
-                                .map_span(|_, eq_span| (BinaryOp::Le, eq_span.extend_back()))
-                                .or_if_continuous(|_| Ok((BinaryOp::Lt, lt_span)))
-                        })
-                })
-                .or_if_continuous(|_| {
-                    consume_token!(self, TokenInfo::Gt, ">")
-                        .and_then_span(|_, gt_span| {
-                            consume_token!(@no_ws self, TokenInfo::Equals, ">=")
-                                .map_span(|_, eq_span| (BinaryOp::Ge, eq_span.extend_back()))
-                                .or_if_continuous(|_| Ok((BinaryOp::Gt, gt_span)))
-                        })
-                }),
-            op => op
-        )
-    }
-
-    /// Parses and consumes the next logical not expression.
-    pub fn consume_logical_not(&mut self) -> Result<Spanned<Expr>> {
-        #[allow(clippy::needless_collect, reason = "see comment below")]
-        #[allow(unused_parens, reason = "parentheses are required as per macro rules")]
-        let tokens = std::iter::repeat_with(|| consume_token!(self, TokenInfo::Not, "!"))
-            .map_while(Result::ok)
-            .collect::<Vec<_>>();
-
-        // We must collect then re-iterate over the tokens since otherwise there will be two
-        // mutable borrows of self.
-        Ok(tokens
-            .into_iter()
-            .rfold(self.consume_logical_comparison()?, |expr, op| {
-                let op_span = op.span();
-                let (expr, span) = expr.into_inner();
+        // Prefix unary operators: -a, +a, !a
+        let unary = just(TokenInfo::Minus)
+            .to(UnaryOp::Minus)
+            .or(just(TokenInfo::Plus).to(UnaryOp::Plus))
+            .or(just(TokenInfo::Not).to(UnaryOp::Not))
+            .pad_ws()
+            .map_with_span(Spanned)
+            .repeated()
+            .then(call.clone())
+            .foldr(|op, expr| {
+                let span = op.span().merge(expr.span());
 
                 Spanned(
                     Expr::UnaryOp {
-                        op: Spanned(UnaryOp::Not, op_span),
-                        expr: Box::new(Spanned(expr, span)),
+                        op,
+                        expr: Box::new(expr),
                     },
-                    op_span.merge(span),
+                    span,
                 )
-            }))
-    }
+            })
+            .labelled("unary expression");
 
-    /// Parses and consumes the next logical and expression.
-    pub fn consume_logical_and(&mut self) -> Result<Spanned<Expr>> {
-        expr_infix_impl!(
-            self,
-            self.consume_logical_not(),
-            consume_token!(self, TokenInfo::And, "&")
-                .and_then(|_| consume_token!(@no_ws self, TokenInfo::And, "&&"))
-                .map_span(|_, span| (BinaryOp::LogicalAnd, span.extend_back())),
-            op => op
-        )
-    }
+        // Type cast, e.g. a::b
+        let cast = unary
+            .clone()
+            .then(just(TokenInfo::Colon)
+                .ignore_then(just(TokenInfo::Colon))
+                .pad_ws()
+                .ignore_then(ty.clone())
+                .repeated()
+            )
+            .foldl(|target, ty| {
+                let span = target.span().merge(ty.span());
 
-    /// Parses and consumes the next logical or expression.
-    pub fn consume_logical_or(&mut self) -> Result<Spanned<Expr>> {
-        expr_infix_impl!(
-            self,
-            self.consume_logical_and(),
-            consume_token!(self, TokenInfo::Or, "|")
-                .and_then(|_| consume_token!(@no_ws self, TokenInfo::Or, "||"))
-                .map_span(|_, span| (BinaryOp::LogicalOr, span.extend_back())),
-            op => op
-        )
-    }
+                Spanned(
+                    Expr::Cast {
+                        expr: Box::new(target),
+                        ty: Box::new(ty),
+                    },
+                    span,
+                )
+            })
+            .labelled("type cast");
 
-    /// Parses and consumes the next expression.
-    pub fn consume_expr(&mut self) -> Result<Spanned<Expr>> {
-        self.consume_logical_or()
-    }
+        // Power operator: a ** b
+        // Note that this is right-associative, so a ** b ** c is a ** (b ** c)
+        let pow = cast
+            .clone()
+            .then(just(TokenInfo::Asterisk)
+                .ignore_then(just(TokenInfo::Asterisk))
+                .to(BinaryOp::Pow)
+                .pad_ws()
+                .map_with_span(Spanned)
+            )
+            .repeated()
+            .then(cast)
+            .foldr(|(lhs, op), rhs| {
+                let span = lhs.span().merge(rhs.span());
 
-    /// Parses and consumes the next node.
-    pub fn consume_node(&mut self) -> Result<Spanned<Node>> {
-        self.skip_ws();
-        todo!()
-    }
-}
+                Spanned(
+                    Expr::BinaryOp {
+                        left: Box::new(lhs),
+                        op,
+                        right: Box::new(rhs),
+                    },
+                    span,
+                )
+            })
+            .labelled("pow");
 
-impl Parser {
-    /// Creates a new parser from a string slice.
-    pub fn new(source: &str) -> StdResult<Self, TokenizationError> {
-        Ok(Self {
-            tokens: TokenCursor::new(TokenReader::new(source).collect::<StdResult<Vec<_>, _>>()?),
-        })
-    }
+        fn bin_foldl(lhs: Spanned<Expr>, (op, rhs): (Spanned<BinaryOp>, Spanned<Expr>)) -> Spanned<Expr> {
+            let span = lhs.span().merge(rhs.span());
+            Spanned(Expr::BinaryOp { left: Box::new(lhs), op, right: Box::new(rhs) }, span)
+        }
+
+        // Product operators: a * b, a / b, a % b
+        let prod = pow
+            .clone()
+            .then(
+                just(TokenInfo::Asterisk).to(BinaryOp::Mul)
+                    .or(just(TokenInfo::Divide).to(BinaryOp::Div))
+                    .or(just(TokenInfo::Modulus).to(BinaryOp::Mod))
+                    .pad_ws()
+                    .map_with_span(Spanned)
+                    .then(pow)
+                    .repeated()
+            )
+            .foldl(bin_foldl)
+            .labelled("product");
+
+        // Sum operators: a + b, a - b
+        let sum = prod
+            .clone()
+            .then(
+                just(TokenInfo::Plus).to(BinaryOp::Add)
+                    .or(just(TokenInfo::Minus).to(BinaryOp::Sub))
+                    .pad_ws()
+                    .map_with_span(Spanned)
+                    .then(prod)
+                    .repeated()
+            )
+            .foldl(bin_foldl)
+            .labelled("sum");
+
+        macro_rules! compound {
+            ($ident1:ident $ident2:ident => $to:expr) => {{
+                just(TokenInfo::$ident).ignore_then(just(TokenInfo::$ident)).to($expr)
+            }}
+        }
+
+        // Comparison operators: a == b, a != b, a < b, a > b, a <= b, a >= b
+        let cmp = sum
+            .clone()
+            .then(
+                compound!(Equals Equals => BinaryOp::Eq)
+                    .or(compound!(Not Equals => BinaryOp::Ne))
+                    .or(compound!(Lt Equals => BinaryOp::Le))
+                    .or(compound!(Gt Equals => BinaryOp::Ge))
+                    .or(just(TokenInfo::Lt).to(BinaryOp::Lt))
+                    .or(just(TokenInfo::Gt).to(BinaryOp::Gt))
+                    .pad_ws()
+                    .map_with_span(Spanned)
+                    .then(sum)
+                    .repeated()
+            )
+            .foldl(bin_foldl)
+            .labelled("comparison");
+
+        1
+    })
 }

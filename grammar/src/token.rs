@@ -3,7 +3,7 @@ use std::{fmt, str::Chars};
 use unicode_xid::UnicodeXID;
 
 /// Bitflags representing extra flags about a string (i.e. interpolated, raw).
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct StringLiteralFlags(pub u8);
 
 impl StringLiteralFlags {
@@ -46,7 +46,7 @@ impl std::ops::BitOrAssign for StringLiteralFlags {
 }
 
 /// Radix of an integer literal.
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 #[repr(u8)]
 pub enum Radix {
     /// Normal, base 10 integer.
@@ -60,8 +60,21 @@ pub enum Radix {
     Binary = 2,
 }
 
+impl Radix {
+    /// The prefix for this radix.
+    #[must_use]
+    pub const fn prefix(self) -> &'static str {
+        match self {
+            Self::Decimal => "",
+            Self::Hexadecimal => "0x",
+            Self::Octal => "0o",
+            Self::Binary => "0b",
+        }
+    }
+}
+
 /// Represents information about a lexical token in the source code.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum TokenInfo {
     /// Any sequence of whitespace.
     Whitespace,
@@ -139,6 +152,64 @@ pub enum TokenInfo {
     Tilde,
 }
 
+#[inline]
+fn write_str_literal_flags(f: &mut fmt::Formatter, flags: StringLiteralFlags) -> fmt::Result {
+    if flags.is_interpolated() {
+        f.write_str("$")?;
+    }
+    if flags.is_raw() {
+        f.write_str("~")?;
+    }
+    Ok(())
+}
+
+impl fmt::Display for TokenInfo {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Whitespace => f.write_str(" "),
+            Self::DocComment { content, is_inner } => {
+                writeln!(f, "//{}{content}", if *is_inner { "!" } else { "/" })
+            }
+            Self::Ident(ident) => f.write_str(ident),
+            Self::StringLiteral(string, flags, _) => {
+                write_str_literal_flags(f, *flags)?;
+                write!(f, "\"{}\"", string)
+            }
+            Self::ByteStringLiteral(bytes, flags, _) => {
+                write_str_literal_flags(f, *flags)?;
+                write!(f, "b\"{}\"", String::from_utf8_lossy(bytes))
+            }
+            Self::CharLiteral(c, _) => write!(f, "c'{}'", c),
+            Self::IntLiteral(int, radix) => write!(f, "{}{int}", radix.prefix()),
+            Self::FloatLiteral(float) => f.write_str(float),
+            Self::LeftParen => f.write_str("("),
+            Self::RightParen => f.write_str(")"),
+            Self::LeftBracket => f.write_str("["),
+            Self::RightBracket => f.write_str("]"),
+            Self::LeftBrace => f.write_str("{"),
+            Self::RightBrace => f.write_str("}"),
+            Self::Comma => f.write_str(","),
+            Self::Semicolon => f.write_str(";"),
+            Self::Colon => f.write_str(":"),
+            Self::Dot => f.write_str("."),
+            Self::Lt => f.write_str("<"),
+            Self::Gt => f.write_str(">"),
+            Self::Equals => f.write_str("="),
+            Self::Not => f.write_str("!"),
+            Self::Plus => f.write_str("+"),
+            Self::Minus => f.write_str("-"),
+            Self::Asterisk => f.write_str("*"),
+            Self::Divide => f.write_str("/"),
+            Self::Backslash => f.write_str("\\"),
+            Self::Caret => f.write_str("^"),
+            Self::And => f.write_str("&"),
+            Self::Or => f.write_str("|"),
+            Self::Modulus => f.write_str("%"),
+            Self::Tilde => f.write_str("~"),
+        }
+    }
+}
+
 /// Represents a lexical token in the source code.
 pub type Token = Spanned<TokenInfo>;
 
@@ -150,7 +221,7 @@ pub enum ErrorKind {
 }
 
 /// An error that occured during tokenization.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Error {
     /// The span of the error in the source code.
     pub span: Span,

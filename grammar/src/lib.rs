@@ -17,18 +17,19 @@
 #![feature(let_chains)]
 
 pub mod ast;
+pub mod error;
 pub mod parser;
 mod token;
 
-pub use ast::Spanned;
-pub use parser::Parser;
+pub use ast::{Delimiter, Expr, Spanned};
+// pub use parser::Parser;
 use std::fmt;
 pub use token::{
     Error as TokenizationError, Radix, StringLiteralFlags, Token, TokenInfo, TokenReader,
 };
 
 /// Represents the span of a token or a node in the AST. Can be represented as [start, end).
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Span {
     /// The index of the first byte of the span.
     pub start: usize,

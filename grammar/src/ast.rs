@@ -2,10 +2,10 @@
 
 use super::{Radix, Span};
 use crate::TokenInfo;
-use std::fmt::{self, Formatter};
+use std::fmt::{self, Display, Formatter};
 
 /// A compound of a span and a value.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Spanned<T>(pub T, pub Span);
 
 impl<T> Spanned<T> {
@@ -45,14 +45,14 @@ impl<T> Spanned<T> {
     }
 }
 
-impl<T: fmt::Display> fmt::Display for Spanned<T> {
+impl<T: Display> Display for Spanned<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
     }
 }
 
 /// An enumeration of possible unary operators.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum UnaryOp {
     /// The `+` operator.
     Plus,
@@ -64,7 +64,7 @@ pub enum UnaryOp {
     BitNot,
 }
 
-impl fmt::Display for UnaryOp {
+impl Display for UnaryOp {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Plus => write!(f, "+"),
@@ -76,7 +76,7 @@ impl fmt::Display for UnaryOp {
 }
 
 /// An enumeration of possible binary operators.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum BinaryOp {
     /// The `+` operator.
     Add,
@@ -118,34 +118,34 @@ pub enum BinaryOp {
     Shr,
 }
 
-impl fmt::Display for BinaryOp {
+impl Display for BinaryOp {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Add => write!(f, "+"),
-            Self::Sub => write!(f, "-"),
-            Self::Mul => write!(f, "*"),
-            Self::Div => write!(f, "/"),
-            Self::Mod => write!(f, "%"),
-            Self::Pow => write!(f, "**"),
-            Self::Eq => write!(f, "=="),
-            Self::Ne => write!(f, "!="),
-            Self::Lt => write!(f, "<"),
-            Self::Le => write!(f, "<="),
-            Self::Gt => write!(f, ">"),
-            Self::Ge => write!(f, ">="),
-            Self::LogicalAnd => write!(f, "&&"),
-            Self::LogicalOr => write!(f, "||"),
-            Self::BitAnd => write!(f, "&"),
-            Self::BitOr => write!(f, "|"),
-            Self::BitXor => write!(f, "^"),
-            Self::Shl => write!(f, "<<"),
-            Self::Shr => write!(f, ">>"),
-        }
+        f.write_str(match self {
+            Self::Add => "+",
+            Self::Sub => "-",
+            Self::Mul => "*",
+            Self::Div => "/",
+            Self::Mod => "%",
+            Self::Pow => "**",
+            Self::Eq => "==",
+            Self::Ne => "!=",
+            Self::Lt => "<",
+            Self::Le => "<=",
+            Self::Gt => ">",
+            Self::Ge => ">=",
+            Self::LogicalAnd => "&&",
+            Self::LogicalOr => "||",
+            Self::BitAnd => "&",
+            Self::BitOr => "|",
+            Self::BitXor => "^",
+            Self::Shl => "<<",
+            Self::Shr => ">>",
+        })
     }
 }
 
 /// Represents a type of delimiter.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Delimiter {
     /// The `(` delimiter.
     Paren,
@@ -203,13 +203,149 @@ impl Delimiter {
     }
 }
 
-impl fmt::Display for Delimiter {
+impl Display for Delimiter {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Paren => write!(f, "("),
-            Self::Bracket => write!(f, "["),
-            Self::Brace => write!(f, "{{"),
-            Self::Angle => write!(f, "<"),
+            Self::Paren => write!(f, "parenthesis"),
+            Self::Bracket => write!(f, "square bracket"),
+            Self::Brace => write!(f, "curly bracket"),
+            Self::Angle => write!(f, "angle bracket"),
+        }
+    }
+}
+
+/// Parameter of a function type.
+#[derive(Clone, Debug)]
+pub struct FuncTypeParam {
+    /// The name of the parameter if one is given.
+    pub name: Option<String>,
+    /// The type of the parameter.
+    pub ty: TypeExpr,
+    /// Whether the parameter is optional.
+    pub optional: bool,
+}
+
+impl Display for FuncTypeParam {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        if let Some(name) = &self.name {
+            f.write_str(name)?;
+            if self.optional {
+                f.write_str("?")?;
+            }
+            f.write_str(": ")?;
+        }
+        write!(f, "{}", self.ty)?;
+        Ok(())
+    }
+}
+
+/// A type expression.
+#[derive(Clone, Debug)]
+pub enum TypeExpr {
+    /// A type identifier, e.g. `Type`.
+    Ident(String),
+    /// A type path access, e.g. `Type.Member` or `module.Type`.
+    Member(Box<TypeExpr>, String),
+    /// A tuple type, e.g. `(Type, Type)`.
+    Tuple(Vec<TypeExpr>),
+    /// An array type, e.g. `Type[]`, `Type[5]`, or `Type[CONSTANT]`.
+    Array(Box<TypeExpr>, Option<Box<Expr>>),
+    /// A function type, e.g. `(Type, Type) -> Type`.
+    Func {
+        /// Positional parameters.
+        args: Vec<FuncTypeParam>,
+        /// Keyword-only parameters, represented as (name, type_expr, is_optional).
+        kwargs: Vec<FuncTypeParam>,
+        /// The return type.
+        ret: Option<Box<TypeExpr>>,
+    },
+    /// A type union, e.g. `Type | Type`.
+    Union(Vec<TypeExpr>),
+    /// A product ("and") type, e.g. `Type & Type`.
+    And(Vec<TypeExpr>),
+    /// A negation ("not") type, e.g. `!Type`.
+    Not(Box<TypeExpr>),
+    /// The `to` modifier which allows any type that has a cast function to the given type,
+    /// e.g. `to Type` or `to string`.
+    To(Box<TypeExpr>),
+    /// A generic type application, e.g. `Type<A, B>`.
+    Application {
+        /// The type being applied to.
+        ty: Box<TypeExpr>,
+        /// The standard type arguments.
+        args: Vec<TypeExpr>,
+        /// The associated type (keyword) arguments.
+        kwargs: Vec<(String, TypeExpr)>,
+    },
+}
+
+impl Display for TypeExpr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Ident(s) => write!(f, "{s}"),
+            Self::Member(ty, s) => write!(f, "{ty}.{s}"),
+            Self::Tuple(tys) => {
+                f.write_str("(")?;
+                let tys = tys
+                    .iter()
+                    .map(|ty| ty.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+
+                write!(f, "{tys})")
+            }
+            Self::Array(ty, size) => {
+                write!(
+                    f,
+                    "{ty}[{}]",
+                    size.map_or_else(|| "".to_string(), |e| e.to_string())
+                )
+            }
+            Self::Func { args, kwargs, ret } => {
+                f.write_str("(")?;
+
+                let args = args
+                    .iter()
+                    .chain(kwargs.iter())
+                    .map(|p| p.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                write!(f, "{args})")?;
+
+                if let Some(ret) = ret {
+                    write!(f, " -> {ret}")?;
+                }
+                Ok(())
+            }
+            Self::Union(tys) => {
+                let tys = tys
+                    .iter()
+                    .map(|ty| ty.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" | ");
+                write!(f, "{tys}")
+            }
+            Self::And(tys) => {
+                let tys = tys
+                    .iter()
+                    .map(|ty| ty.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" & ");
+                write!(f, "{tys}")
+            }
+            Self::Not(ty) => write!(f, "!{ty}"),
+            Self::To(ty) => write!(f, "to {ty}"),
+            Self::Application { ty, args, kwargs } => {
+                write!(f, "{ty}<")?;
+
+                let args = args
+                    .iter()
+                    .map(|ty| ty.to_string())
+                    .chain(kwargs.iter().map(|(name, ty)| format!("{name} = {ty}")))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                write!(f, "{args}>")
+            }
         }
     }
 }
@@ -218,7 +354,7 @@ impl fmt::Display for Delimiter {
 ///
 /// For example, the literal integer 1 is an atom, but the binary operation 1 + 1 is not, since
 /// it is composed of two expressions.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub enum Atom {
     /// An integer litereal.
     Int(String, Radix),
@@ -232,13 +368,12 @@ pub enum Atom {
     Ident(String),
 }
 
-impl fmt::Display for Atom {
+impl Display for Atom {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Int(s, radix) => write!(
                 f,
-                "{}{}",
-                s,
+                "{s}{}",
                 match radix {
                     Radix::Decimal => "",
                     Radix::Hexadecimal => "0x",
@@ -246,9 +381,9 @@ impl fmt::Display for Atom {
                     Radix::Binary => "0b",
                 }
             ),
-            Self::Float(s) | Self::Ident(s) => write!(f, "{}", s),
-            Self::String(s) => write!(f, "{:?}", s),
-            Self::Bool(b) => write!(f, "{}", b),
+            Self::Float(s) | Self::Ident(s) => write!(f, "{s}"),
+            Self::String(s) => write!(f, "{s:?}"),
+            Self::Bool(b) => write!(f, "{b}"),
         }
     }
 }
@@ -287,6 +422,22 @@ pub enum Expr {
         /// The attribute being accessed.
         attr: String,
     },
+    /// An explicit cast to a type.
+    Cast {
+        /// The expression being cast.
+        expr: Box<Spanned<Expr>>,
+        /// The type being cast to.
+        ty: Box<Spanned<TypeExpr>>,
+    },
+    /// A function call.
+    Call {
+        /// The function being called.
+        func: Box<Spanned<Expr>>,
+        /// The positional arguments to the function.
+        args: Vec<Spanned<Expr>>,
+        /// The keyword arguments to the function.
+        kwargs: Vec<(String, Spanned<Expr>)>,
+    },
     /// A range expression.
     ///
     /// A range expression can be represented by one of the following:
@@ -310,10 +461,10 @@ pub enum Expr {
     },
 }
 
-impl fmt::Display for Expr {
+impl Display for Expr {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Atom(a) => write!(f, "{}", a),
+            Self::Atom(a) => write!(f, "{a}"),
             Self::Tuple(items) | Self::Array(items) => {
                 if matches!(self, Self::Tuple(_)) && items.len() == 1 {
                     return write!(f, "({},)", items[0]);
@@ -329,13 +480,23 @@ impl fmt::Display for Expr {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{}", item)?;
+                    write!(f, "{item}")?;
                 }
-                write!(f, "{}", close)
+                write!(f, "{close}")
             }
-            Self::UnaryOp { op, expr } => write!(f, "({}{})", op, expr),
-            Self::BinaryOp { left, op, right } => write!(f, "({} {} {})", left, op, right),
-            Self::Attr { subject, attr, .. } => write!(f, "({}.{})", subject, attr),
+            Self::UnaryOp { op, expr } => write!(f, "({op}{expr})"),
+            Self::BinaryOp { left, op, right } => write!(f, "({left} {op} {right})"),
+            Self::Attr { subject, attr, .. } => write!(f, "({subject}.{attr})"),
+            Self::Cast { expr, ty } => write!(f, "({expr}::{ty})"),
+            Self::Call { func, args, kwargs } => write!(
+                f,
+                "{func}({})",
+                args.iter()
+                    .map(ToString::to_string)
+                    .chain(kwargs.iter().map(|(k, v)| format!("{k}: {v}")))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
             Self::Range {
                 start,
                 inclusive,
@@ -368,27 +529,34 @@ pub enum Node {
         mut_kw: Option<Span>,
         /// The identifier being declared. (TODO: allow destructuring)
         ident: Spanned<String>,
-        // /// The type of the variable, if it is specified.
-        // ty: Option<Box<Spanned<Type>>>, (TODO: type ast)
+        /// The type of the variable, if it is specified.
+        ty: Option<Box<Spanned<TypeExpr>>>,
         /// The value of the variable, if it is specified.
         /// This is always specified for const declarations.
         value: Option<Box<Spanned<Expr>>>,
-    }
+    },
 }
 
-impl fmt::Display for Node {
+impl Display for Node {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Expr(e) => write!(f, "{};", e),
-            Self::Decl { is_const, mut_kw, ident, value, .. } => {
+            Self::Expr(e) => write!(f, "{e};"),
+            Self::Decl {
+                is_const,
+                mut_kw,
+                ident,
+                ty,
+                value,
+                ..
+            } => {
                 write!(f, "{}", if *is_const { "const" } else { "let" })?;
                 if let Some(mut_kw) = mut_kw {
                     write!(f, " {}", mut_kw)?;
                 }
                 write!(f, " {ident}")?;
-                // if let Some(ty) = ty {
-                //     write!(f, ": {ty}")?;
-                // }
+                if let Some(ty) = ty {
+                    write!(f, ": {ty}")?;
+                }
                 if let Some(value) = value {
                     write!(f, " = {value}")?;
                 }
