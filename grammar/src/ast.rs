@@ -170,7 +170,7 @@ impl Display for Delimiter {
 }
 
 /// Parameter of a function type.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FuncTypeParam {
     /// The name of the parameter if one is given.
     pub name: Option<String>,
@@ -195,7 +195,7 @@ impl Display for FuncTypeParam {
 }
 
 /// A type expression.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TypeExpr {
     /// A type identifier, e.g. `Type`.
     Ident(String),
@@ -309,7 +309,7 @@ impl Display for TypeExpr {
 ///
 /// For example, the literal integer 1 is an atom, but the binary operation 1 + 1 is not, since
 /// it is composed of two expressions.
-#[derive(Clone, Debug, Hash)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Atom {
     /// An integer litereal.
     Int(String, Radix),
@@ -344,7 +344,7 @@ impl Display for Atom {
 }
 
 /// An expression that can be evaluated to a value.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Expr {
     /// An atom represented as an expression.
     Atom(Atom),

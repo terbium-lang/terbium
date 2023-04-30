@@ -11,6 +11,7 @@ use std::{
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum TargetKind {
+    Nothing,
     Char(char),
     Token(TokenInfo),
     OpeningDelimiter(Delimiter),
@@ -26,6 +27,7 @@ impl TargetKind {
     #[must_use]
     pub fn hint(&self) -> String {
         match self {
+            Self::Nothing => String::new(),
             Self::Char(c) => c.to_string(),
             Self::Token(token) => token.to_string(),
             Self::OpeningDelimiter(d) => d.open().to_string(),
@@ -80,6 +82,7 @@ impl From<Delimiter> for TargetKind {
 impl Display for TargetKind {
     fn fmt(&self, f: &mut Formatter) -> FmtResult {
         match self {
+            Self::Nothing => f.write_str("nothing"),
             Self::Token(token) => write!(f, "{token}"),
             Self::Char(c) => write!(f, "{c:?}"),
             Self::OpeningDelimiter(d) => write!(f, "opening {d}"),
@@ -324,27 +327,44 @@ impl<T: Into<TargetKind> + Clone> chumsky::Error<T> for Error {
         expected: I,
         found: Option<T>,
     ) -> Self {
-        let expected = TargetKind::OneOf(
-            expected
-                .into_iter()
-                .map(|x| x.map_or(TargetKind::End, Into::into))
-                .collect(),
-        );
+        let expected = expected
+            .into_iter()
+            .map(|x| x.map_or(TargetKind::End, Into::into))
+            .collect::<Vec<_>>();
+        let count = expected.len();
+
+        let expected = match count {
+            0 => TargetKind::Nothing,
+            // SAFETY: `expected` is not empty.
+            1 => unsafe { expected.into_iter().next().unwrap_unchecked() },
+            _ => TargetKind::OneOf(expected),
+        };
+        let hint = match count {
+            _ if found.is_none() && count > 0 => Hint {
+                action: HintAction::InsertAfter(span, expected.hint()),
+                message: "add required tokens".to_string(),
+            },
+            0 => Hint {
+                action: HintAction::Remove(span),
+                message: "remove this".to_string(),
+            },
+            _ => Hint {
+                action: HintAction::Replace(span, expected.hint()),
+                message: "replace with this".to_string(),
+            },
+        };
 
         Self {
             info: found
                 .map(Into::into)
                 .map_or(ErrorInfo::UnexpectedEof, |target| ErrorInfo::Unexpected {
                     span,
-                    expected: TargetKind::Unknown,
+                    expected,
                     found: target,
                 }),
             span,
             label: None,
-            hint: Some(Hint {
-                action: HintAction::Replace(span, expected.hint()),
-                message: "replace with this".to_string(),
-            }),
+            hint: Some(hint),
         }
     }
 

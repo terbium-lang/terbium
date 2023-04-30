@@ -228,6 +228,7 @@ impl<'a> Provider<'a> {
     }
 
     /// The "eof" span of the provider content.
+    #[must_use]
     pub fn eof(&self) -> Span {
         Span::single(self.src(), self.1.chars().count())
     }

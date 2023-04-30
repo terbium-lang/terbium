@@ -7,7 +7,9 @@ use crate::{
 use chumsky::{
     combinator::{IgnoreThen, Repeated, ThenIgnore},
     error::Error as _,
-    prelude::{end, filter_map, just, recursive, select, Parser as ChumskyParser, Recursive},
+    prelude::{
+        choice, end, filter_map, just, recursive, select, Parser as ChumskyParser, Recursive,
+    },
     primitive::Just,
     stream::Stream,
 };
@@ -181,23 +183,24 @@ pub fn expr_parser<'a>() -> RecursiveParser<'a, Spanned<Expr>> {
             .allow_trailing();
 
         // Parses expressions that do not have to be orderly disambiguated against
-        let unambiguous = expr
-            .clone()
-            .delimited_by(lparen!(), rparen!())
-            .or(comma_separated
+        let unambiguous = choice((
+            expr.clone().delimited_by(lparen!(), rparen!()),
+            comma_separated
                 .clone()
                 .delimited_by(lparen!(), rparen!())
-                .map_with_span(|exprs, span| Spanned(Expr::Tuple(exprs), span)))
-            .labelled("tuple")
-            .or(comma_separated
+                .map_with_span(|exprs, span| Spanned(Expr::Tuple(exprs), span))
+                .labelled("tuple"),
+            comma_separated
                 .delimited_by(
                     just(TokenInfo::LeftBracket).pad_ws(),
                     just(TokenInfo::RightBracket).pad_ws(),
                 )
-                .map_with_span(|exprs, span| Spanned(Expr::Array(exprs), span)))
-            .labelled("array")
-            .or(atom.clone())
-            .labelled("unambiguous expression");
+                .map_with_span(|exprs, span| Spanned(Expr::Array(exprs), span))
+                .labelled("array"),
+            atom.clone(),
+        ))
+        .labelled("unambiguous expression")
+        .boxed();
 
         // Attribute access: a.b.c
         let attr = unambiguous
@@ -220,7 +223,8 @@ pub fn expr_parser<'a>() -> RecursiveParser<'a, Spanned<Expr>> {
                     span.merge(ident.span()),
                 )
             })
-            .labelled("attribute access");
+            .labelled("attribute access")
+            .boxed();
 
         // Function call: a(b, c)
         let call = attr
@@ -267,7 +271,8 @@ pub fn expr_parser<'a>() -> RecursiveParser<'a, Spanned<Expr>> {
                 ))
             })
             .try_map(|e, _span| e)
-            .labelled("function call");
+            .labelled("function call")
+            .boxed();
 
         // Prefix unary operators: -a, +a, !a
         let unary = just(TokenInfo::Minus)
@@ -289,7 +294,8 @@ pub fn expr_parser<'a>() -> RecursiveParser<'a, Spanned<Expr>> {
                     span,
                 )
             })
-            .labelled("unary expression");
+            .labelled("unary expression")
+            .boxed();
 
         // Type cast, e.g. a::b
         let cast = unary
@@ -312,7 +318,8 @@ pub fn expr_parser<'a>() -> RecursiveParser<'a, Spanned<Expr>> {
                     span,
                 )
             })
-            .labelled("type cast");
+            .labelled("type cast")
+            .boxed();
 
         // Power operator: a ** b
         // Note that this is right-associative, so a ** b ** c is a ** (b ** c)
@@ -339,7 +346,8 @@ pub fn expr_parser<'a>() -> RecursiveParser<'a, Spanned<Expr>> {
                     span,
                 )
             })
-            .labelled("pow");
+            .labelled("pow")
+            .boxed();
 
         // Product operators: a * b, a / b, a % b
         let prod = pow
@@ -355,7 +363,8 @@ pub fn expr_parser<'a>() -> RecursiveParser<'a, Spanned<Expr>> {
                     .repeated(),
             )
             .foldl(bin_foldl)
-            .labelled("product");
+            .labelled("product")
+            .boxed();
 
         // Sum operators: a + b, a - b
         let sum = prod
@@ -370,7 +379,8 @@ pub fn expr_parser<'a>() -> RecursiveParser<'a, Spanned<Expr>> {
                     .repeated(),
             )
             .foldl(bin_foldl)
-            .labelled("sum");
+            .labelled("sum")
+            .boxed();
 
         macro_rules! compound {
             ($ident1:ident $ident2:ident => $to:expr) => {{
@@ -396,7 +406,8 @@ pub fn expr_parser<'a>() -> RecursiveParser<'a, Spanned<Expr>> {
                     .repeated(),
             )
             .foldl(bin_foldl)
-            .labelled("comparison");
+            .labelled("comparison")
+            .boxed();
 
         // Logical AND: a && b
         let logical_and = cmp
@@ -409,7 +420,8 @@ pub fn expr_parser<'a>() -> RecursiveParser<'a, Spanned<Expr>> {
                     .repeated(),
             )
             .foldl(bin_foldl)
-            .labelled("logical and");
+            .labelled("logical and")
+            .boxed();
 
         // Logical OR: a || b
         let logical_or = logical_and
@@ -422,7 +434,8 @@ pub fn expr_parser<'a>() -> RecursiveParser<'a, Spanned<Expr>> {
                     .repeated(),
             )
             .foldl(bin_foldl)
-            .labelled("logical or");
+            .labelled("logical or")
+            .boxed();
 
         // Bitwise operators: a & b, a | b, a ^ b
         let bitwise = logical_or
@@ -438,7 +451,8 @@ pub fn expr_parser<'a>() -> RecursiveParser<'a, Spanned<Expr>> {
                     .repeated(),
             )
             .foldl(bin_foldl)
-            .labelled("bitwise");
+            .labelled("bitwise")
+            .boxed();
 
         bitwise
     })
@@ -471,7 +485,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Consumes the entire token tree as an expression.
-    pub fn to_expr(&mut self) -> StdResult<Spanned<Expr>, Vec<Error>> {
+    pub fn consume_expr_until_end(&mut self) -> StdResult<Spanned<Expr>, Vec<Error>> {
         expr_parser().then_ignore(end()).parse(self.stream())
     }
 }
