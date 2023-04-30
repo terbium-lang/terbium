@@ -19,7 +19,7 @@ categories = ["compilers", "command-line-interface", "parsing", "wasm"]
 members = ["grammar"]
 
 [dependencies]
-chumsky = "0.9.0"
+chumsky = "1.0.0-alpha.3"
 grammar = { path = "grammar" }
 
 [profile.dev]

@@ -1,27 +1,31 @@
-use crate::ast::{Atom, BinaryOp, Expr, TypeExpr, UnaryOp};
-use crate::error::{Error, TargetKind};
-use crate::{Span, Spanned, StringLiteralFlags, Token, TokenInfo};
-use chumsky::combinator::{IgnoreThen, OrNot, Repeated, ThenIgnore};
-use chumsky::prelude::*;
-use chumsky::primitive::Just;
+use crate::{
+    ast::{Atom, BinaryOp, Expr, TypeExpr, UnaryOp},
+    error::Error,
+    span::{Provider, Span, Spanned},
+    token::{ChumskyTokenStreamer, StringLiteralFlags, TokenInfo, TokenReader},
+};
+use chumsky::{
+    combinator::{IgnoreThen, Repeated, ThenIgnore},
+    error::Error as _,
+    prelude::{end, filter_map, just, recursive, select, Parser as ChumskyParser, Recursive},
+    primitive::Just,
+    stream::Stream,
+};
+use std::result::Result as StdResult;
 
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = StdResult<T, Error>;
 pub type RecursiveParser<'a, T> = Recursive<'a, TokenInfo, T, Error>;
 
 type JustToken = Just<TokenInfo, TokenInfo, Error>;
 type RepeatedToken = Repeated<JustToken>;
-type PadWsTy<T, O> = ThenIgnore<
-    IgnoreThen<RepeatedToken, T, Vec<TokenInfo>, O>,
-    RepeatedToken,
-    O,
-    Vec<TokenInfo>,
->;
+type PadWsTy<T, O> =
+    ThenIgnore<IgnoreThen<RepeatedToken, T, Vec<TokenInfo>, O>, RepeatedToken, O, Vec<TokenInfo>>;
 
 trait WsPadExt<T, O> {
     fn pad_ws(self) -> PadWsTy<T, O>;
 }
 
-impl<O, T: Parser<TokenInfo, O, Error = Error>> WsPadExt<T, O> for T {
+impl<O, T: ChumskyParser<TokenInfo, O, Error = Error>> WsPadExt<T, O> for T {
     #[inline] // Maybe inline is a bad idea
     fn pad_ws(self) -> PadWsTy<T, O> {
         self.padded_by(just(TokenInfo::Whitespace).repeated())
@@ -29,13 +33,17 @@ impl<O, T: Parser<TokenInfo, O, Error = Error>> WsPadExt<T, O> for T {
 }
 
 macro_rules! lparen {
-    () => {{ just(TokenInfo::LeftParen).pad_ws() }};
+    () => {{
+        just(TokenInfo::LeftParen).pad_ws()
+    }};
 }
 macro_rules! rparen {
-    () => {{ just(TokenInfo::RightParen).pad_ws() }};
+    () => {{
+        just(TokenInfo::RightParen).pad_ws()
+    }};
 }
 
-// Parses a string.
+/// Resolves escape sequences in a string.
 fn resolve_string(content: String, flags: StringLiteralFlags, span: Span) -> Result<String> {
     if flags.is_raw() {
         return Ok(content);
@@ -55,20 +63,23 @@ fn resolve_string(content: String, flags: StringLiteralFlags, span: Span) -> Res
                     let value = u32::from_str_radix(&sequence, 16).map_err(|_| {
                         Error::invalid_hex_escape_sequence(
                             sequence.clone(),
-                            Span::new(pos - 1, pos + 1 + $length),
+                            span.get_span(pos - 1, pos + 1 + $length),
                         )
                     })?;
 
                     pos += $length;
                     char::from_u32(value).ok_or(Error::invalid_hex_escape_sequence(
                         sequence,
-                        Span::new(pos - 1, pos + 1 + $length),
+                        span.get_span(pos - 1, pos + 1 + $length),
                     ))?
                 }};
             }
 
             c = match chars.next().ok_or_else(|| {
-                Error::unexpected_eof(pos, Some(('n', "insert an escape sequence")))
+                Error::unexpected_eof(
+                    Span::single(span.src, pos),
+                    Some(('n', "insert an escape sequence")),
+                )
             })? {
                 'n' => '\n',
                 'r' => '\r',
@@ -85,7 +96,7 @@ fn resolve_string(content: String, flags: StringLiteralFlags, span: Span) -> Res
                 c => {
                     return Err(Error::unknown_escape_sequence(
                         c,
-                        Span::new(pos - 1, pos + 1),
+                        span.get_span(pos - 1, pos + 1),
                     ))
                 }
             };
@@ -110,10 +121,26 @@ pub fn type_expr_parser<'a>() -> RecursiveParser<'a, Spanned<TypeExpr>> {
     })
 }
 
+#[allow(clippy::too_many_lines)]
 pub fn expr_parser<'a>() -> RecursiveParser<'a, Spanned<Expr>> {
     let ty = type_expr_parser();
 
     recursive(|expr: Recursive<TokenInfo, Spanned<Expr>, _>| {
+        fn bin_foldl(
+            lhs: Spanned<Expr>,
+            (op, rhs): (Spanned<BinaryOp>, Spanned<Expr>),
+        ) -> Spanned<Expr> {
+            let span = lhs.span().merge(rhs.span());
+            Spanned(
+                Expr::BinaryOp {
+                    left: Box::new(lhs),
+                    op,
+                    right: Box::new(rhs),
+                },
+                span,
+            )
+        }
+
         // An identifier
         let ident = select! {
             TokenInfo::Ident(name) => Expr::Atom(match name.as_str() {
@@ -122,7 +149,8 @@ pub fn expr_parser<'a>() -> RecursiveParser<'a, Spanned<Expr>> {
                 _ => Atom::Ident(name),
             })
         }
-        .map_with_span(Spanned);
+        .map_with_span(Spanned)
+        .pad_ws();
 
         // Parses and consumes the next atom. An atom is the most basic unit of an expression that
         // cannot be broken down into other expressions any further.
@@ -142,8 +170,8 @@ pub fn expr_parser<'a>() -> RecursiveParser<'a, Spanned<Expr>> {
                 span,
             ))
         })
-        .or(ident)
         .pad_ws()
+        .or(ident.clone())
         .labelled("atom");
 
         // Intermediate parser to consume comma-separated sequences, e.g. 1, 2, 3
@@ -154,6 +182,7 @@ pub fn expr_parser<'a>() -> RecursiveParser<'a, Spanned<Expr>> {
 
         // Parses expressions that do not have to be orderly disambiguated against
         let unambiguous = expr
+            .clone()
             .delimited_by(lparen!(), rparen!())
             .or(comma_separated
                 .clone()
@@ -161,7 +190,10 @@ pub fn expr_parser<'a>() -> RecursiveParser<'a, Spanned<Expr>> {
                 .map_with_span(|exprs, span| Spanned(Expr::Tuple(exprs), span)))
             .labelled("tuple")
             .or(comma_separated
-                .delimited_by(just(TokenInfo::LeftBracket).pad_ws(), just(TokenInfo::RightBracket).pad_ws())
+                .delimited_by(
+                    just(TokenInfo::LeftBracket).pad_ws(),
+                    just(TokenInfo::RightBracket).pad_ws(),
+                )
                 .map_with_span(|exprs, span| Spanned(Expr::Array(exprs), span)))
             .labelled("array")
             .or(atom.clone())
@@ -208,11 +240,12 @@ pub fn expr_parser<'a>() -> RecursiveParser<'a, Spanned<Expr>> {
             )
             .foldl(|lhs, Spanned(mut args, span)| {
                 let lhs = lhs?;
-                let mut partition = args
+                let partition = args
                     .iter()
                     .position(|(name, _)| name.is_some())
-                    .unwrap_or_else(|| args.len());
+                    .unwrap_or(args.len());
                 let kwargs = args.split_off(partition);
+                let span = lhs.span().merge(span);
 
                 Ok(Spanned(
                     Expr::Call {
@@ -230,10 +263,10 @@ pub fn expr_parser<'a>() -> RecursiveParser<'a, Spanned<Expr>> {
                             })
                             .collect::<Result<Vec<_>>>()?,
                     },
-                    lhs.span().merge(span),
+                    span,
                 ))
             })
-            .try_map(|e, span| e)
+            .try_map(|e, _span| e)
             .labelled("function call");
 
         // Prefix unary operators: -a, +a, !a
@@ -241,8 +274,8 @@ pub fn expr_parser<'a>() -> RecursiveParser<'a, Spanned<Expr>> {
             .to(UnaryOp::Minus)
             .or(just(TokenInfo::Plus).to(UnaryOp::Plus))
             .or(just(TokenInfo::Not).to(UnaryOp::Not))
-            .pad_ws()
             .map_with_span(Spanned)
+            .pad_ws()
             .repeated()
             .then(call.clone())
             .foldr(|op, expr| {
@@ -261,11 +294,12 @@ pub fn expr_parser<'a>() -> RecursiveParser<'a, Spanned<Expr>> {
         // Type cast, e.g. a::b
         let cast = unary
             .clone()
-            .then(just(TokenInfo::Colon)
-                .ignore_then(just(TokenInfo::Colon))
-                .pad_ws()
-                .ignore_then(ty.clone())
-                .repeated()
+            .then(
+                just(TokenInfo::Colon)
+                    .ignore_then(just(TokenInfo::Colon))
+                    .pad_ws()
+                    .ignore_then(ty.clone())
+                    .repeated(),
             )
             .foldl(|target, ty| {
                 let span = target.span().merge(ty.span());
@@ -284,11 +318,12 @@ pub fn expr_parser<'a>() -> RecursiveParser<'a, Spanned<Expr>> {
         // Note that this is right-associative, so a ** b ** c is a ** (b ** c)
         let pow = cast
             .clone()
-            .then(just(TokenInfo::Asterisk)
-                .ignore_then(just(TokenInfo::Asterisk))
-                .to(BinaryOp::Pow)
-                .pad_ws()
-                .map_with_span(Spanned)
+            .then(
+                just(TokenInfo::Asterisk)
+                    .ignore_then(just(TokenInfo::Asterisk))
+                    .to(BinaryOp::Pow)
+                    .map_with_span(Spanned)
+                    .pad_ws(),
             )
             .repeated()
             .then(cast)
@@ -306,22 +341,18 @@ pub fn expr_parser<'a>() -> RecursiveParser<'a, Spanned<Expr>> {
             })
             .labelled("pow");
 
-        fn bin_foldl(lhs: Spanned<Expr>, (op, rhs): (Spanned<BinaryOp>, Spanned<Expr>)) -> Spanned<Expr> {
-            let span = lhs.span().merge(rhs.span());
-            Spanned(Expr::BinaryOp { left: Box::new(lhs), op, right: Box::new(rhs) }, span)
-        }
-
         // Product operators: a * b, a / b, a % b
         let prod = pow
             .clone()
             .then(
-                just(TokenInfo::Asterisk).to(BinaryOp::Mul)
+                just(TokenInfo::Asterisk)
+                    .to(BinaryOp::Mul)
                     .or(just(TokenInfo::Divide).to(BinaryOp::Div))
                     .or(just(TokenInfo::Modulus).to(BinaryOp::Mod))
-                    .pad_ws()
                     .map_with_span(Spanned)
+                    .pad_ws()
                     .then(pow)
-                    .repeated()
+                    .repeated(),
             )
             .foldl(bin_foldl)
             .labelled("product");
@@ -330,20 +361,23 @@ pub fn expr_parser<'a>() -> RecursiveParser<'a, Spanned<Expr>> {
         let sum = prod
             .clone()
             .then(
-                just(TokenInfo::Plus).to(BinaryOp::Add)
+                just(TokenInfo::Plus)
+                    .to(BinaryOp::Add)
                     .or(just(TokenInfo::Minus).to(BinaryOp::Sub))
                     .pad_ws()
                     .map_with_span(Spanned)
                     .then(prod)
-                    .repeated()
+                    .repeated(),
             )
             .foldl(bin_foldl)
             .labelled("sum");
 
         macro_rules! compound {
             ($ident1:ident $ident2:ident => $to:expr) => {{
-                just(TokenInfo::$ident).ignore_then(just(TokenInfo::$ident)).to($expr)
-            }}
+                just(TokenInfo::$ident1)
+                    .ignore_then(just(TokenInfo::$ident2))
+                    .to($to)
+            }};
         }
 
         // Comparison operators: a == b, a != b, a < b, a > b, a <= b, a >= b
@@ -356,14 +390,88 @@ pub fn expr_parser<'a>() -> RecursiveParser<'a, Spanned<Expr>> {
                     .or(compound!(Gt Equals => BinaryOp::Ge))
                     .or(just(TokenInfo::Lt).to(BinaryOp::Lt))
                     .or(just(TokenInfo::Gt).to(BinaryOp::Gt))
-                    .pad_ws()
                     .map_with_span(Spanned)
+                    .pad_ws()
                     .then(sum)
-                    .repeated()
+                    .repeated(),
             )
             .foldl(bin_foldl)
             .labelled("comparison");
 
-        1
+        // Logical AND: a && b
+        let logical_and = cmp
+            .clone()
+            .then(
+                compound!(And And => BinaryOp::LogicalAnd)
+                    .map_with_span(Spanned)
+                    .pad_ws()
+                    .then(cmp)
+                    .repeated(),
+            )
+            .foldl(bin_foldl)
+            .labelled("logical and");
+
+        // Logical OR: a || b
+        let logical_or = logical_and
+            .clone()
+            .then(
+                compound!(Or Or => BinaryOp::LogicalOr)
+                    .map_with_span(Spanned)
+                    .pad_ws()
+                    .then(logical_and)
+                    .repeated(),
+            )
+            .foldl(bin_foldl)
+            .labelled("logical or");
+
+        // Bitwise operators: a & b, a | b, a ^ b
+        let bitwise = logical_or
+            .clone()
+            .then(
+                just(TokenInfo::And)
+                    .to(BinaryOp::BitAnd)
+                    .or(just(TokenInfo::Or).to(BinaryOp::BitOr))
+                    .or(just(TokenInfo::Caret).to(BinaryOp::BitXor))
+                    .map_with_span(Spanned)
+                    .pad_ws()
+                    .then(logical_or)
+                    .repeated(),
+            )
+            .foldl(bin_foldl)
+            .labelled("bitwise");
+
+        bitwise
     })
+}
+
+/// Parses a token stream into an AST.
+#[must_use = "parser will only parse if you call its provided methods"]
+pub struct Parser<'a> {
+    tokens: ChumskyTokenStreamer<'a>,
+    eof: Span,
+}
+
+impl<'a> Parser<'a> {
+    /// Creates a new parser over the provided source provider.
+    pub fn from_provider(provider: &'a Provider<'a>) -> Self {
+        Self {
+            tokens: ChumskyTokenStreamer(TokenReader::new(provider)),
+            eof: provider.eof(),
+        }
+    }
+
+    #[inline]
+    fn stream(&mut self) -> Stream<TokenInfo, Span, &mut ChumskyTokenStreamer<'a>> {
+        Stream::from_iter(self.eof, &mut self.tokens)
+    }
+
+    /// Consumes the next expression in the token stream.
+    pub fn next_expr(&mut self) -> StdResult<Spanned<Expr>, Vec<Error>> {
+        expr_parser().parse(self.stream())
+    }
+
+    /// Consumes the entire token tree as an expression.
+    pub fn to_expr(&mut self) -> StdResult<Spanned<Expr>, Vec<Error>> {
+        expr_parser().then_ignore(end()).parse(self.stream())
+    }
 }

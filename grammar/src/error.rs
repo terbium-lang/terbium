@@ -1,13 +1,15 @@
-use super::{Delimiter, Span, Spanned};
-use crate::{token::Error as TokenizationError, TokenInfo};
+use crate::{
+    ast::Delimiter,
+    span::{Span, Spanned, Src},
+    token::{Error as TokenizationError, TokenInfo},
+};
 use std::ops::Range;
 use std::{
-    fmt,
-    fmt::{Display, Formatter, Result as FmtResult},
+    fmt::{self, Display, Formatter, Result as FmtResult},
     string::ToString,
 };
 
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum TargetKind {
     Char(char),
     Token(TokenInfo),
@@ -21,6 +23,7 @@ pub enum TargetKind {
 }
 
 impl TargetKind {
+    #[must_use]
     pub fn hint(&self) -> String {
         match self {
             Self::Char(c) => c.to_string(),
@@ -62,7 +65,7 @@ impl From<TokenInfo> for TargetKind {
     }
 }
 
-impl<T: Into<TargetKind>> From<Spanned<T>> for TargetKind {
+impl<T: Into<Self>> From<Spanned<T>> for TargetKind {
     fn from(t: Spanned<T>) -> Self {
         t.0.into()
     }
@@ -217,7 +220,7 @@ impl Error {
         Self {
             info: ErrorInfo::Unexpected {
                 span,
-                expected: expected.map(Into::into).unwrap_or(TargetKind::Unknown),
+                expected: expected.map_or(TargetKind::Unknown, Into::into),
                 found: found.clone().into(),
             },
             span,
@@ -232,15 +235,15 @@ impl Error {
     /// Unexpected EOF.
     #[must_use]
     pub fn unexpected_eof(
-        index: usize,
+        eof: Span,
         insert_hint: Option<(impl Into<TargetKind>, impl ToString)>,
     ) -> Self {
         Self {
             info: ErrorInfo::UnexpectedEof,
-            span: Span::single(index),
+            span: eof,
             label: None,
             hint: insert_hint.map(|(hint, msg)| Hint {
-                action: HintAction::InsertAfter(Span::single(index), hint.into().hint()),
+                action: HintAction::InsertAfter(eof, hint.into().hint()),
                 message: msg.to_string(),
             }),
         }
@@ -253,7 +256,7 @@ impl Error {
             info: ErrorInfo::UnknownEscapeSequence(c, span),
             span,
             label: None,
-            hint: escape_the_escape_sequence(span),
+            hint: Some(escape_the_escape_sequence(span)),
         }
     }
 
@@ -264,7 +267,7 @@ impl Error {
             info: ErrorInfo::InvalidHexEscapeSequence(s, span),
             span,
             label: None,
-            hint: escape_the_escape_sequence(span),
+            hint: Some(escape_the_escape_sequence(span)),
         }
     }
 
@@ -284,23 +287,23 @@ impl Error {
 }
 
 #[inline]
-fn escape_the_escape_sequence(span: Span) -> Option<Hint> {
-    Some(Hint {
+fn escape_the_escape_sequence(span: Span) -> Hint {
+    Hint {
         action: HintAction::InsertBefore(span, "\\".to_string()),
         message: "escape the escape sequence".to_string(),
-    })
+    }
 }
 
 impl chumsky::Span for Span {
-    type Context = ();
+    type Context = Src;
     type Offset = usize;
 
-    fn new(_: Self::Context, range: Range<Self::Offset>) -> Self {
-        Self::from_range(range)
+    fn new(src: Self::Context, range: Range<Self::Offset>) -> Self {
+        Self::from_range(src, range)
     }
 
     fn context(&self) -> Self::Context {
-        ()
+        self.src
     }
 
     fn start(&self) -> Self::Offset {
@@ -330,7 +333,6 @@ impl<T: Into<TargetKind> + Clone> chumsky::Error<T> for Error {
 
         Self {
             info: found
-                .clone()
                 .map(Into::into)
                 .map_or(ErrorInfo::UnexpectedEof, |target| ErrorInfo::Unexpected {
                     span,
@@ -353,17 +355,20 @@ impl<T: Into<TargetKind> + Clone> chumsky::Error<T> for Error {
         expected: T,
         _before: Option<T>,
     ) -> Self {
+        let expected = expected.into();
+        let action = HintAction::InsertAfter(span, expected.hint());
+
         Self {
             info: ErrorInfo::UnmatchedDelimiter {
                 start: start.into(),
                 opening_span: before_span,
-                expected: expected.into(),
+                expected,
                 span,
             },
             span,
             label: None,
             hint: Some(Hint {
-                action: HintAction::InsertAfter(span, expected.into().hint()),
+                action,
                 message: "add the missing delimiter".to_string(),
             }),
         }
@@ -374,7 +379,7 @@ impl<T: Into<TargetKind> + Clone> chumsky::Error<T> for Error {
         self
     }
 
-    fn merge(mut self, other: Self) -> Self {
+    fn merge(self, other: Self) -> Self {
         Self {
             info: self.info,
             span: self.span.merge(other.span),

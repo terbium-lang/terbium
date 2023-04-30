@@ -1,15 +1,20 @@
-use grammar::parser::Parser;
+use grammar::{
+    parser::Parser,
+    span::{Provider, Src},
+};
 
 #[test]
 fn test_parser() {
-    let mut p = Parser::new(r##"-[6 + (1, 2, 3, 5, 4, 5))]"##).unwrap();
-    let expr = p.consume_expr();
+    let provider = Provider::new(Src::None, r##"-[6 + (1, 2, 3, 5, 4, 5)]"##);
+
+    let mut parser = Parser::from_provider(&provider);
+    let expr = parser.to_expr();
 
     match expr {
         Ok(ref e) => {
             println!("{}", e);
         }
-        Err(ref err) => println!("{}", err),
+        Err(ref err) => println!("{:?}", err),
     }
     println!("{:#?}", expr);
 }

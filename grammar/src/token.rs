@@ -1,4 +1,4 @@
-use super::{Span, Spanned};
+use crate::span::{Provider, Span, Spanned, Src};
 use std::{fmt, str::Chars};
 use unicode_xid::UnicodeXID;
 
@@ -74,8 +74,10 @@ impl Radix {
 }
 
 /// Represents information about a lexical token in the source code.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TokenInfo {
+    /// An invalid token.
+    Invalid(Error),
     /// Any sequence of whitespace.
     Whitespace,
     /// A documentation comment. These are comments that begin with `///` or `//!`.
@@ -166,6 +168,7 @@ fn write_str_literal_flags(f: &mut fmt::Formatter, flags: StringLiteralFlags) ->
 impl fmt::Display for TokenInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Invalid(_) => Ok(()),
             Self::Whitespace => f.write_str(" "),
             Self::DocComment { content, is_inner } => {
                 writeln!(f, "//{}{content}", if *is_inner { "!" } else { "/" })
@@ -215,25 +218,15 @@ pub type Token = Spanned<TokenInfo>;
 
 /// Information about a tokenization error.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ErrorKind {
+pub enum Error {
     /// Unexpected character.
     UnexpectedCharacter(char),
 }
 
-/// An error that occured during tokenization.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Error {
-    /// The span of the error in the source code.
-    pub span: Span,
-    /// The kind of error this is.
-    pub kind: ErrorKind,
-}
-
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: ", self.span)?;
-        match self.kind {
-            ErrorKind::UnexpectedCharacter(c) => write!(f, "unexpected character '{c}'"),
+        match self {
+            Self::UnexpectedCharacter(c) => write!(f, "unexpected character '{c}'"),
         }
     }
 }
@@ -245,7 +238,6 @@ impl std::error::Error for Error {}
 struct Cursor<'a> {
     inner: Chars<'a>,
     pos: usize,
-    // len: usize,
 }
 
 impl<'a> Cursor<'a> {
@@ -253,7 +245,6 @@ impl<'a> Cursor<'a> {
         Self {
             inner: source.chars(),
             pos: 0,
-            // len: source.len(),
         }
     }
 
@@ -284,16 +275,12 @@ impl<'a> Cursor<'a> {
         self.pos += 1;
         self.inner.next()
     }
-
-    // /// Whether the cursor is at the end of the source.
-    // fn is_eof(&self) -> bool {
-    //     self.pos >= self.len
-    // }
 }
 
 /// A reader over a source string that can be used to lex tokens.
 #[derive(Clone)]
 pub struct TokenReader<'a> {
+    src: Src,
     cursor: Cursor<'a>,
 }
 
@@ -330,9 +317,10 @@ fn is_ident_start(c: char) -> bool {
 impl<'a> TokenReader<'a> {
     /// Creates a token reader over the given source string.
     #[must_use = "token readers are lazy and do nothing unless iterated"]
-    pub fn new(source: &'a str) -> Self {
+    pub fn new(provider: &'a Provider<'a>) -> Self {
         Self {
-            cursor: Cursor::new(source),
+            src: provider.src(),
+            cursor: Cursor::new(provider.content()),
         }
     }
 
@@ -410,7 +398,7 @@ impl<'a> TokenReader<'a> {
                             content: line,
                             is_inner: c == '!',
                         },
-                        Span::new(start, self.cursor.pos()),
+                        Span::new(self.src, start, self.cursor.pos()),
                     ))
                 } else {
                     self.discard_line();
@@ -422,7 +410,7 @@ impl<'a> TokenReader<'a> {
                 self.discard_block_comment();
                 None
             }
-            _ => Some(Spanned(TokenInfo::Divide, Span::single(start))),
+            _ => Some(Spanned(TokenInfo::Divide, Span::single(self.src, start))),
         }
     }
 
@@ -462,7 +450,7 @@ impl<'a> TokenReader<'a> {
                     continue;
                 }
 
-                return Some((content, Span::new(start, end)));
+                return Some((content, Span::new(self.src, start, end)));
             }
 
             content.push(c);
@@ -526,7 +514,7 @@ impl<'a> TokenReader<'a> {
 
         Some(Spanned(
             TokenInfo::StringLiteral(content, flags, content_span),
-            Span::new(start, self.pos()),
+            Span::new(self.src, start, self.pos()),
         ))
     }
 
@@ -541,7 +529,7 @@ impl<'a> TokenReader<'a> {
         // should it be tokenized as (1.) (.2)? Obviously, we prefer the first one, however if we
         // were to allow . to come first, the current implementation will actually output the second
         // result, which is invaid syntax.
-        if !matches!(next, '0'..='9') {
+        if !next.is_ascii_digit() {
             return None;
         }
 
@@ -652,12 +640,12 @@ impl<'a> TokenReader<'a> {
         Some(if is_float {
             Spanned(
                 TokenInfo::FloatLiteral(content),
-                Span::new(start, self.pos()),
+                Span::new(self.src, start, self.pos()),
             )
         } else {
             Spanned(
                 TokenInfo::IntLiteral(content, radix),
-                Span::new(start, self.pos()),
+                Span::new(self.src, start, self.pos()),
             )
         })
     }
@@ -682,28 +670,29 @@ impl<'a> TokenReader<'a> {
 
         Some(Spanned(
             TokenInfo::Ident(content),
-            Span::new(start, self.pos()),
+            Span::new(self.src, start, self.pos()),
         ))
     }
 }
 
 impl Iterator for TokenReader<'_> {
-    type Item = Result<Token, Error>;
+    type Item = Token;
 
     fn next(&mut self) -> Option<Self::Item> {
         let start = self.pos();
 
         if self.consume_whitespace() {
-            return Some(Ok(Spanned(
+            return Some(Spanned(
                 TokenInfo::Whitespace,
-                Span::new(start, self.pos()),
-            )));
+                Span::new(self.src, start, self.pos()),
+            ));
         }
 
         macro_rules! consider {
             ($e:expr) => {{
-                if let Some(token) = $e {
-                    return Some(Ok(token));
+                let out = $e;
+                if out.is_some() {
+                    return out;
                 }
             }};
             ($($e:expr),*) => {{
@@ -735,12 +724,7 @@ impl Iterator for TokenReader<'_> {
             '+' => TokenInfo::Plus,
             '-' => TokenInfo::Minus,
             '*' => TokenInfo::Asterisk,
-            '/' => {
-                return self
-                    .consume_comment_or_divide()
-                    .map(Ok)
-                    .or_else(|| self.next())
-            }
+            '/' => return self.consume_comment_or_divide().or_else(|| self.next()),
             '\\' => TokenInfo::Backslash,
             '^' => TokenInfo::Caret,
             '&' => TokenInfo::And,
@@ -748,13 +732,24 @@ impl Iterator for TokenReader<'_> {
             '%' => TokenInfo::Modulus,
             '~' => TokenInfo::Tilde,
             c => {
-                return Some(Err(Error {
-                    span: Span::new(start, self.pos()),
-                    kind: ErrorKind::UnexpectedCharacter(c),
-                }))
+                return Some(Spanned(
+                    TokenInfo::Invalid(Error::UnexpectedCharacter(c)),
+                    Span::new(self.src, start, self.pos()),
+                ))
             }
         };
 
-        Some(Ok(Spanned(info, Span::new(start, self.pos()))))
+        Some(Spanned(info, Span::new(self.src, start, self.pos())))
+    }
+}
+
+/// Streams (`TokenInfo`, `Span`) instead of Spanned<Token> into [`chumsky::Stream`].
+pub struct ChumskyTokenStreamer<'a>(pub TokenReader<'a>);
+
+impl Iterator for ChumskyTokenStreamer<'_> {
+    type Item = (TokenInfo, Span);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next().map(|Spanned(token, span)| (token, span))
     }
 }

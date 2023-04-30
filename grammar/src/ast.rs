@@ -1,55 +1,10 @@
 //! Models representing the abstract syntax tree.
 
-use super::{Radix, Span};
-use crate::TokenInfo;
+use crate::{
+    span::{Span, Spanned},
+    token::{Radix, TokenInfo},
+};
 use std::fmt::{self, Display, Formatter};
-
-/// A compound of a span and a value.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct Spanned<T>(pub T, pub Span);
-
-impl<T> Spanned<T> {
-    /// Returns the value.
-    #[must_use]
-    pub const fn value(&self) -> &T {
-        &self.0
-    }
-
-    /// Returns the span.
-    #[must_use]
-    pub const fn span(&self) -> Span {
-        self.1
-    }
-
-    /// Consumes and maps the inner value.
-    #[must_use]
-    #[allow(
-        clippy::missing_const_for_fn,
-        reason = "closure is not supposed to be const"
-    )]
-    pub fn map<U>(self, f: impl FnOnce(T) -> U) -> Spanned<U> {
-        Spanned(f(self.0), self.1)
-    }
-
-    /// Returns a tuple (value, span).
-    #[must_use]
-    #[allow(clippy::missing_const_for_fn, reason = "destructors can't be const")]
-    pub fn into_inner(self) -> (T, Span) {
-        (self.0, self.1)
-    }
-
-    /// Returns a tuple (&value, span).
-    #[must_use]
-    pub const fn as_inner(&self) -> (&T, Span) {
-        (&self.0, self.1)
-    }
-}
-
-impl<T: Display> Display for Spanned<T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
 
 /// An enumeration of possible unary operators.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -288,7 +243,7 @@ impl Display for TypeExpr {
                 f.write_str("(")?;
                 let tys = tys
                     .iter()
-                    .map(|ty| ty.to_string())
+                    .map(ToString::to_string)
                     .collect::<Vec<_>>()
                     .join(", ");
 
@@ -298,7 +253,7 @@ impl Display for TypeExpr {
                 write!(
                     f,
                     "{ty}[{}]",
-                    size.map_or_else(|| "".to_string(), |e| e.to_string())
+                    size.as_ref().map_or_else(String::new, ToString::to_string)
                 )
             }
             Self::Func { args, kwargs, ret } => {
@@ -307,7 +262,7 @@ impl Display for TypeExpr {
                 let args = args
                     .iter()
                     .chain(kwargs.iter())
-                    .map(|p| p.to_string())
+                    .map(ToString::to_string)
                     .collect::<Vec<_>>()
                     .join(", ");
                 write!(f, "{args})")?;
@@ -320,7 +275,7 @@ impl Display for TypeExpr {
             Self::Union(tys) => {
                 let tys = tys
                     .iter()
-                    .map(|ty| ty.to_string())
+                    .map(ToString::to_string)
                     .collect::<Vec<_>>()
                     .join(" | ");
                 write!(f, "{tys}")
@@ -328,7 +283,7 @@ impl Display for TypeExpr {
             Self::And(tys) => {
                 let tys = tys
                     .iter()
-                    .map(|ty| ty.to_string())
+                    .map(ToString::to_string)
                     .collect::<Vec<_>>()
                     .join(" & ");
                 write!(f, "{tys}")
@@ -340,7 +295,7 @@ impl Display for TypeExpr {
 
                 let args = args
                     .iter()
-                    .map(|ty| ty.to_string())
+                    .map(ToString::to_string)
                     .chain(kwargs.iter().map(|(name, ty)| format!("{name} = {ty}")))
                     .collect::<Vec<_>>()
                     .join(", ");
