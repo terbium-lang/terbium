@@ -102,3 +102,18 @@ fn test_expr_parser() {
         ))
     )
 }
+
+#[test]
+fn test_body_parser() {
+    let provider = Provider::new(Src::None, "let x = 1;");
+
+    let mut parser = Parser::from_provider(&provider);
+    let nodes = parser.consume_body_until_end();
+
+    println!("{nodes:#?}");
+    if let Ok(nodes) = nodes {
+        for node in nodes {
+            println!("{node}");
+        }
+    }
+}

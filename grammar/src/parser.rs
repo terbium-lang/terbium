@@ -1,3 +1,5 @@
+use crate::ast::Node;
+use crate::error::TargetKind;
 use crate::{
     ast::{Atom, BinaryOp, Expr, TypeExpr, UnaryOp},
     error::Error,
@@ -42,6 +44,18 @@ macro_rules! lparen {
 macro_rules! rparen {
     () => {{
         just(TokenInfo::RightParen).pad_ws()
+    }};
+}
+
+macro_rules! kw {
+    ($kw:literal) => {{
+        just(TokenInfo::Ident($kw.to_string())).map_with_span(Spanned)
+    }};
+    ($kw:ident) => {{
+        kw!(stringify!($kw))
+    }};
+    (@pad $kw:tt) => {{
+        kw!($kw).pad_ws()
     }};
 }
 
@@ -116,15 +130,84 @@ pub fn type_expr_parser<'a>() -> RecursiveParser<'a, Spanned<TypeExpr>> {
         let ident = select! {
             TokenInfo::Ident(name) => TypeExpr::Ident(name),
         }
-        .pad_ws()
-        .map_with_span(Spanned);
+        .map_with_span(Spanned)
+        .pad_ws();
 
         ident
     })
 }
 
+pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
+    recursive(|body: Recursive<TokenInfo, Vec<Spanned<Node>>, _>| {
+        let expr = expr_parser(body.clone());
+        let ty = type_expr_parser();
+
+        let ident = select! {
+            TokenInfo::Ident(name) => name,
+        }
+        .map_with_span(Spanned)
+        .pad_ws();
+
+        let expression = expr
+            .clone()
+            .then_ignore(just(TokenInfo::Semicolon).pad_ws())
+            .map(Node::Expr)
+            .map_with_span(Spanned)
+            .labelled("expression");
+
+        // Declaration
+        let decl = kw!("let")
+            .map(|spanned| spanned.map(|_| false))
+            .or(kw!("const").map(|spanned| spanned.map(|_| true)))
+            .then(kw!("mut").map(|spanned| spanned.span()).pad_ws().or_not())
+            .then(ident)
+            .then(
+                just(TokenInfo::Colon)
+                    .pad_ws()
+                    .ignore_then(ty.clone())
+                    .or_not(),
+            )
+            .then_ignore(just(TokenInfo::Equals))
+            .then(expr.clone().or_not())
+            .then_ignore(just(TokenInfo::Semicolon))
+            .try_map(
+                |((((Spanned(is_const, kw_span), mut_kw), ident), ty), expr), span| {
+                    if is_const {
+                        if let Some(mut_kw) = mut_kw {
+                            let keyword = TargetKind::Keyword("mut");
+                            return Err(Error::unexpected(mut_kw, None::<TargetKind>, &keyword)
+                                .note("constants cannot be mutable"));
+                        }
+                        if expr.is_none() {
+                            return Err(Error::expected_input_found(
+                                span,
+                                std::iter::once(Some(TargetKind::Expression)),
+                                None,
+                            ));
+                        }
+                    }
+                    Ok(Spanned(
+                        Node::Decl {
+                            kw: kw_span,
+                            mut_kw,
+                            ident,
+                            ty,
+                            value: expr.map(Box::new),
+                            is_const,
+                        },
+                        span,
+                    ))
+                },
+            );
+
+        choice((decl, expression)).pad_ws().repeated()
+    })
+}
+
 #[allow(clippy::too_many_lines)]
-pub fn expr_parser<'a>() -> RecursiveParser<'a, Spanned<Expr>> {
+pub fn expr_parser<'a>(
+    body: Recursive<TokenInfo, Vec<Spanned<Node>>, Error>,
+) -> RecursiveParser<'a, Spanned<Expr>> {
     let ty = type_expr_parser();
 
     recursive(|expr: Recursive<TokenInfo, Spanned<Expr>, _>| {
@@ -313,7 +396,7 @@ pub fn expr_parser<'a>() -> RecursiveParser<'a, Spanned<Expr>> {
                 Spanned(
                     Expr::Cast {
                         expr: Box::new(target),
-                        ty: Box::new(ty),
+                        ty,
                     },
                     span,
                 )
@@ -481,11 +564,20 @@ impl<'a> Parser<'a> {
 
     /// Consumes the next expression in the token stream.
     pub fn next_expr(&mut self) -> StdResult<Spanned<Expr>, Vec<Error>> {
-        expr_parser().parse(self.stream())
+        let body_parser = body_parser();
+        expr_parser(body_parser).parse(self.stream())
     }
 
     /// Consumes the entire token tree as an expression.
     pub fn consume_expr_until_end(&mut self) -> StdResult<Spanned<Expr>, Vec<Error>> {
-        expr_parser().then_ignore(end()).parse(self.stream())
+        let body_parser = body_parser();
+        expr_parser(body_parser)
+            .then_ignore(end())
+            .parse(self.stream())
+    }
+
+    /// Consumes the entire token tree as a body.
+    pub fn consume_body_until_end(&mut self) -> StdResult<Vec<Spanned<Node>>, Vec<Error>> {
+        body_parser().then_ignore(end()).parse(self.stream())
     }
 }

@@ -208,9 +208,9 @@ pub enum TypeExpr {
     /// A function type, e.g. `(Type, Type) -> Type`.
     Func {
         /// Positional parameters.
-        args: Vec<FuncTypeParam>,
+        params: Vec<FuncTypeParam>,
         /// Keyword-only parameters, represented as (name, type_expr, is_optional).
-        kwargs: Vec<FuncTypeParam>,
+        kw_params: Vec<FuncTypeParam>,
         /// The return type.
         ret: Option<Box<TypeExpr>>,
     },
@@ -256,16 +256,20 @@ impl Display for TypeExpr {
                     size.as_ref().map_or_else(String::new, ToString::to_string)
                 )
             }
-            Self::Func { args, kwargs, ret } => {
+            Self::Func {
+                params,
+                kw_params,
+                ret,
+            } => {
                 f.write_str("(")?;
 
-                let args = args
+                let params = params
                     .iter()
-                    .chain(kwargs.iter())
+                    .chain(kw_params.iter())
                     .map(ToString::to_string)
                     .collect::<Vec<_>>()
                     .join(", ");
-                write!(f, "{args})")?;
+                write!(f, "{params})")?;
 
                 if let Some(ret) = ret {
                     write!(f, " -> {ret}")?;
@@ -382,7 +386,7 @@ pub enum Expr {
         /// The expression being cast.
         expr: Box<Spanned<Expr>>,
         /// The type being cast to.
-        ty: Box<Spanned<TypeExpr>>,
+        ty: Spanned<TypeExpr>,
     },
     /// A function call.
     Call {
@@ -414,6 +418,62 @@ pub enum Expr {
         /// The end value of the range. There might not be an end.
         end: Option<Box<Spanned<Expr>>>,
     },
+    /// An if-statement. This is an expression in an AST because divergent if-statements
+    /// are expressions.
+    If {
+        /// The condition of the if-statement.
+        cond: Box<Spanned<Expr>>,
+        /// The body of the if-statement.
+        body: Vec<Spanned<Node>>,
+        /// The body of the else block. This is `None` if there is no else block.
+        else_body: Option<Vec<Spanned<Node>>>,
+        /// Whether the if-statement is a ternary-if expression.
+        /// (i.e. an inline "if-then-else" expression).
+        ///
+        /// If this is `true`, then:
+        /// * `else_body` will always be `Some`
+        /// * `body` will always have exactly one `Expr` node
+        /// * `else_body` will always have exactly one `Expr` node
+        ternary: bool,
+    },
+    /// A while-loop. This is an expression in an AST because divergent while-loops
+    /// are expressions.
+    While {
+        /// The condition of the while-loop.
+        cond: Box<Spanned<Expr>>,
+        /// The body of the while-loop.
+        body: Vec<Spanned<Node>>,
+        /// The body of the else block. This is `None` if there is no else block.
+        /// The else-block is executed if the while-loop finishes execution without a break.
+        ///
+        /// While-loops without else-blocks are considered non-diverging and should not be
+        /// considered as expressions.
+        else_body: Option<Vec<Spanned<Node>>>,
+    },
+    /// A loop expression. Loop expressions either never diverge due to infinite loops,
+    /// or always diverge due to a break statement. Therefore, they can also be considered as
+    /// expressions.
+    Loop(Vec<Spanned<Node>>),
+}
+
+trait Indent {
+    /// Indent all lines of the string by 4 spaces.
+    fn write_indent(&self, f: &mut Formatter<'_>) -> fmt::Result;
+}
+
+impl<T: ToString> Indent for T {
+    fn write_indent(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        const INDENT: &str = "    ";
+        let s = self.to_string();
+
+        for (i, line) in s.lines().enumerate() {
+            if i > 0 {
+                writeln!(f)?;
+            }
+            write!(f, "{INDENT}{line}")?;
+        }
+        Ok(())
+    }
 }
 
 impl Display for Expr {
@@ -466,11 +526,87 @@ impl Display for Expr {
                     end.as_ref().map(ToString::to_string).unwrap_or_default()
                 )
             }
+            Self::If {
+                cond,
+                body,
+                else_body,
+                ternary,
+            } => {
+                write!(f, "if {cond} ")?;
+                f.write_str(if *ternary { "then " } else { "{\n" })?;
+
+                for node in body {
+                    node.write_indent(f)?;
+                }
+                f.write_str("\n}}")?;
+
+                if let Some(else_body) = else_body {
+                    f.write_str(" else ")?;
+                    if !*ternary {
+                        f.write_str("{\n")?;
+                    }
+                    for node in else_body {
+                        node.write_indent(f)?;
+                    }
+                    f.write_str("\n}")?;
+                }
+                Ok(())
+            }
+            Self::While {
+                cond,
+                body,
+                else_body,
+            } => {
+                writeln!(f, "while {cond} {{")?;
+                for node in body {
+                    node.write_indent(f)?;
+                }
+
+                if let Some(else_body) = else_body {
+                    f.write_str(" else {\n")?;
+                    for node in else_body {
+                        node.write_indent(f)?;
+                    }
+                }
+                Ok(())
+            }
+            Self::Loop(body) => {
+                writeln!(f, "loop {{")?;
+                for node in body {
+                    node.write_indent(f)?;
+                }
+                f.write_str("\n}")
+            }
         }
     }
 }
 
-/// A node in the abstract syntax tree. These are all statements.
+/// Information about a function parameter.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FuncParam {
+    /// The name of the parameter. (TODO: destructuring)
+    pub name: Spanned<String>,
+    /// The type of the parameter, if it is specified.
+    pub ty: Option<Spanned<TypeExpr>>,
+    /// The default value of the parameter, if it is specified.
+    pub default: Option<Box<Spanned<Expr>>>,
+}
+
+impl Display for FuncParam {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.name)?;
+        if let Some(ty) = &self.ty {
+            write!(f, ": {ty}")?;
+        }
+        if let Some(default) = &self.default {
+            write!(f, " = {default}")?;
+        }
+        Ok(())
+    }
+}
+
+/// A node in the abstract syntax tree.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Node {
     /// An expression represented as a statement.
     Expr(Spanned<Expr>),
@@ -485,15 +621,75 @@ pub enum Node {
         /// The identifier being declared. (TODO: allow destructuring)
         ident: Spanned<String>,
         /// The type of the variable, if it is specified.
-        ty: Option<Box<Spanned<TypeExpr>>>,
+        ty: Option<Spanned<TypeExpr>>,
         /// The value of the variable, if it is specified.
         /// This is always specified for const declarations.
         value: Option<Box<Spanned<Expr>>>,
+    },
+    /// Return statement.
+    Return {
+        /// The span of the return keyword. If this is ``None``, then this return-statement is an
+        /// implicit-return (the last expression in a block without a semicolon).
+        kw: Option<Span>,
+        /// The value being returned, if it is specified.
+        value: Option<Box<Spanned<Expr>>>,
+        /// The condition on whether to return.
+        /// This is only specified for `return if` statements.
+        cond: Option<Box<Spanned<Expr>>>,
+    },
+    /// Break statement.
+    Break {
+        /// The span of the break keyword.
+        kw: Span,
+        /// The value to break with, if specified.
+        value: Option<Box<Spanned<Expr>>>,
+        /// The condition on whether to break.
+        /// This is only specified for `break if` statements.
+        cond: Option<Box<Spanned<Expr>>>,
+    },
+    /// Continue statement.
+    Continue {
+        /// The span of the continue keyword.
+        kw: Span,
+        /// The condition on whether to continue.
+        /// This is only specified for `continue if` statements.
+        cond: Option<Box<Spanned<Expr>>>,
+    },
+    /// A named function declaration.
+    Func {
+        /// The span of the "func" keyword.
+        kw: Span,
+        /// The name of the function.
+        name: Spanned<String>,
+        /// The positional parameters of the function.
+        params: Vec<FuncParam>,
+        /// The keyword parameters of the function.
+        kw_params: Vec<FuncParam>,
+        /// The return type of the function, if it is specified.
+        ret: Option<Spanned<TypeExpr>>,
+        /// The body of the function.
+        body: Vec<Node>,
     },
 }
 
 impl Display for Node {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        fn write_control_flow_stmt(
+            f: &mut Formatter,
+            kw: &str,
+            value: &Option<Box<Spanned<Expr>>>,
+            cond: &Option<Box<Spanned<Expr>>>,
+        ) -> fmt::Result {
+            f.write_str(kw)?;
+            if let Some(value) = value {
+                write!(f, " {value}")?;
+            }
+            if let Some(cond) = cond {
+                write!(f, " if {cond}")?;
+            }
+            write!(f, ";")
+        }
+
         match self {
             Self::Expr(e) => write!(f, "{e};"),
             Self::Decl {
@@ -516,6 +712,52 @@ impl Display for Node {
                     write!(f, " = {value}")?;
                 }
                 write!(f, ";")
+            }
+            Self::Return { kw, value, cond } => {
+                if kw.is_none() {
+                    return write!(
+                        f,
+                        "{}",
+                        value.as_ref().expect("implicit return without value")
+                    );
+                }
+                write_control_flow_stmt(f, "return", value, cond)
+            }
+            Self::Break { value, cond, .. } => write_control_flow_stmt(f, "break", value, cond),
+            Self::Continue { cond, .. } => {
+                f.write_str("continue")?;
+                if let Some(cond) = cond {
+                    write!(f, " if {cond}")?;
+                }
+                write!(f, ";")
+            }
+            Self::Func {
+                name,
+                params,
+                kw_params,
+                ret,
+                body,
+                ..
+            } => {
+                write!(f, "func {name}(")?;
+
+                let params = params
+                    .iter()
+                    .map(ToString::to_string)
+                    .chain(kw_params.is_empty().then(|| "*".to_string()))
+                    .chain(kw_params.iter().map(ToString::to_string))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                write!(f, "{params})")?;
+
+                if let Some(ret) = ret {
+                    write!(f, " -> {ret}")?;
+                }
+                writeln!(f, " {{")?;
+                for node in body {
+                    node.write_indent(f)?;
+                }
+                f.write_str("\n}")
             }
         }
     }

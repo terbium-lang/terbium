@@ -9,15 +9,17 @@ use std::{
     string::ToString,
 };
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TargetKind {
     Nothing,
     Char(char),
     Token(TokenInfo),
+    Keyword(&'static str),
     OpeningDelimiter(Delimiter),
     ClosingDelimiter(Delimiter),
     Literal,
     Identifier,
+    Expression,
     Unknown,
     End,
     OneOf(Vec<Self>),
@@ -30,10 +32,12 @@ impl TargetKind {
             Self::Nothing => String::new(),
             Self::Char(c) => c.to_string(),
             Self::Token(token) => token.to_string(),
+            Self::Keyword(k) => k.to_string(),
             Self::OpeningDelimiter(d) => d.open().to_string(),
             Self::ClosingDelimiter(d) => d.close().to_string(),
             Self::Literal => "\"example\"".to_string(),
             Self::Identifier => "example".to_string(),
+            Self::Expression => "value".to_string(),
             Self::Unknown => "<unknown>".to_string(),
             Self::End => "<EOF>".to_string(),
             Self::OneOf(targets) => targets[0].hint(),
@@ -85,10 +89,12 @@ impl Display for TargetKind {
             Self::Nothing => f.write_str("nothing"),
             Self::Token(token) => write!(f, "{token}"),
             Self::Char(c) => write!(f, "{c:?}"),
+            Self::Keyword(k) => write!(f, "{k}"),
             Self::OpeningDelimiter(d) => write!(f, "opening {d}"),
             Self::ClosingDelimiter(d) => write!(f, "closing {d}"),
             Self::Literal => write!(f, "literal"),
             Self::Identifier => write!(f, "identifier"),
+            Self::Expression => write!(f, "expression"),
             Self::Unknown => write!(f, "unknown"),
             Self::End => write!(f, "end of file"),
             Self::OneOf(targets) => {
@@ -210,6 +216,8 @@ pub struct Error {
     pub label: Option<&'static str>,
     /// A hint for how to fix the error.
     pub hint: Option<Hint>,
+    /// Additional notes for the error.
+    pub notes: Vec<String>,
 }
 
 impl Error {
@@ -232,6 +240,7 @@ impl Error {
                 action: HintAction::Remove(span),
                 message: "remove this".to_owned(),
             }),
+            notes: Vec::new(),
         }
     }
 
@@ -249,6 +258,7 @@ impl Error {
                 action: HintAction::InsertAfter(eof, hint.into().hint()),
                 message: msg.to_string(),
             }),
+            notes: Vec::new(),
         }
     }
 
@@ -260,6 +270,7 @@ impl Error {
             span,
             label: None,
             hint: Some(escape_the_escape_sequence(span)),
+            notes: Vec::new(),
         }
     }
 
@@ -271,6 +282,7 @@ impl Error {
             span,
             label: None,
             hint: Some(escape_the_escape_sequence(span)),
+            notes: Vec::new(),
         }
     }
 
@@ -285,7 +297,15 @@ impl Error {
                 action: HintAction::InsertBefore(span, "name: ".to_string()),
                 message: "add the name of the parameter here".to_string(),
             }),
+            notes: Vec::new(),
         }
+    }
+
+    /// Adds a note to the error.
+    #[must_use]
+    pub fn note<S: ToString>(mut self, note: S) -> Self {
+        self.notes.push(note.to_string());
+        self
     }
 }
 
@@ -365,6 +385,7 @@ impl<T: Into<TargetKind> + Clone> chumsky::Error<T> for Error {
             span,
             label: None,
             hint: Some(hint),
+            notes: Vec::new(),
         }
     }
 
@@ -391,6 +412,7 @@ impl<T: Into<TargetKind> + Clone> chumsky::Error<T> for Error {
                 action,
                 message: "add the missing delimiter".to_string(),
             }),
+            notes: Vec::new(),
         }
     }
 
@@ -405,6 +427,7 @@ impl<T: Into<TargetKind> + Clone> chumsky::Error<T> for Error {
             span: self.span.merge(other.span),
             label: self.label.or(other.label),
             hint: self.hint.or(other.hint),
+            notes: self.notes.into_iter().chain(other.notes).collect(),
         }
     }
 }
