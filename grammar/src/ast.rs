@@ -332,7 +332,7 @@ impl Display for Atom {
         match self {
             Self::Int(s, radix) => write!(
                 f,
-                "{s}{}",
+                "{}{s}",
                 match radix {
                     Radix::Decimal => "",
                     Radix::Hexadecimal => "0x",
