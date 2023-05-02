@@ -32,7 +32,7 @@ impl TargetKind {
             Self::Nothing => String::new(),
             Self::Char(c) => c.to_string(),
             Self::Token(token) => token.to_string(),
-            Self::Keyword(k) => k.to_string(),
+            Self::Keyword(k) => (*k).to_string(),
             Self::OpeningDelimiter(d) => d.open().to_string(),
             Self::ClosingDelimiter(d) => d.close().to_string(),
             Self::Literal => "\"example\"".to_string(),
@@ -149,6 +149,8 @@ pub enum ErrorInfo {
     InvalidHexEscapeSequence(String, Span),
     /// Encountered a positional argument after a named argument.
     UnexpectedPositionalArgument(Span),
+    /// A constant was declared without a value. The span is the span of the semicolon.
+    ConstantWithoutValue(Span),
 }
 
 /// An action to take to fix an error.
@@ -198,6 +200,9 @@ impl Display for ErrorInfo {
             }
             Self::UnexpectedPositionalArgument(span) => {
                 write!(f, "{span}: positional argument found after named argument")
+            }
+            Self::ConstantWithoutValue(span) => {
+                write!(f, "{span}: constant declared without a value")
             }
         }
     }
@@ -298,6 +303,21 @@ impl Error {
                 message: "add the name of the parameter here".to_string(),
             }),
             notes: Vec::new(),
+        }
+    }
+
+    /// Constants must be declared with a value.
+    #[must_use]
+    pub fn constant_without_value(span: Span, semicolon_span: Span) -> Self {
+        Self {
+            info: ErrorInfo::ConstantWithoutValue(semicolon_span),
+            span,
+            label: None,
+            hint: Some(Hint {
+                action: HintAction::InsertBefore(semicolon_span, " = value".to_string()),
+                message: "add a value to the constant here".to_string(),
+            }),
+            notes: vec!["constants must be declared with a value".to_string()],
         }
     }
 

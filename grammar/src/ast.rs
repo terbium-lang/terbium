@@ -477,6 +477,7 @@ impl<T: ToString> Indent for T {
 }
 
 impl Display for Expr {
+    #[allow(clippy::too_many_lines)]
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Atom(a) => write!(f, "{a}"),
@@ -533,12 +534,24 @@ impl Display for Expr {
                 ternary,
             } => {
                 write!(f, "if {cond} ")?;
-                f.write_str(if *ternary { "then " } else { "{\n" })?;
+                if *ternary {
+                    f.write_str("then ")?;
+                    for node in body {
+                        write!(f, "{node}")?;
+                    }
+                    f.write_str(" else ")?;
+                    for node in else_body.as_ref().expect("ternary if must have else body") {
+                        write!(f, "{node}")?;
+                    }
+                    return Ok(());
+                }
+
+                f.write_str("{\n")?;
 
                 for node in body {
                     node.write_indent(f)?;
                 }
-                f.write_str("\n}}")?;
+                f.write_str("\n}")?;
 
                 if let Some(else_body) = else_body {
                     f.write_str(" else ")?;
@@ -586,18 +599,15 @@ impl Display for Expr {
 pub struct FuncParam {
     /// The name of the parameter. (TODO: destructuring)
     pub name: Spanned<String>,
-    /// The type of the parameter, if it is specified.
-    pub ty: Option<Spanned<TypeExpr>>,
+    /// The type of the parameter.
+    pub ty: Spanned<TypeExpr>,
     /// The default value of the parameter, if it is specified.
     pub default: Option<Box<Spanned<Expr>>>,
 }
 
 impl Display for FuncParam {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.name)?;
-        if let Some(ty) = &self.ty {
-            write!(f, ": {ty}")?;
-        }
+        write!(f, "{}: {}", self.name, self.ty)?;
         if let Some(default) = &self.default {
             write!(f, " = {default}")?;
         }
@@ -624,28 +634,29 @@ pub enum Node {
         ty: Option<Spanned<TypeExpr>>,
         /// The value of the variable, if it is specified.
         /// This is always specified for const declarations.
-        value: Option<Box<Spanned<Expr>>>,
+        value: Option<Spanned<Expr>>,
     },
-    /// Return statement.
+    /// An explicit return statement. These return from the closest function.
     Return {
-        /// The span of the return keyword. If this is ``None``, then this return-statement is an
-        /// implicit-return (the last expression in a block without a semicolon).
-        kw: Option<Span>,
+        /// The span of the return keyword.
+        kw: Span,
         /// The value being returned, if it is specified.
-        value: Option<Box<Spanned<Expr>>>,
+        value: Option<Spanned<Expr>>,
         /// The condition on whether to return.
         /// This is only specified for `return if` statements.
-        cond: Option<Box<Spanned<Expr>>>,
+        cond: Option<Spanned<Expr>>,
     },
+    /// An implicit return statement. These return from the closest block.
+    ImplicitReturn(Spanned<Expr>),
     /// Break statement.
     Break {
         /// The span of the break keyword.
         kw: Span,
         /// The value to break with, if specified.
-        value: Option<Box<Spanned<Expr>>>,
+        value: Option<Spanned<Expr>>,
         /// The condition on whether to break.
         /// This is only specified for `break if` statements.
-        cond: Option<Box<Spanned<Expr>>>,
+        cond: Option<Spanned<Expr>>,
     },
     /// Continue statement.
     Continue {
@@ -653,7 +664,7 @@ pub enum Node {
         kw: Span,
         /// The condition on whether to continue.
         /// This is only specified for `continue if` statements.
-        cond: Option<Box<Spanned<Expr>>>,
+        cond: Option<Spanned<Expr>>,
     },
     /// A named function declaration.
     Func {
@@ -677,8 +688,8 @@ impl Display for Node {
         fn write_control_flow_stmt(
             f: &mut Formatter,
             kw: &str,
-            value: &Option<Box<Spanned<Expr>>>,
-            cond: &Option<Box<Spanned<Expr>>>,
+            value: &Option<Spanned<Expr>>,
+            cond: &Option<Spanned<Expr>>,
         ) -> fmt::Result {
             f.write_str(kw)?;
             if let Some(value) = value {
@@ -701,8 +712,8 @@ impl Display for Node {
                 ..
             } => {
                 write!(f, "{}", if *is_const { "const" } else { "let" })?;
-                if let Some(mut_kw) = mut_kw {
-                    write!(f, " {}", mut_kw)?;
+                if mut_kw.is_some() {
+                    f.write_str(" mut")?;
                 }
                 write!(f, " {ident}")?;
                 if let Some(ty) = ty {
@@ -713,16 +724,8 @@ impl Display for Node {
                 }
                 write!(f, ";")
             }
-            Self::Return { kw, value, cond } => {
-                if kw.is_none() {
-                    return write!(
-                        f,
-                        "{}",
-                        value.as_ref().expect("implicit return without value")
-                    );
-                }
-                write_control_flow_stmt(f, "return", value, cond)
-            }
+            Self::Return { value, cond, .. } => write_control_flow_stmt(f, "return", value, cond),
+            Self::ImplicitReturn(e) => write!(f, "{e}"),
             Self::Break { value, cond, .. } => write_control_flow_stmt(f, "break", value, cond),
             Self::Continue { cond, .. } => {
                 f.write_str("continue")?;

@@ -1,8 +1,7 @@
 use grammar::{
     ast::{Atom, BinaryOp, Expr, UnaryOp},
     parser::Parser,
-    span::{Provider, Src},
-    span::{Span, Spanned},
+    span::{Provider, Span, Spanned, Src},
     token::Radix,
 };
 
@@ -105,15 +104,17 @@ fn test_expr_parser() {
 
 #[test]
 fn test_body_parser() {
-    let provider = Provider::new(Src::None, "let x = 1;");
+    let provider = Provider::new(Src::None, "let x = if y then 2 else 3;");
+    let reader = grammar::token::TokenReader::new(&provider);
+    println!("{:#?}", reader.collect::<Vec<_>>());
 
     let mut parser = Parser::from_provider(&provider);
     let nodes = parser.consume_body_until_end();
 
-    println!("{nodes:#?}");
-    if let Ok(nodes) = nodes {
+    if let Ok(ref nodes) = nodes {
         for node in nodes {
             println!("{node}");
         }
     }
+    println!("{nodes:#?}");
 }
