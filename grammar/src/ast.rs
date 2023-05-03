@@ -347,35 +347,152 @@ impl Display for Atom {
     }
 }
 
+/// The assignment target of an assignment expression.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AssignmentTarget {
+    /// A pattern match target.
+    Pattern(Pattern),
+    /// An attribute access. Note that this overrides variant patterns such as `Enum.Variant`;
+    /// that will parse as Attr { subject: Enum, attr: "Variant" }.
+    Attr {
+        /// The subject of the attribute access.
+        subject: Box<Spanned<Expr>>,
+        /// The name of the attribute.
+        attr: Spanned<String>,
+    },
+    /// An index access.
+    Index {
+        /// The subject of the index access.
+        subject: Box<Spanned<Expr>>,
+        /// The index of the index access.
+        index: Box<Spanned<Expr>>,
+    },
+}
+
+/// A pattern-match target used when matching values, including in function parameters and in
+/// declaration bindings.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Pattern {
+    /// An identifier binding, likely a variable.
+    Ident(String),
+    /// A tuple of patterns, matching any tuples.
+    ///
+    /// When accessing tuple enum variants, a variant name must be specified, e.g.
+    /// `let Enum.Variant(a) = Enum.Variant(a)`.
+    Tuple(Vec<Spanned<String>>, Vec<Spanned<Self>>),
+    /// A destructuring of a field-based object, e.g. `let {a, b} = Struct {a: 1, b: 2}`.
+    ///
+    /// They may also bind to a new pattern, e.g. `let {a: b} = Struct {a: 1}` binds `b` to `1`,
+    /// and `let {a: (b, c)} = Struct {a: (1, 2)}` binds `b` to `1` and `c` to `2`.
+    ///
+    /// Field-patterns may only bind to field-based types. If the fields are enclosed in an enum
+    /// variant, the enum variant must be specified, e.g.
+    /// `let Enum.Variant {a} = Enum.Variant {a: 1}`.
+    Fields(
+        Vec<Spanned<String>>,
+        Vec<(Spanned<String>, Option<Box<Spanned<Self>>>)>,
+    ),
+    /// An array (like) of patterns, matching any array-like objects
+    /// (such as arrays, but also lists).
+    ///
+    /// If the size of the array is known, all elements must be present. If not, there must
+    /// be a wildcard pattern to match unmatched elements in the array.
+    Array(Vec<Spanned<Self>>),
+    /// A binding to any pattern match. For example, `let (a, b) as c = (1, 2)` binds `c` to
+    /// `(1, 2)`. This is represented as `As(lhs, rhs)`.
+    ///
+    /// This may also be extended further, e.g. `let (a, (b, c) as d) = (1, (2, 3))` binds
+    /// `(2, 3)` to `d`.
+    ///
+    /// This is useful for binding to a pattern match while also binding to the pattern match's
+    /// value.
+    As(Box<Spanned<Self>>, Box<Spanned<Self>>),
+    /// The wildcard pattern `*`, which matches anything. An optional pattern can be provided after
+    /// to the wildcard to bind further.
+    ///
+    /// For example, `let (a, *) = (1, 2, 3)` binds `a` to `1` and ignores the rest of the tuple.
+    /// `let (a, *b) = (1, 2, 3)` binds `a` to `1` and `b` to `(2, 3)`.
+    ///
+    /// `let (a, *(b, c)) = (1, 2, 3)` is the equivalent of `let (a, b, c) = (1, 2, 3)` because
+    /// `(b, c)` is binded to the rest of the tuple `(2, 3)`.
+    ///
+    /// Wildcard patterns are only supported in tuple, array, and field patterns.
+    Wildcard(Option<Box<Spanned<Self>>>),
+}
+
+/// An extended pattern used specifically in a match expression. The extra bindings here
+/// deliberately match values but do not bind, so it wouldn't make sense to have in declarations
+/// `let` (e.g. `let 1 = 1` is just dumb). This is a superset of the `Pattern` enum.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MatchPattern {
+    /// A standard pattern. The `Pattern::As` variant is overriden by the `MatchPattern::As`
+    /// variant and will never be used.
+    Pattern(Pattern),
+    /// An enum variant, e.g. `Enum.Variant`. This is never a binding; in assignment targets this
+    /// is always overridden by an attribute access.
+    Variant(Vec<Spanned<String>>),
+    /// A literal atom, e.g. `1`, `"hello"`, or `true`.
+    Atom(Atom),
+    /// A pattern that matches within a range, e.g. `1..=10`. The left and right bounds are
+    /// optional and can be omitted, e.g. `..=10` or `1..`. The bounds can only be atoms.
+    Range {
+        /// The left bound of the range.
+        start: Option<Spanned<Atom>>,
+        /// The span of the `..` or `..=` token.
+        sep: Span,
+        /// Whether the range is inclusive.
+        inclusive: bool,
+        /// The right bound of the range.
+        end: Option<Box<Atom>>,
+    },
+    /// A binding to any pattern match; see `Pattern::As` but matches the extend variants here.
+    /// For example, matching `5` against `1..10 as x` will succeed and bind `x` to `5`.
+    ///
+    /// Note that the actual binding can only within be the standard subset of [`Pattern`] because
+    /// the extended variants here are not valid in declarations. (`1..10 as 5` does not make sense)
+    As(Box<Spanned<Self>>, Spanned<Pattern>),
+    /// A pattern that matches one of a set of patterns, e.g. `1 | 2 | 3`.
+    /// If the patterns have bindings, all bindings must be the same and have the same type.
+    ///
+    /// For example, given an `(int, string, int)`, the pattern `(a, *) | (*, a)` is valid, but:
+    /// * `(a, *) | (*, b)` is invalid because the bindings have different names.
+    /// * `(a, *) | (*, a, *)` is invalid because the bindings have different types.
+    /// * `(a, *) | *` is invalid because the binding `a` only exists in one of the patterns.
+    ///
+    /// Note that the `|` operator takes lower precedence over `as`, so `a | b as c` is equivalent
+    /// to `a | (b as c)` (which is obviously invalid).
+    OneOf(Vec<Spanned<Self>>),
+}
+
 /// An expression that can be evaluated to a value.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Expr {
     /// An atom represented as an expression.
     Atom(Atom),
     /// A tuple of expressions.
-    Tuple(Vec<Spanned<Expr>>),
+    Tuple(Vec<Spanned<Self>>),
     /// An array of expressions.
-    Array(Vec<Spanned<Expr>>),
+    Array(Vec<Spanned<Self>>),
     /// A unary operation.
     UnaryOp {
         /// The operator.
         op: Spanned<UnaryOp>,
         /// The operand.
-        expr: Box<Spanned<Expr>>,
+        expr: Box<Spanned<Self>>,
     },
     /// A binary operation.
     BinaryOp {
         /// The left operand.
-        left: Box<Spanned<Expr>>,
+        left: Box<Spanned<Self>>,
         /// The operator.
         op: Spanned<BinaryOp>,
         /// The right operand.
-        right: Box<Spanned<Expr>>,
+        right: Box<Spanned<Self>>,
     },
     /// Attribute access via dot notation.
     Attr {
         /// The object being accessed.
-        subject: Box<Spanned<Expr>>,
+        subject: Box<Spanned<Self>>,
         /// The span of the dot.
         dot: Span,
         /// The attribute being accessed.
@@ -384,18 +501,18 @@ pub enum Expr {
     /// An explicit cast to a type.
     Cast {
         /// The expression being cast.
-        expr: Box<Spanned<Expr>>,
+        expr: Box<Spanned<Self>>,
         /// The type being cast to.
         ty: Spanned<TypeExpr>,
     },
     /// A function call.
     Call {
         /// The function being called.
-        func: Box<Spanned<Expr>>,
+        func: Box<Spanned<Self>>,
         /// The positional arguments to the function.
-        args: Vec<Spanned<Expr>>,
+        args: Vec<Spanned<Self>>,
         /// The keyword arguments to the function.
-        kwargs: Vec<(String, Spanned<Expr>)>,
+        kwargs: Vec<(String, Spanned<Self>)>,
     },
     /// A range expression.
     ///
@@ -410,19 +527,19 @@ pub enum Expr {
     /// * `..=` -> `[?, ?]` (where `?` varies based on context)
     Range {
         /// The start value of the range. There might not be a start.
-        start: Option<Box<Spanned<Expr>>>,
+        start: Option<Box<Spanned<Self>>>,
         /// The span of the `..` or `..=` token.
         sep: Span,
         /// Whether the range is inclusive.
         inclusive: bool,
         /// The end value of the range. There might not be an end.
-        end: Option<Box<Spanned<Expr>>>,
+        end: Option<Box<Spanned<Self>>>,
     },
     /// An if-statement. This is an expression in an AST because divergent if-statements
     /// are expressions.
     If {
         /// The condition of the if-statement.
-        cond: Box<Spanned<Expr>>,
+        cond: Box<Spanned<Self>>,
         /// The body of the if-statement.
         body: Vec<Spanned<Node>>,
         /// The body of the else block. This is `None` if there is no else block.
@@ -440,7 +557,7 @@ pub enum Expr {
     /// are expressions.
     While {
         /// The condition of the while-loop.
-        cond: Box<Spanned<Expr>>,
+        cond: Box<Spanned<Self>>,
         /// The body of the while-loop.
         body: Vec<Spanned<Node>>,
         /// The body of the else block. This is `None` if there is no else block.
@@ -454,6 +571,17 @@ pub enum Expr {
     /// or always diverge due to a break statement. Therefore, they can also be considered as
     /// expressions.
     Loop(Vec<Spanned<Node>>),
+    /// A when expression. When expressions can simplify long if-else if chains into a mapping of
+    /// conditions to corresponding values.
+    ///
+    /// For example, `when { x == 0 -> 0, x < 0 -> -1, else 1 }` is a valid expression and is
+    /// equivalent to `if x == 0 then 0 else if x < 0 then -1 else 1`.
+    When {
+        /// The condition-value pairs of the when expression.
+        arms: Vec<(Spanned<Self>, Spanned<Self>)>,
+        /// The else value of the when expression. This is `None` if there is no else value.
+        else_value: Option<Box<Spanned<Self>>>,
+    },
 }
 
 trait Indent {
@@ -590,6 +718,16 @@ impl Display for Expr {
                 }
                 f.write_str("\n}")
             }
+            Self::When { arms, else_value } => {
+                f.write_str("when {\n")?;
+                for (cond, value) in arms {
+                    format!("{cond} -> {value}").write_indent(f)?;
+                }
+                if let Some(else_value) = else_value {
+                    format!("else -> {else_value}").write_indent(f)?;
+                }
+                f.write_str("\n}")
+            }
         }
     }
 }
@@ -679,7 +817,7 @@ pub enum Node {
         /// The return type of the function, if it is specified.
         ret: Option<Spanned<TypeExpr>>,
         /// The body of the function.
-        body: Vec<Node>,
+        body: Vec<Self>,
     },
 }
 
