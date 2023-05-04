@@ -281,7 +281,7 @@ pub fn brace_ending_expr<'a>(
 
     // While-loop, i.e. while cond { ... }
     let while_loop = kw!("while")
-        .ignore_then(expr.clone())
+        .ignore_then(expr)
         .then(braced_body.clone())
         .then(kw!("else").ignore_then(braced_body.clone()).or_not())
         .map_with_span(|((cond, Spanned(body, _)), else_body), span| {
@@ -315,6 +315,13 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
     let ty = type_expr_parser();
 
     recursive(|expr: RecursiveDef<Spanned<Expr>>| {
+        enum ChainKind {
+            Attr(Span, Spanned<String>),
+            #[allow(clippy::type_complexity)]
+            Call(Vec<(Option<String>, Spanned<Expr>)>, Span),
+            Index(Spanned<Expr>),
+        }
+
         fn bin_foldl(
             lhs: Spanned<Expr>,
             (op, rhs): (Spanned<BinaryOp>, Spanned<Expr>),
@@ -360,7 +367,7 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
             ))
         })
         .pad_ws()
-        .or(ident.clone())
+        .or(ident)
         .labelled("atom");
 
         // Intermediate parser to consume comma-separated sequences, e.g. 1, 2, 3
@@ -389,76 +396,93 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
         .labelled("unambiguous expression")
         .boxed();
 
-        // Attribute access: a.b.c
-        let attr = unambiguous
+        let raw_ident = select!(TokenInfo::Ident(ident) => ident);
+
+        let attr = just(TokenInfo::Dot)
+            .map_with_span(|_, span: Span| span)
+            .then(raw_ident.map_with_span(Spanned))
+            .map(|(dot, attr)| ChainKind::Attr(dot, attr));
+
+        let call_args = raw_ident
+            .then_ignore(just(TokenInfo::Colon))
+            .or_not()
+            .pad_ws()
+            .then(expr.clone())
+            .separated_by(just(TokenInfo::Comma).pad_ws())
+            .allow_trailing()
+            .delimited_by(lparen!(), rparen!())
+            .map_with_span(ChainKind::Call);
+
+        let index = expr
             .clone()
-            .then(
-                just(TokenInfo::Dot)
-                    .map_with_span(|_, span: Span| span)
-                    .then(ident)
-                    .repeated(),
+            .delimited_by(
+                just(TokenInfo::LeftBracket).pad_ws(),
+                just(TokenInfo::RightBracket).pad_ws(),
             )
-            .foldl(|expr, (dot, ident)| {
-                let span = expr.span();
+            .map(ChainKind::Index);
 
-                Spanned(
-                    Expr::Attr {
-                        subject: Box::new(expr),
-                        dot,
-                        attr: ident.to_string(),
-                    },
-                    span.merge(ident.span()),
-                )
-            })
-            .labelled("attribute access")
-            .boxed();
-
-        // Function call: a(b, c)
-        let call = attr
+        // A chain of attribute accesses, function calls, and index accesses.
+        // These are all left-associative, so a.b.c is parsed as (a.b).c, and a(b)(c) is parsed as
+        // ( a(b) )(c).
+        let chain = unambiguous
             .clone()
             .map(Ok)
-            .then(
-                select!(TokenInfo::Ident(ident) => ident)
-                    .then_ignore(just(TokenInfo::Colon))
-                    .or_not()
-                    .pad_ws()
-                    .then(expr.clone())
-                    .separated_by(just(TokenInfo::Comma).pad_ws())
-                    .allow_trailing()
-                    .delimited_by(lparen!(), rparen!())
-                    .map_with_span(Spanned)
-                    .repeated(),
-            )
-            .foldl(|lhs, Spanned(mut args, span)| {
+            .then(choice((attr, call_args, index)).repeated())
+            .foldl(|lhs: Result<Spanned<Expr>>, kind| {
                 let lhs = lhs?;
-                let partition = args
-                    .iter()
-                    .position(|(name, _)| name.is_some())
-                    .unwrap_or(args.len());
-                let kwargs = args.split_off(partition);
-                let span = lhs.span().merge(span);
+                match kind {
+                    ChainKind::Attr(dot, attr) => {
+                        let span = lhs.span().merge(attr.span());
+                        Ok(Spanned(
+                            Expr::Attr {
+                                subject: Box::new(lhs),
+                                dot,
+                                attr,
+                            },
+                            span,
+                        ))
+                    }
+                    ChainKind::Call(mut args, span) => {
+                        let partition = args
+                            .iter()
+                            .position(|(name, _)| name.is_some())
+                            .unwrap_or(args.len());
+                        let kwargs = args.split_off(partition);
+                        let span = lhs.span().merge(span);
 
-                Ok(Spanned(
-                    Expr::Call {
-                        func: Box::new(lhs),
-                        args: args.into_iter().map(|(_, arg)| arg).collect(),
-                        kwargs: kwargs
-                            .into_iter()
-                            .map(|(name, arg)| {
-                                Ok((
-                                    name.ok_or_else(|| {
-                                        Error::unexpected_positional_argument(arg.span())
-                                    })?,
-                                    arg,
-                                ))
-                            })
-                            .collect::<Result<Vec<_>>>()?,
-                    },
-                    span,
-                ))
+                        Ok(Spanned(
+                            Expr::Call {
+                                func: Box::new(lhs),
+                                args: args.into_iter().map(|(_, arg)| arg).collect(),
+                                kwargs: kwargs
+                                    .into_iter()
+                                    .map(|(name, arg)| {
+                                        Ok((
+                                            name.ok_or_else(|| {
+                                                Error::unexpected_positional_argument(arg.span())
+                                            })?,
+                                            arg,
+                                        ))
+                                    })
+                                    .collect::<Result<Vec<_>>>()?,
+                            },
+                            span,
+                        ))
+                    }
+                    ChainKind::Index(index) => {
+                        let span = lhs.span().merge(index.span());
+                        Ok(Spanned(
+                            Expr::Index {
+                                subject: Box::new(lhs),
+                                index: Box::new(index),
+                            },
+                            span,
+                        ))
+                    }
+                }
             })
             .try_map(|e, _span| e)
-            .labelled("function call")
+            .labelled("attribute access, function call, or index access")
             .boxed();
 
         // Prefix unary operators: -a, +a, !a
@@ -469,7 +493,7 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
             .map_with_span(Spanned)
             .pad_ws()
             .repeated()
-            .then(call.clone())
+            .then(chain.clone())
             .foldr(|op, expr| {
                 let span = op.span().merge(expr.span());
 

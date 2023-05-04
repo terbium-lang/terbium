@@ -323,7 +323,7 @@ impl Error {
 
     /// Adds a note to the error.
     #[must_use]
-    pub fn note<S: ToString>(mut self, note: S) -> Self {
+    pub fn note<S: ToString + ?Sized>(mut self, note: &S) -> Self {
         self.notes.push(note.to_string());
         self
     }

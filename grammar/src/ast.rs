@@ -496,7 +496,7 @@ pub enum Expr {
         /// The span of the dot.
         dot: Span,
         /// The attribute being accessed.
-        attr: String,
+        attr: Spanned<String>,
     },
     /// An explicit cast to a type.
     Cast {
@@ -513,6 +513,13 @@ pub enum Expr {
         args: Vec<Spanned<Self>>,
         /// The keyword arguments to the function.
         kwargs: Vec<(String, Spanned<Self>)>,
+    },
+    /// An index, sometimes called a "subscript", e.g. `a[b]`.
+    Index {
+        /// The object being indexed.
+        subject: Box<Spanned<Self>>,
+        /// The index being accessed.
+        index: Box<Spanned<Self>>,
     },
     /// A range expression.
     ///
@@ -641,6 +648,7 @@ impl Display for Expr {
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
+            Self::Index { subject, index } => write!(f, "({subject}[{index}])"),
             Self::Range {
                 start,
                 inclusive,
