@@ -88,8 +88,15 @@ pub enum TokenInfo {
         is_inner: bool,
     },
     /// An identifier, such as "x". This includes keywords, since some keywords can also be used
-    /// as identifiers.
-    Ident(String),
+    /// as identifiers. This is represented as `Ident(ident, is_raw)`
+    ///
+    /// This may also be a raw identifier, such as "`func`", enclosed in backticks.
+    /// Special characters that would otherwise be invalid in an identifier are allowed in raw
+    /// identifiers. For example `a.b` is on its own, one single identifier.
+    ///
+    /// Only two escape sequences are supported in raw identifiers: backslash-backslash and
+    /// backslash-backtick. All other escape sequences are invalid and will result in an error.
+    Ident(String, bool),
     /// A string literal, such as "hello". This only includes the raw contents of the string,
     /// before any escape sequences are processed or any interpolation is done.
     ///
@@ -173,7 +180,8 @@ impl fmt::Display for TokenInfo {
             Self::DocComment { content, is_inner } => {
                 writeln!(f, "//{}{content}", if *is_inner { "!" } else { "/" })
             }
-            Self::Ident(ident) => f.write_str(ident),
+            Self::Ident(ident, true) => write!(f, "`{ident}`"),
+            Self::Ident(ident, false) => f.write_str(ident),
             Self::StringLiteral(string, flags, _) => {
                 write_str_literal_flags(f, *flags)?;
                 write!(f, "\"{}\"", string)
@@ -182,7 +190,7 @@ impl fmt::Display for TokenInfo {
                 write_str_literal_flags(f, *flags)?;
                 write!(f, "b\"{}\"", String::from_utf8_lossy(bytes))
             }
-            Self::CharLiteral(c, _) => write!(f, "c'{}'", c),
+            Self::CharLiteral(c, _) => write!(f, "c'{c}'"),
             Self::IntLiteral(int, radix) => write!(f, "{}{int}", radix.prefix()),
             Self::FloatLiteral(float) => f.write_str(float),
             Self::LeftParen => f.write_str("("),
@@ -221,12 +229,23 @@ pub type Token = Spanned<TokenInfo>;
 pub enum Error {
     /// Unexpected character.
     UnexpectedCharacter(char),
+    /// Raw identifiers cannot have newlines.
+    NewlineInRawIdentifier,
+    /// Invalid escape sequence in raw identifier. The character is the invalid escape sequence.
+    InvalidEscapeSequenceInRawIdentifier(char),
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::UnexpectedCharacter(c) => write!(f, "unexpected character '{c}'"),
+            Self::NewlineInRawIdentifier => f.write_str("unexpected newline in raw identifier"),
+            Self::InvalidEscapeSequenceInRawIdentifier(c) => {
+                write!(
+                    f,
+                    "invalid escape sequence in raw identifier: '{c}', expected \\ or `"
+                )
+            }
         }
     }
 }
@@ -649,6 +668,47 @@ impl<'a> TokenReader<'a> {
             )
         })
     }
+
+    /// Consumes the next raw identifier and returns it as a token, but returns None if no raw
+    /// identifier was found immediately after the cursor.
+    fn consume_raw_ident(&mut self) -> Option<Token> {
+        if self.cursor.peek()? != '`' {
+            return None;
+        }
+
+        let start = self.cursor.pos();
+        self.cursor.advance()?;
+        let mut content = String::new();
+
+        while let Some(c) = self.cursor.advance() {
+            if c == '\n' {
+                return Some(Spanned(
+                    TokenInfo::Invalid(Error::NewlineInRawIdentifier),
+                    Span::single(self.src, self.pos()),
+                ));
+            } else if c == '\\' {
+                let escape = self.cursor.advance()?;
+                if escape == '`' || escape == '\\' {
+                    content.push(escape);
+                } else {
+                    return Some(Spanned(
+                        TokenInfo::Invalid(Error::InvalidEscapeSequenceInRawIdentifier(escape)),
+                        Span::new(self.src, self.pos() - 2, self.pos()),
+                    ));
+                }
+            } else if c == '`' {
+                return Some(Spanned(
+                    TokenInfo::Ident(content, true),
+                    Span::new(self.src, start, self.pos()),
+                ));
+            } else {
+                content.push(c);
+            }
+        }
+
+        None
+    }
+
     /// Consumes the next identifier and returns it as a token, but returns None if no identifier
     /// was found immediately after the cursor.
     fn consume_ident(&mut self) -> Option<Token> {
@@ -669,7 +729,7 @@ impl<'a> TokenReader<'a> {
         }
 
         Some(Spanned(
-            TokenInfo::Ident(content),
+            TokenInfo::Ident(content, false),
             Span::new(self.src, start, self.pos()),
         ))
     }
@@ -703,7 +763,8 @@ impl Iterator for TokenReader<'_> {
         consider! {
             self.consume_string_literal(),
             self.consume_number(),
-            self.consume_ident()
+            self.consume_ident(),
+            self.consume_raw_ident()
         }
 
         let info = match self.cursor.advance()? {

@@ -1,8 +1,6 @@
-use crate::ast::Node;
-use crate::error::TargetKind;
 use crate::{
-    ast::{Atom, BinaryOp, Expr, TypeExpr, UnaryOp},
-    error::Error,
+    ast::{Atom, BinaryOp, Expr, Node, TypeExpr, UnaryOp},
+    error::{Error, TargetKind},
     span::{Provider, Span, Spanned},
     token::{ChumskyTokenStreamer, StringLiteralFlags, TokenInfo, TokenReader},
 };
@@ -50,7 +48,7 @@ macro_rules! rparen {
 
 macro_rules! kw {
     ($kw:literal) => {{
-        just(TokenInfo::Ident($kw.to_string())).map_with_span(Spanned)
+        just(TokenInfo::Ident($kw.to_string(), false)).map_with_span(Spanned)
     }};
     ($kw:ident) => {{
         kw!(stringify!($kw))
@@ -129,7 +127,7 @@ fn resolve_string(content: String, flags: StringLiteralFlags, span: Span) -> Res
 pub fn type_expr_parser<'a>() -> RecursiveParser<'a, Spanned<TypeExpr>> {
     recursive(|ty| {
         let ident = select! {
-            TokenInfo::Ident(name) => TypeExpr::Ident(name),
+            TokenInfo::Ident(name, _) => TypeExpr::Ident(name),
         }
         .map_with_span(Spanned)
         .pad_ws();
@@ -144,7 +142,7 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
         let ty = type_expr_parser();
 
         let ident = select! {
-            TokenInfo::Ident(name) => name,
+            TokenInfo::Ident(name, _) => name,
         }
         .map_with_span(Spanned)
         .pad_ws();
@@ -230,9 +228,18 @@ pub fn brace_ending_expr<'a>(
         .map_with_span(Spanned)
         .pad_ws();
 
+    let block_label = just(TokenInfo::Colon)
+        .ignore_then(select!(TokenInfo::Ident(name, _) => name))
+        .map_with_span(Spanned)
+        .then_ignore(just(TokenInfo::Whitespace).repeated())
+        .or_not()
+        .labelled("block label");
+
     // Braced if-statement, i.e. if cond { ... }
-    let braced_if = kw!("if")
-        .ignore_then(expr.clone())
+    let braced_if = block_label
+        .clone()
+        .then_ignore(kw!("if"))
+        .then(expr.clone())
         .then(braced_body.clone())
         // else if cond { ... }
         .then(
@@ -245,28 +252,24 @@ pub fn brace_ending_expr<'a>(
         // else { ... } ...note that this is parsed separately from the else-if
         // since that is repeated and we dont want else {} else {} to be valid.
         .then(kw!("else").ignore_then(braced_body.clone()).or_not())
-        .map_with_span(|(((cond, Spanned(body, _)), elif), else_body), span| {
-            let else_body = elif.into_iter().fold(
-                else_body.map(|e| e.0),
-                |else_body, (cond, Spanned(body, body_span))| {
-                    let span = cond.span().merge(body_span);
+        .map_with_span(|((((label, cond), body), elif), else_body), span| {
+            let else_body = elif.into_iter().fold(else_body, |else_body, (cond, body)| {
+                let span = cond.span().merge(body.span());
 
-                    Some(vec![Spanned(
-                        Node::Expr(Spanned(
-                            Expr::If {
-                                cond: Box::new(cond),
-                                body,
-                                else_body,
-                                ternary: false,
-                            },
-                            span,
-                        )),
-                        span,
-                    )])
-                },
-            );
+                Some(Spanned::expr(Spanned(
+                    Expr::If {
+                        label: None,
+                        cond: Box::new(cond),
+                        body,
+                        else_body,
+                        ternary: false,
+                    },
+                    span,
+                )))
+            });
             Spanned(
                 Expr::If {
+                    label,
                     cond: Box::new(cond),
                     body,
                     else_body,
@@ -280,16 +283,19 @@ pub fn brace_ending_expr<'a>(
         .boxed();
 
     // While-loop, i.e. while cond { ... }
-    let while_loop = kw!("while")
-        .ignore_then(expr)
+    let while_loop = block_label
+        .clone()
+        .then_ignore(kw!("while"))
+        .then(expr)
         .then(braced_body.clone())
         .then(kw!("else").ignore_then(braced_body.clone()).or_not())
-        .map_with_span(|((cond, Spanned(body, _)), else_body), span| {
+        .map_with_span(|(((label, cond), body), else_body), span| {
             Spanned(
                 Expr::While {
+                    label,
                     cond: Box::new(cond),
                     body,
-                    else_body: else_body.map(|e| e.0),
+                    else_body,
                 },
                 span,
             )
@@ -299,9 +305,10 @@ pub fn brace_ending_expr<'a>(
         .boxed();
 
     // Loop-expression, i.e. loop { ... }
-    let loop_expr = kw!("loop")
+    let loop_expr = block_label
+        .then_ignore(kw!("loop"))
         .then(braced_body.clone())
-        .map(|(kw, Spanned(body, body_span))| Spanned(Expr::Loop(body), kw.span().merge(body_span)))
+        .map_with_span(|(label, body), span| Spanned(Expr::Loop { label, body }, span))
         .pad_ws()
         .labelled("loop-expression")
         .boxed();
@@ -339,7 +346,7 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
 
         // An identifier
         let ident = select! {
-            TokenInfo::Ident(name) => Expr::Atom(match name.as_str() {
+            TokenInfo::Ident(name, _) => Expr::Atom(match name.as_str() {
                 "true" => Atom::Bool(true),
                 "false" => Atom::Bool(false),
                 _ => Atom::Ident(name),
@@ -396,7 +403,7 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
         .labelled("unambiguous expression")
         .boxed();
 
-        let raw_ident = select!(TokenInfo::Ident(ident) => ident);
+        let raw_ident = select!(TokenInfo::Ident(ident, _) => ident);
 
         let attr = just(TokenInfo::Dot)
             .map_with_span(|_, span: Span| span)
@@ -679,14 +686,12 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
             .then_ignore(kw!("else"))
             .then(expr.clone())
             .map_with_span(|((cond, then), els), span| {
-                let then_span = then.span();
-                let else_span = els.span();
-
                 Spanned(
                     Expr::If {
+                        label: None,
                         cond: Box::new(cond),
-                        body: vec![Spanned(Node::ImplicitReturn(then), then_span)],
-                        else_body: Some(vec![Spanned(Node::ImplicitReturn(els), else_span)]),
+                        body: Spanned::expr(then),
+                        else_body: Some(Spanned::expr(els)),
                         ternary: true,
                     },
                     span,

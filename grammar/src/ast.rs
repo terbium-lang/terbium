@@ -220,6 +220,9 @@ pub enum TypeExpr {
     And(Vec<TypeExpr>),
     /// A negation ("not") type, e.g. `!Type`.
     Not(Box<TypeExpr>),
+    /// The `mut` modifier which allows the type to be mutable and have access to mutable methods,
+    /// e.g. `mut Type`.
+    Mut(Box<TypeExpr>),
     /// The `to` modifier which allows any type that has a cast function to the given type,
     /// e.g. `to Type` or `to string`.
     To(Box<TypeExpr>),
@@ -294,6 +297,7 @@ impl Display for TypeExpr {
             }
             Self::Not(ty) => write!(f, "!{ty}"),
             Self::To(ty) => write!(f, "to {ty}"),
+            Self::Mut(ty) => write!(f, "mut {ty}"),
             Self::Application { ty, args, kwargs } => {
                 write!(f, "{ty}<")?;
 
@@ -374,7 +378,13 @@ pub enum AssignmentTarget {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Pattern {
     /// An identifier binding, likely a variable.
-    Ident(String),
+    Ident {
+        /// The name of the identifier.
+        ident: Spanned<String>,
+        /// The span of the `mut` keyword if the identifier is specified as mutable, otherwise
+        /// `None`.
+        mut_kw: Option<Span>,
+    },
     /// A tuple of patterns, matching any tuples.
     ///
     /// When accessing tuple enum variants, a variant name must be specified, e.g.
@@ -388,6 +398,7 @@ pub enum Pattern {
     /// Field-patterns may only bind to field-based types. If the fields are enclosed in an enum
     /// variant, the enum variant must be specified, e.g.
     /// `let Enum.Variant {a} = Enum.Variant {a: 1}`.
+    #[allow(clippy::type_complexity)]
     Fields(
         Vec<Spanned<String>>,
         Vec<(Spanned<String>, Option<Box<Spanned<Self>>>)>,
@@ -464,6 +475,14 @@ pub enum MatchPattern {
     OneOf(Vec<Spanned<Self>>),
 }
 
+impl Spanned<Vec<Spanned<Node>>> {
+    /// Creates a new block that immediately returns a value.
+    pub fn expr(expr: Spanned<Expr>) -> Self {
+        let span = expr.span();
+        Self(vec![Spanned(Node::ImplicitReturn(expr), span)], span)
+    }
+}
+
 /// An expression that can be evaluated to a value.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Expr {
@@ -498,6 +517,13 @@ pub enum Expr {
         /// The attribute being accessed.
         attr: Spanned<String>,
     },
+    /// Specifies the value to be an immutable reference, e.g. `ref x`.
+    ///
+    /// Note that immutable references are inferred by default, so this is only needed for
+    /// cases where you want to explicitly specify.
+    Ref(Span, Box<Spanned<Self>>),
+    /// Specifies the value to be a mutable reference, e.g. `mut x`.
+    Mut(Span, Box<Spanned<Self>>),
     /// An explicit cast to a type.
     Cast {
         /// The expression being cast.
@@ -545,12 +571,14 @@ pub enum Expr {
     /// An if-statement. This is an expression in an AST because divergent if-statements
     /// are expressions.
     If {
+        /// The block label given to the if-statement.
+        label: Option<Spanned<String>>,
         /// The condition of the if-statement.
         cond: Box<Spanned<Self>>,
         /// The body of the if-statement.
-        body: Vec<Spanned<Node>>,
+        body: Spanned<Vec<Spanned<Node>>>,
         /// The body of the else block. This is `None` if there is no else block.
-        else_body: Option<Vec<Spanned<Node>>>,
+        else_body: Option<Spanned<Vec<Spanned<Node>>>>,
         /// Whether the if-statement is a ternary-if expression.
         /// (i.e. an inline "if-then-else" expression).
         ///
@@ -563,31 +591,47 @@ pub enum Expr {
     /// A while-loop. This is an expression in an AST because divergent while-loops
     /// are expressions.
     While {
+        /// The block label given to the while-loop.
+        label: Option<Spanned<String>>,
         /// The condition of the while-loop.
         cond: Box<Spanned<Self>>,
         /// The body of the while-loop.
-        body: Vec<Spanned<Node>>,
+        body: Spanned<Vec<Spanned<Node>>>,
         /// The body of the else block. This is `None` if there is no else block.
         /// The else-block is executed if the while-loop finishes execution without a break.
         ///
         /// While-loops without else-blocks are considered non-diverging and should not be
         /// considered as expressions.
-        else_body: Option<Vec<Spanned<Node>>>,
+        else_body: Option<Spanned<Vec<Spanned<Node>>>>,
     },
     /// A loop expression. Loop expressions either never diverge due to infinite loops,
     /// or always diverge due to a break statement. Therefore, they can also be considered as
     /// expressions.
-    Loop(Vec<Spanned<Node>>),
+    Loop {
+        /// The block label given to the loop.
+        label: Option<Spanned<String>>,
+        /// The body of the loop.
+        body: Spanned<Vec<Spanned<Node>>>,
+    },
     /// A when expression. When expressions can simplify long if-else if chains into a mapping of
     /// conditions to corresponding values.
     ///
     /// For example, `when { x == 0 -> 0, x < 0 -> -1, else 1 }` is a valid expression and is
     /// equivalent to `if x == 0 then 0 else if x < 0 then -1 else 1`.
     When {
+        /// The block label given to the when block.
+        label: Option<Spanned<String>>,
         /// The condition-value pairs of the when expression.
         arms: Vec<(Spanned<Self>, Spanned<Self>)>,
         /// The else value of the when expression. This is `None` if there is no else value.
         else_value: Option<Box<Spanned<Self>>>,
+    },
+    /// A block expression. Block expressions enclose a new lexical scope.
+    Block {
+        /// The block label given to the block.
+        label: Option<Spanned<String>>,
+        /// The body of the block.
+        body: Spanned<Vec<Spanned<Node>>>,
     },
 }
 
@@ -638,6 +682,8 @@ impl Display for Expr {
             Self::UnaryOp { op, expr } => write!(f, "({op}{expr})"),
             Self::BinaryOp { left, op, right } => write!(f, "({left} {op} {right})"),
             Self::Attr { subject, attr, .. } => write!(f, "({subject}.{attr})"),
+            Self::Ref(_, subject) => write!(f, "(ref {subject})"),
+            Self::Mut(_, subject) => write!(f, "(mut {subject})"),
             Self::Cast { expr, ty } => write!(f, "({expr}::{ty})"),
             Self::Call { func, args, kwargs } => write!(
                 f,
@@ -664,37 +710,26 @@ impl Display for Expr {
                 )
             }
             Self::If {
+                label,
                 cond,
                 body,
                 else_body,
-                ternary,
+                ..
             } => {
-                write!(f, "if {cond} ")?;
-                if *ternary {
-                    f.write_str("then ")?;
-                    for node in body {
-                        write!(f, "{node}")?;
-                    }
-                    f.write_str(" else ")?;
-                    for node in else_body.as_ref().expect("ternary if must have else body") {
-                        write!(f, "{node}")?;
-                    }
-                    return Ok(());
+                if let Some(label) = label {
+                    write!(f, ":{label} ")?;
                 }
-
+                write!(f, "if {cond} ")?;
                 f.write_str("{\n")?;
 
-                for node in body {
+                for node in body.value() {
                     node.write_indent(f)?;
                 }
                 f.write_str("\n}")?;
 
                 if let Some(else_body) = else_body {
-                    f.write_str(" else ")?;
-                    if !*ternary {
-                        f.write_str("{\n")?;
-                    }
-                    for node in else_body {
+                    f.write_str(" else {\n")?;
+                    for node in else_body.value() {
                         node.write_indent(f)?;
                     }
                     f.write_str("\n}")?;
@@ -702,37 +737,61 @@ impl Display for Expr {
                 Ok(())
             }
             Self::While {
+                label,
                 cond,
                 body,
                 else_body,
             } => {
+                if let Some(label) = label {
+                    write!(f, ":{label} ")?;
+                }
                 writeln!(f, "while {cond} {{")?;
-                for node in body {
+                for node in body.value() {
                     node.write_indent(f)?;
                 }
 
                 if let Some(else_body) = else_body {
                     f.write_str(" else {\n")?;
-                    for node in else_body {
+                    for node in else_body.value() {
                         node.write_indent(f)?;
                     }
                 }
                 Ok(())
             }
-            Self::Loop(body) => {
+            Self::Loop { label, body } => {
+                if let Some(label) = label {
+                    write!(f, ":{label} ")?;
+                }
                 writeln!(f, "loop {{")?;
-                for node in body {
+                for node in body.value() {
                     node.write_indent(f)?;
                 }
                 f.write_str("\n}")
             }
-            Self::When { arms, else_value } => {
+            Self::When {
+                label,
+                arms,
+                else_value,
+            } => {
+                if let Some(label) = label {
+                    write!(f, ":{label} ")?;
+                }
                 f.write_str("when {\n")?;
                 for (cond, value) in arms {
                     format!("{cond} -> {value}").write_indent(f)?;
                 }
                 if let Some(else_value) = else_value {
                     format!("else -> {else_value}").write_indent(f)?;
+                }
+                f.write_str("\n}")
+            }
+            Self::Block { label, body } => {
+                if let Some(label) = label {
+                    write!(f, ":{label} ")?;
+                }
+                f.write_str("{\n")?;
+                for node in body.value() {
+                    node.write_indent(f)?;
                 }
                 f.write_str("\n}")
             }
@@ -798,6 +857,9 @@ pub enum Node {
     Break {
         /// The span of the break keyword.
         kw: Span,
+        /// The block label to break out of. If this is `None`, then the closest **loop** is broken
+        /// out of.
+        label: Option<Spanned<String>>,
         /// The value to break with, if specified.
         value: Option<Spanned<Expr>>,
         /// The condition on whether to break.
@@ -808,6 +870,9 @@ pub enum Node {
     Continue {
         /// The span of the continue keyword.
         kw: Span,
+        /// The block label to continue. If this is `None`, then the closest loop is continued.
+        /// If this label is a non-loop block, this will be a compile-error.
+        label: Option<Spanned<String>>,
         /// The condition on whether to continue.
         /// This is only specified for `continue if` statements.
         cond: Option<Spanned<Expr>>,
@@ -825,7 +890,7 @@ pub enum Node {
         /// The return type of the function, if it is specified.
         ret: Option<Spanned<TypeExpr>>,
         /// The body of the function.
-        body: Vec<Self>,
+        body: Spanned<Vec<Spanned<Node>>>,
     },
 }
 
@@ -834,10 +899,14 @@ impl Display for Node {
         fn write_control_flow_stmt(
             f: &mut Formatter,
             kw: &str,
+            label: Option<&Spanned<String>>,
             value: &Option<Spanned<Expr>>,
             cond: &Option<Spanned<Expr>>,
         ) -> fmt::Result {
             f.write_str(kw)?;
+            if let Some(label) = label {
+                write!(f, " :{label}")?;
+            }
             if let Some(value) = value {
                 write!(f, " {value}")?;
             }
@@ -870,11 +939,18 @@ impl Display for Node {
                 }
                 write!(f, ";")
             }
-            Self::Return { value, cond, .. } => write_control_flow_stmt(f, "return", value, cond),
+            Self::Return { value, cond, .. } => {
+                write_control_flow_stmt(f, "return", None, value, cond)
+            }
             Self::ImplicitReturn(e) => write!(f, "{e}"),
-            Self::Break { value, cond, .. } => write_control_flow_stmt(f, "break", value, cond),
-            Self::Continue { cond, .. } => {
+            Self::Break {
+                label, value, cond, ..
+            } => write_control_flow_stmt(f, "break", label.as_ref(), value, cond),
+            Self::Continue { label, cond, .. } => {
                 f.write_str("continue")?;
+                if let Some(label) = label {
+                    write!(f, " :{label}")?;
+                }
                 if let Some(cond) = cond {
                     write!(f, " if {cond}")?;
                 }
@@ -903,7 +979,7 @@ impl Display for Node {
                     write!(f, " -> {ret}")?;
                 }
                 writeln!(f, " {{")?;
-                for node in body {
+                for node in body.value() {
                     node.write_indent(f)?;
                 }
                 f.write_str("\n}")

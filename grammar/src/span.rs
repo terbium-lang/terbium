@@ -247,7 +247,7 @@ impl Provider<'static> {
 /// Resolves a provider from a file path at compile-time.
 #[macro_export]
 macro_rules! include_provider {
-    ($path:literal) => {{
+    ($path:literal $(,)?) => {{
         Provider(Src::from_path($path), include_str!($path))
     }};
 }
