@@ -1,6 +1,7 @@
 //! Models representing the abstract syntax tree.
 
 use crate::{
+    error::Error,
     span::{Span, Spanned},
     token::{Radix, TokenInfo},
 };
@@ -351,6 +352,87 @@ impl Display for Atom {
     }
 }
 
+/// A visibility specifier, which determines the visibility of a declaration or item.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum Visibility {
+    /// This item is visible to everything.
+    Public,
+    /// This item is visible only to the current library.
+    Lib,
+    /// This item is visible only to the parent module.
+    Parent,
+    /// This item is visible only to the current module.
+    #[default]
+    Mod,
+    /// This item is visible only within the definition implementation and extensions.
+    /// (i.e. self + subclasses)
+    Sub,
+    /// This item is visible only within the definition implementation. (i.e. self)
+    /// This can be written as either `public(private)` or `private`, but the latter is always
+    /// preferred.
+    Private,
+}
+
+/// A visibility specifier for struct or class fields, which allows for finer visibility control
+/// over getters and setters of the field. Fully expanded, these are written as:
+/// `public(VIS get, VIS set)`, where `VIS` is any visibility specifier.
+///
+/// If `VIS` is not specified, full `public` visibility is assumed. If `get` or `set` is not
+/// specified, the visibility of the getter or setter is assumed to be `private`.
+///
+/// The visibility of the setter must be equal or more private than the visibility of the getter.
+///
+/// Examples:
+/// ```text
+/// public -> public(get, set)
+/// public(VIS) -> public(VIS get, VIS set)
+///     where VIS is any visibility specifier
+///     for example, public(lib) -> public(lib get, lib set)
+/// public(get) -> public(get, private set)
+/// public(VIS get) -> public(VIS get, private set)
+///     where VIS is any visibility specifier
+///    for example, public(lib get) -> public(lib get, private set)
+/// public(get, VIS set) -> public(get, VIS set)
+///     where VIS is any visibility specifier
+///     for example, public(get, lib set) -> public(get, lib set)
+/// public(GET_VIS get, SET_VIS set) -> public(VIS get, VIS set)
+///     where GET_VIS and SET_VIS are any visibility specifiers
+///     for example, public(lib get, mod set) -> public(lib get, mod set)
+/// private -> public(private get, private set)
+///     this is equivalent to public(private)
+/// ```
+///
+/// Invalid examples, where the visibility of the setter is more public than the getter:
+/// ```text
+/// public(set) expands to public(private get, set)
+/// public(lib set) expands to public(private get, lib set)
+/// public(mod get, lib set)
+/// ```
+///
+/// As a general rule of thumb:
+/// ```text
+/// For public((GET_VIS get) as GET, (SET_VIS set) as SET):
+/// * GET_VIS <= SET_VIS
+/// * if GET_VIS is not specified, GET_VIS = public
+/// * if SET_VIS is not specified, SET_VIS = public
+/// * if GET is not specified, GET = private
+/// * if SET is not specified, SET = private
+///
+/// Expand public(VIS) to public(VIS get, VIS set)
+/// Expand public to public(get, set)
+/// Expand private to public(private get, private set)
+/// Explicitly disallow public()
+/// When visibility is not specified, default to:
+///     public(mod) expands to public(mod get, mod set)
+/// ```
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FieldVisibility {
+    /// The visibility of the getter.
+    pub get: (Visibility, Option<Span>),
+    /// The visibility of the setter.
+    pub set: (Visibility, Option<Span>),
+}
+
 /// The assignment target of an assignment expression.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AssignmentTarget {
@@ -377,7 +459,7 @@ pub enum AssignmentTarget {
 /// declaration bindings.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Pattern {
-    /// An identifier binding, likely a variable.
+    /// A binding.
     Ident {
         /// The name of the identifier.
         ident: Spanned<String>,
@@ -431,6 +513,114 @@ pub enum Pattern {
     Wildcard(Option<Box<Spanned<Self>>>),
 }
 
+impl Display for Pattern {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let mut fmt_path = |path: &[Spanned<_>]| {
+            write!(
+                f,
+                "{}",
+                path.iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(".")
+            )
+        };
+
+        match self {
+            Self::Ident { ident, mut_kw } => {
+                if mut_kw.is_some() {
+                    f.write_str("mut ")?;
+                }
+                ident.fmt(f)
+            }
+            Self::Tuple(path, pats) => {
+                fmt_path(path)?;
+                write!(
+                    f,
+                    "({})",
+                    pats.iter()
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
+            Self::Array(pats) => {
+                write!(
+                    f,
+                    "[{}]",
+                    pats.iter()
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
+            Self::Fields(path, fields) => {
+                fmt_path(path)?;
+                write!(
+                    f,
+                    "{{{}}}",
+                    fields
+                        .iter()
+                        .map(|(name, pat)| {
+                            if let Some(pat) = pat {
+                                format!("{name}: {pat}")
+                            } else {
+                                name.to_string()
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
+            Self::As(lhs, rhs) => write!(f, "{lhs} as {rhs}"),
+            Self::Wildcard(pat) => {
+                f.write_str("*")?;
+                if let Some(pat) = pat {
+                    write!(f, "{pat}")
+                } else {
+                    Ok(())
+                }
+            }
+        }
+    }
+}
+
+impl Pattern {
+    /// Walks the pattern, ensuring that all bindings are not mutable. This is used during syntax
+    /// checking on assignment patterns.
+    pub fn assert_immutable_bindings(&self) -> Result<(), Error> {
+        match self {
+            Self::Ident { ident, mut_kw } => {
+                if let Some(span) = mut_kw {
+                    return Err(Error::mutable_assignment_target(*span, ident.clone()));
+                }
+            }
+            Self::Tuple(_, pats) | Self::Array(pats) => {
+                for pat in pats {
+                    pat.value().assert_immutable_bindings()?;
+                }
+            }
+            Self::Fields(_, fields) => {
+                for (_, pat) in fields {
+                    if let Some(pat) = pat {
+                        pat.value().assert_immutable_bindings()?;
+                    }
+                }
+            }
+            Self::As(lhs, rhs) => {
+                lhs.value().assert_immutable_bindings()?;
+                rhs.value().assert_immutable_bindings()?;
+            }
+            Self::Wildcard(pat) => {
+                if let Some(pat) = pat {
+                    pat.value().assert_immutable_bindings()?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
 /// An extended pattern used specifically in a match expression. The extra bindings here
 /// deliberately match values but do not bind, so it wouldn't make sense to have in declarations
 /// `let` (e.g. `let 1 = 1` is just dumb). This is a superset of the `Pattern` enum.
@@ -475,12 +665,11 @@ pub enum MatchPattern {
     OneOf(Vec<Spanned<Self>>),
 }
 
-impl Spanned<Vec<Spanned<Node>>> {
-    /// Creates a new block that immediately returns a value.
-    pub fn expr(expr: Spanned<Expr>) -> Self {
-        let span = expr.span();
-        Self(vec![Spanned(Node::ImplicitReturn(expr), span)], span)
-    }
+/// Creates a new block that immediately returns a value.
+#[must_use]
+pub fn expr_as_block(expr: Spanned<Expr>) -> Spanned<Vec<Spanned<Node>>> {
+    let span = expr.span();
+    Spanned(vec![Spanned(Node::ImplicitReturn(expr), span)], span)
 }
 
 /// An expression that can be evaluated to a value.
@@ -749,6 +938,7 @@ impl Display for Expr {
                 for node in body.value() {
                     node.write_indent(f)?;
                 }
+                f.write_str("\n}")?;
 
                 if let Some(else_body) = else_body {
                     f.write_str(" else {\n")?;
@@ -802,17 +992,17 @@ impl Display for Expr {
 /// Information about a function parameter.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FuncParam {
-    /// The name of the parameter. (TODO: destructuring)
-    pub name: Spanned<String>,
+    /// The pattern of the parameter.
+    pub pat: Spanned<Pattern>,
     /// The type of the parameter.
     pub ty: Spanned<TypeExpr>,
     /// The default value of the parameter, if it is specified.
-    pub default: Option<Box<Spanned<Expr>>>,
+    pub default: Option<Spanned<Expr>>,
 }
 
 impl Display for FuncParam {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {}", self.name, self.ty)?;
+        write!(f, "{}: {}", self.pat, self.ty)?;
         if let Some(default) = &self.default {
             write!(f, " = {default}")?;
         }
@@ -879,14 +1069,12 @@ pub enum Node {
     },
     /// A named function declaration.
     Func {
-        /// The span of the "func" keyword.
-        kw: Span,
         /// The name of the function.
         name: Spanned<String>,
         /// The positional parameters of the function.
-        params: Vec<FuncParam>,
+        params: Vec<Spanned<FuncParam>>,
         /// The keyword parameters of the function.
-        kw_params: Vec<FuncParam>,
+        kw_params: Vec<Spanned<FuncParam>>,
         /// The return type of the function, if it is specified.
         ret: Option<Spanned<TypeExpr>>,
         /// The body of the function.
@@ -962,7 +1150,6 @@ impl Display for Node {
                 kw_params,
                 ret,
                 body,
-                ..
             } => {
                 write!(f, "func {name}(")?;
 

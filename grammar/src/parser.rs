@@ -1,11 +1,11 @@
 use crate::{
-    ast::{Atom, BinaryOp, Expr, Node, TypeExpr, UnaryOp},
+    ast::{expr_as_block, Atom, BinaryOp, Delimiter, Expr, Node, Pattern, TypeExpr, UnaryOp},
     error::{Error, TargetKind},
     span::{Provider, Span, Spanned},
     token::{ChumskyTokenStreamer, StringLiteralFlags, TokenInfo, TokenReader},
 };
 use chumsky::{
-    combinator::{IgnoreThen, Repeated, ThenIgnore},
+    combinator::{DelimitedBy, IgnoreThen, Repeated, ThenIgnore},
     error::Error as _,
     prelude::{
         choice, end, filter_map, just, recursive, select, Parser as ChumskyParser, Recursive,
@@ -14,6 +14,7 @@ use chumsky::{
     stream::Stream,
 };
 use std::result::Result as StdResult;
+use crate::ast::FuncParam;
 
 pub type Result<T> = StdResult<T, Error>;
 pub type RecursiveParser<'a, T> = Recursive<'a, TokenInfo, T, Error>;
@@ -21,29 +22,55 @@ type RecursiveDef<'a, T> = Recursive<'a, TokenInfo, T, Error>;
 
 type JustToken = Just<TokenInfo, TokenInfo, Error>;
 type RepeatedToken = Repeated<JustToken>;
-type PadWsTy<T, O> =
-    ThenIgnore<IgnoreThen<RepeatedToken, T, Vec<TokenInfo>, O>, RepeatedToken, O, Vec<TokenInfo>>;
+
+type ThenWsTy<T, O> = ThenIgnore<T, RepeatedToken, O, Vec<TokenInfo>>;
+type WsThenTy<T, O> = IgnoreThen<RepeatedToken, T, Vec<TokenInfo>, O>;
+type PadWsTy<T, O> = ThenWsTy<WsThenTy<T, O>, O>;
+type DelimitedTy<A> = DelimitedBy<
+    A,
+    ThenWsTy<JustToken, TokenInfo>,
+    WsThenTy<JustToken, TokenInfo>,
+    TokenInfo,
+    TokenInfo,
+>;
+
+pub trait TokenParser<O> = ChumskyParser<TokenInfo, O, Error = Error>;
 
 trait WsPadExt<T, O> {
+    fn then_ws(self) -> ThenWsTy<T, O>;
+    fn ws_then(self) -> WsThenTy<T, O>;
     fn pad_ws(self) -> PadWsTy<T, O>;
+    fn delimited(self, delimiter: Delimiter) -> DelimitedTy<Self>
+    where
+        Self: Sized;
 }
 
 impl<O, T: ChumskyParser<TokenInfo, O, Error = Error>> WsPadExt<T, O> for T {
+    #[inline]
+    fn then_ws(self) -> ThenWsTy<T, O> {
+        self.then_ignore(just(TokenInfo::Whitespace).repeated())
+    }
+
+    #[inline]
+    fn ws_then(self) -> WsThenTy<T, O> {
+        just(TokenInfo::Whitespace).repeated().ignore_then(self)
+    }
+
     #[inline] // Maybe inline is a bad idea
     fn pad_ws(self) -> PadWsTy<T, O> {
         self.padded_by(just(TokenInfo::Whitespace).repeated())
     }
-}
 
-macro_rules! lparen {
-    () => {{
-        just(TokenInfo::LeftParen).pad_ws()
-    }};
-}
-macro_rules! rparen {
-    () => {{
-        just(TokenInfo::RightParen).pad_ws()
-    }};
+    #[inline]
+    fn delimited(self, delimiter: Delimiter) -> DelimitedTy<Self>
+    where
+        Self: Sized,
+    {
+        self.delimited_by(
+            just(delimiter.open_token()).then_ws(),
+            just(delimiter.close_token()).ws_then(),
+        )
+    }
 }
 
 macro_rules! kw {
@@ -136,10 +163,52 @@ pub fn type_expr_parser<'a>() -> RecursiveParser<'a, Spanned<TypeExpr>> {
     })
 }
 
+/// A block label, e.g. `:a`
+pub fn block_label<'a>() -> impl TokenParser<Spanned<String>> + Clone + 'a {
+    just(TokenInfo::Colon)
+        .ignore_then(select!(TokenInfo::Ident(name, _) => name))
+        .map_with_span(Spanned)
+        .labelled("block label")
+}
+
+/// A pattern to match against in a declaration.
+pub fn pat_parser<'a>() -> RecursiveParser<'a, Spanned<Pattern>> {
+    recursive(|pat| {
+        let ident = kw!("mut")
+            .then_ws()
+            .or_not()
+            .then(select!(TokenInfo::Ident(name, _) => name).map_with_span(Spanned))
+            .map_with_span(|(mut_kw, ident), span| {
+                Spanned(
+                    Pattern::Ident {
+                        ident,
+                        mut_kw: mut_kw.map(|kw| kw.span()),
+                    },
+                    span,
+                )
+            })
+            .labelled("identifier")
+            .boxed();
+
+        ident
+    })
+}
+
+/// A body parser, i.e. a list of statements.
+#[allow(clippy::too_many_lines)]
 pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
-    recursive(|body: RecursiveDef<Vec<Spanned<Node>>>| {
+    let ty = type_expr_parser();
+    let pat = pat_parser();
+    let block_label = block_label().pad_ws().or_not();
+
+    recursive(move |body: RecursiveDef<Vec<Spanned<Node>>>| {
+        #[derive(Clone)]
+        enum FuncParamOrSep {
+            FuncParam(Spanned<FuncParam>),
+            Sep,
+        }
+
         let expr = expr_parser(body.clone());
-        let ty = type_expr_parser();
 
         let ident = select! {
             TokenInfo::Ident(name, _) => name,
@@ -161,7 +230,7 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
             .map(|spanned| spanned.map(|_| false))
             .or(kw!("const").map(|spanned| spanned.map(|_| true)))
             .then(kw!("mut").map(|spanned| spanned.span()).pad_ws().or_not())
-            .then(ident)
+            .then(ident.clone())
             .then(
                 just(TokenInfo::Colon)
                     .pad_ws()
@@ -199,7 +268,121 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
             .labelled("declaration")
             .boxed();
 
-        choice((decl, expression))
+        // Single function parameter
+        let func_param = pat
+            .then_ignore(just(TokenInfo::Colon).then_ws())
+            .then(ty.clone())
+            .then(
+                just(TokenInfo::Equals)
+                    .pad_ws()
+                    .ignore_then(expr.clone())
+                    .or_not(),
+            )
+            .map_with_span(|((pat, ty), default), span| Spanned(FuncParam { pat, ty, default }, span));
+
+        // Function header starting from "func", i.e. `func f()`
+        let func_header = kw!("func")
+            .ignore_then(ident.clone())
+            .then(
+                just(TokenInfo::Asterisk).to(FuncParamOrSep::Sep)
+                    .or(func_param.map(FuncParamOrSep::FuncParam))
+                    .separated_by(just(TokenInfo::Comma).pad_ws())
+                    .delimited(Delimiter::Paren),
+            )
+            .then(
+                just([TokenInfo::Minus, TokenInfo::Gt])
+                    .pad_ws()
+                    .ignore_then(ty.clone())
+                    .or_not(),
+            );
+
+        // Function, i.e. `func f() {}` or `func f() = expr;`
+        let func = block_label
+            .then(func_header)
+            .then(
+                body.delimited(Delimiter::Brace)
+                    .map_with_span(Spanned)
+                    .pad_ws()
+                    .then_ignore(just(TokenInfo::Semicolon).or_not())
+                    .or(
+                        just(TokenInfo::Equals)
+                            .pad_ws()
+                            .ignore_then(expr.clone())
+                            .then_ignore(just(TokenInfo::Semicolon))
+                            .map(expr_as_block)
+                            .pad_ws()
+                    )
+            )
+            .map_with_span(|((label, ((name, params), ty)), body), span| {
+                todo!()
+            })
+            .pad_ws()
+            .labelled("function")
+            .boxed();
+
+        let control_flow_if_stmt = kw!("if").pad_ws().ignore_then(expr.clone()).or_not();
+
+        // Break statement, i.e. `break;`, `break 5;`, or `break :a;`
+        let break_stmt = kw!("break")
+            .then(block_label.clone())
+            .then(expr.clone().or_not())
+            .then(control_flow_if_stmt.clone())
+            .then_ignore(just(TokenInfo::Semicolon))
+            .map_with_span(|(((kw, label), value), cond), span| {
+                Spanned(
+                    Node::Break {
+                        kw: kw.span(),
+                        label,
+                        value,
+                        cond,
+                    },
+                    span,
+                )
+            })
+            .pad_ws()
+            .labelled("break")
+            .boxed();
+
+        // Continue statement, i.e. `continue;` or `continue :a;`
+        let continue_stmt = kw!("continue")
+            .then(block_label.clone())
+            .then(control_flow_if_stmt.clone())
+            .then_ignore(just(TokenInfo::Semicolon))
+            .map_with_span(|((kw, label), cond), span| {
+                Spanned(
+                    Node::Continue {
+                        kw: kw.span(),
+                        label,
+                        cond,
+                    },
+                    span,
+                )
+            })
+            .pad_ws()
+            .labelled("continue")
+            .boxed();
+
+        // Return statement, i.e. `return;`
+        let return_stmt = kw!("return")
+            .then_ws()
+            .then(expr.clone().or_not())
+            .then(control_flow_if_stmt.clone())
+            .then_ignore(just(TokenInfo::Semicolon))
+            .map_with_span(|((kw, value), cond), span| {
+                Spanned(
+                    Node::Return {
+                        kw: kw.span(),
+                        value,
+                        cond,
+                    },
+                    span,
+                )
+            })
+            .pad_ws()
+            .labelled("return")
+            .boxed();
+
+        choice((decl, break_stmt, continue_stmt, return_stmt, expression))
             .pad_ws()
             .repeated()
             .then(
@@ -222,18 +405,16 @@ pub fn brace_ending_expr<'a>(
     expr: RecursiveDef<'a, Spanned<Expr>>,
     body: RecursiveDef<'a, Vec<Spanned<Node>>>,
 ) -> impl ChumskyParser<TokenInfo, Spanned<Expr>, Error = Error> + 'a {
+    type BlockFn = fn(Option<Spanned<String>>, Spanned<Vec<Spanned<Node>>>) -> Expr;
+
     let braced_body = body
-        .pad_ws()
-        .delimited_by(just(TokenInfo::LeftBrace), just(TokenInfo::RightBrace))
+        .delimited(Delimiter::Brace)
         .map_with_span(Spanned)
         .pad_ws();
 
-    let block_label = just(TokenInfo::Colon)
-        .ignore_then(select!(TokenInfo::Ident(name, _) => name))
-        .map_with_span(Spanned)
+    let block_label = block_label()
         .then_ignore(just(TokenInfo::Whitespace).repeated())
-        .or_not()
-        .labelled("block label");
+        .or_not();
 
     // Braced if-statement, i.e. if cond { ... }
     let braced_if = block_label
@@ -256,7 +437,7 @@ pub fn brace_ending_expr<'a>(
             let else_body = elif.into_iter().fold(else_body, |else_body, (cond, body)| {
                 let span = cond.span().merge(body.span());
 
-                Some(Spanned::expr(Spanned(
+                Some(expr_as_block(Spanned(
                     Expr::If {
                         label: None,
                         cond: Box::new(cond),
@@ -304,16 +485,27 @@ pub fn brace_ending_expr<'a>(
         .labelled("while-loop")
         .boxed();
 
+    let simple_block = |f: BlockFn| move |(label, body), span| Spanned(f(label, body), span);
+
     // Loop-expression, i.e. loop { ... }
     let loop_expr = block_label
+        .clone()
         .then_ignore(kw!("loop"))
         .then(braced_body.clone())
-        .map_with_span(|(label, body), span| Spanned(Expr::Loop { label, body }, span))
+        .map_with_span(simple_block(|label, body| Expr::Loop { label, body }))
         .pad_ws()
         .labelled("loop-expression")
         .boxed();
 
-    choice((braced_if, while_loop, loop_expr))
+    // Standard block, i.e. { ... }
+    let block_expr = block_label
+        .then(braced_body)
+        .map_with_span(simple_block(|label, body| Expr::Block { label, body }))
+        .pad_ws()
+        .labelled("block-expression")
+        .boxed();
+
+    choice((braced_if, while_loop, loop_expr, block_expr))
 }
 
 /// Parser to parse an expression.
@@ -352,8 +544,7 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
                 _ => Atom::Ident(name),
             })
         }
-        .map_with_span(Spanned)
-        .pad_ws();
+        .map_with_span(Spanned);
 
         // Parses and consumes the next atom. An atom is the most basic unit of an expression that
         // cannot be broken down into other expressions any further.
@@ -373,7 +564,6 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
                 span,
             ))
         })
-        .pad_ws()
         .or(ident)
         .labelled("atom");
 
@@ -385,22 +575,20 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
 
         // Parses expressions that do not have to be orderly disambiguated against
         let unambiguous = choice((
-            expr.clone().delimited_by(lparen!(), rparen!()),
+            expr.clone().delimited(Delimiter::Paren),
             comma_separated
                 .clone()
-                .delimited_by(lparen!(), rparen!())
+                .delimited(Delimiter::Paren)
                 .map_with_span(|exprs, span| Spanned(Expr::Tuple(exprs), span))
                 .labelled("tuple"),
             comma_separated
-                .delimited_by(
-                    just(TokenInfo::LeftBracket).pad_ws(),
-                    just(TokenInfo::RightBracket).pad_ws(),
-                )
+                .delimited(Delimiter::Bracket)
                 .map_with_span(|exprs, span| Spanned(Expr::Array(exprs), span))
                 .labelled("array"),
-            atom.clone(),
+            atom,
         ))
         .labelled("unambiguous expression")
+        .pad_ws()
         .boxed();
 
         let raw_ident = select!(TokenInfo::Ident(ident, _) => ident);
@@ -417,8 +605,9 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
             .then(expr.clone())
             .separated_by(just(TokenInfo::Comma).pad_ws())
             .allow_trailing()
-            .delimited_by(lparen!(), rparen!())
-            .map_with_span(ChainKind::Call);
+            .delimited(Delimiter::Paren)
+            .map_with_span(ChainKind::Call)
+            .pad_ws();
 
         let index = expr
             .clone()
@@ -690,8 +879,8 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
                     Expr::If {
                         label: None,
                         cond: Box::new(cond),
-                        body: Spanned::expr(then),
-                        else_body: Some(Spanned::expr(els)),
+                        body: expr_as_block(then),
+                        else_body: Some(expr_as_block(els)),
                         ternary: true,
                     },
                     span,

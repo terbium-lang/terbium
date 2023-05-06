@@ -15,11 +15,11 @@
 #![feature(lint_reasons)]
 #![feature(never_type)]
 #![feature(let_chains)]
+#![feature(trait_alias)]
 
 pub mod ast;
 pub mod error;
 pub mod parser;
-pub mod span;
 pub mod token;
 
-// pub use parser::Parser;
+pub use common::span;

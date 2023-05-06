@@ -1,13 +1,15 @@
 use crate::{
     ast::Delimiter,
-    span::{Span, Spanned, Src},
+    span::{Span, Spanned},
     token::{Error as TokenizationError, TokenInfo},
 };
-use std::ops::Range;
+use ariadne::{ColorGenerator, Label, Report, ReportKind};
+use common::span::ProviderCache;
 use std::{
     fmt::{self, Display, Formatter, Result as FmtResult},
     string::ToString,
 };
+use std::io::Write;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TargetKind {
@@ -151,6 +153,9 @@ pub enum ErrorInfo {
     UnexpectedPositionalArgument(Span),
     /// A constant was declared without a value. The span is the span of the semicolon.
     ConstantWithoutValue(Span),
+    /// An assignment target was specified as mutable, however assignment targets may not be
+    /// specified as mutable. The span is the span of the `mut` keyword.
+    MutableAssignmentTarget(Span, Spanned<String>),
 }
 
 /// An action to take to fix an error.
@@ -182,33 +187,54 @@ impl Display for ErrorInfo {
         match self {
             Self::Tokenization(err) => err.fmt(f),
             Self::Unexpected {
-                span,
                 expected,
                 found,
+                ..
             } => {
-                write!(f, "{span}: expected {expected}, found {found}")
+                write!(f, "expected {expected}, found {found}")
             }
             Self::UnexpectedEof => write!(f, "unexpected end of file"),
-            Self::UnmatchedDelimiter { start, span, .. } => {
-                write!(f, "{span}: unmatched delimiter {:?}", start.hint())
+            Self::UnmatchedDelimiter { start, .. } => {
+                write!(f, "unmatched delimiter {:?}", start.hint())
             }
-            Self::UnknownEscapeSequence(c, span) => {
-                write!(f, "{span}: unknown escape sequence \\{c}")
+            Self::UnknownEscapeSequence(c, _) => {
+                write!(f, "unknown escape sequence \\{c}")
             }
-            Self::InvalidHexEscapeSequence(s, span) => {
-                write!(f, "{span}: invalid hex escape sequence \\x{s}")
+            Self::InvalidHexEscapeSequence(s, _) => {
+                write!(f, "invalid hex escape sequence \\x{s}")
             }
-            Self::UnexpectedPositionalArgument(span) => {
-                write!(f, "{span}: positional argument found after named argument")
+            Self::UnexpectedPositionalArgument(_) => {
+                write!(f, "positional argument found after named argument")
             }
-            Self::ConstantWithoutValue(span) => {
-                write!(f, "{span}: constant declared without a value")
+            Self::ConstantWithoutValue(_) => {
+                write!(f, "constant declared without a value")
+            }
+            Self::MutableAssignmentTarget(_, name) => {
+                write!(f, "assignment target `{name}` cannot be mutable")
             }
         }
     }
 }
 
 impl std::error::Error for ErrorInfo {}
+
+impl ErrorInfo {
+    /// The error code for the error.
+    #[must_use]
+    pub const fn code(&self) -> usize {
+        match self {
+            Self::Tokenization(_) => 0,
+            Self::Unexpected { .. } => 1,
+            Self::UnexpectedEof => 2,
+            Self::UnmatchedDelimiter { .. } => 3,
+            Self::UnknownEscapeSequence(..) => 4,
+            Self::InvalidHexEscapeSequence(..) => 5,
+            Self::UnexpectedPositionalArgument(_) => 6,
+            Self::ConstantWithoutValue(_) => 7,
+            Self::MutableAssignmentTarget(..) => 8,
+        }
+    }
+}
 
 /// An error that occurred during parsing.
 #[derive(Debug, PartialEq, Eq)]
@@ -321,11 +347,45 @@ impl Error {
         }
     }
 
+    /// Assignment target cannot be mutable.
+    #[must_use]
+    pub fn mutable_assignment_target(span: Span, name: Spanned<String>) -> Self {
+        Self {
+            info: ErrorInfo::MutableAssignmentTarget(span, name),
+            span,
+            label: None,
+            hint: Some(Hint {
+                action: HintAction::Remove(span),
+                message: "remove the \"mut\"".to_string(),
+            }),
+            notes: vec!["assignment targets cannot be mutable".to_string()],
+        }
+    }
+
     /// Adds a note to the error.
     #[must_use]
     pub fn note<S: ToString + ?Sized>(mut self, note: &S) -> Self {
         self.notes.push(note.to_string());
         self
+    }
+
+    /// Writes the error as a diagnostic to the given writer.
+    pub fn write(self, cache: ProviderCache, writer: impl Write) -> std::io::Result<()> {
+        let mut colors = ColorGenerator::new();
+        let primary = colors.next();
+
+        let mut report = Report::build(ReportKind::Error, self.span.src, self.span.start)
+            .with_code(self.info.code())
+            .with_message("invalid syntax")
+            .with_label(Label::new(self.span)
+                .with_message(self.info)
+                .with_color(primary)
+            );
+
+        if let Some(hint) = self.hint {
+            report = report.with_help(hint.message); // TODO: this does not write the action
+        }
+        report.finish().write(cache, writer)
     }
 }
 
@@ -334,27 +394,6 @@ fn escape_the_escape_sequence(span: Span) -> Hint {
     Hint {
         action: HintAction::InsertBefore(span, "\\".to_string()),
         message: "escape the escape sequence".to_string(),
-    }
-}
-
-impl chumsky::Span for Span {
-    type Context = Src;
-    type Offset = usize;
-
-    fn new(src: Self::Context, range: Range<Self::Offset>) -> Self {
-        Self::from_range(src, range)
-    }
-
-    fn context(&self) -> Self::Context {
-        self.src
-    }
-
-    fn start(&self) -> Self::Offset {
-        self.start
-    }
-
-    fn end(&self) -> Self::Offset {
-        self.end
     }
 }
 

@@ -16,10 +16,11 @@ categories = ["compilers", "command-line-interface", "parsing", "wasm"]
 # path = "src/bin/terbium.rs"
 
 [workspace]
-members = ["grammar"]
+members = ["common", "grammar"]
 
 [dependencies]
 chumsky = "1.0.0-alpha.3"
+common = { path = "common" }
 grammar = { path = "grammar" }
 
 [profile.dev]

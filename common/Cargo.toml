@@ -1,5 +1,5 @@
 [package]
-name = "grammar"
+name = "common"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,5 +8,4 @@ edition = "2021"
 [dependencies]
 ariadne = "0.2"
 chumsky = "0.9"
-common = { path = "../common" }
-unicode-xid = "0.2.4"
+internment = "0.7"
