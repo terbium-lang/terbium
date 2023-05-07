@@ -8,7 +8,7 @@ use std::{
 };
 
 /// Represents the span of a token or a node in the AST. Can be represented as [start, end).
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Span {
     /// The source of the span.
     pub src: Src,
@@ -20,7 +20,13 @@ pub struct Span {
 
 impl Display for Span {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}..{}", self.start, self.end)
+        write!(f, "{}:{}..{}", self.src, self.start, self.end)
+    }
+}
+
+impl Debug for Span {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        <Self as Display>::fmt(self, f)
     }
 }
 
@@ -149,7 +155,7 @@ impl ariadne::Span for Span {
 }
 
 /// A compound of a span and a value.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Spanned<T>(pub T, pub Span);
 
 impl<T> Spanned<T> {
@@ -202,6 +208,13 @@ impl<T> Spanned<T> {
 impl<T: Display> Display for Spanned<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+impl<T: Debug> Debug for Spanned<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)?;
+        write!(f, " @ {}", self.1)
     }
 }
 

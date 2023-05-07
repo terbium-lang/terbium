@@ -507,7 +507,7 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
 pub fn brace_ending_expr<'a>(
     expr: RecursiveDef<'a, Spanned<Expr>>,
     body: RecursiveDef<'a, Vec<Spanned<Node>>>,
-) -> impl ChumskyParser<TokenInfo, Spanned<Expr>, Error = Error> + 'a {
+) -> impl ChumskyParser<TokenInfo, Spanned<Expr>, Error = Error> + Clone + 'a {
     type BlockFn = fn(Option<Spanned<String>>, Spanned<Vec<Spanned<Node>>>) -> Expr;
 
     let braced_body = body
@@ -1025,18 +1025,17 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
 
         // Assignment target
         let assign_target = choice((
-            // FIXME: this is broken and causes parsing to freeze
-            // expr.clone().try_map(|e, _| {
-            //     e.try_map(|e| match e {
-            //         Expr::Attr { subject, attr, .. } => {
-            //             Ok(AssignmentTarget::Attr { subject, attr })
-            //         }
-            //         Expr::Index { subject, index } => {
-            //             Ok(AssignmentTarget::Index { subject, index })
-            //         }
-            //         _ => Err(Error::default()),
-            //     })
-            // }),
+            ambiguous_expr.clone().try_map(|e, _| {
+                e.try_map(|e| match e {
+                    Expr::Attr { subject, attr, .. } => {
+                        Ok(AssignmentTarget::Attr { subject, attr })
+                    }
+                    Expr::Index { subject, index } => {
+                        Ok(AssignmentTarget::Index { subject, index })
+                    }
+                    _ => Err(Error::default()),
+                })
+            }),
             pat_parser().map(|pat| pat.map(AssignmentTarget::Pattern)),
             just(TokenInfo::And)
                 .then_ws()
