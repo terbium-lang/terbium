@@ -1,6 +1,6 @@
+use common::span::ProviderCache;
 use grammar::parser::Parser;
-use grammar::span::{Provider, Src};
-use std::fs::OpenOptions;
+use grammar::span::Provider;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let interval = std::time::Duration::from_millis(500);
@@ -14,19 +14,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         println!("===== changes detected... =====");
-        let mut file = OpenOptions::new().read(true).open("test.trb")?;
 
-        let mut contents = String::new();
-        std::io::Read::read_to_string(&mut file, &mut contents)?;
-
-        let provider = Provider::new(Src::None, &contents);
+        let provider = Provider::read_from_file("test.trb")?;
         let mut parser = Parser::from_provider(&provider);
         let nodes = parser.consume_body_until_end();
         // writeln!(file)?;
 
-        println!("> {contents}");
+        let cache = ProviderCache::from_providers([&provider]);
+
         match nodes {
             Ok(ref nodes) => {
+                println!("{nodes:#?}");
                 for node in nodes {
                     println!("{node}");
                     // for line in node.to_string().lines() {
@@ -34,16 +32,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // }
                 }
             }
-            Err(ref errors) => {
+            Err(errors) => {
                 for error in errors {
-                    eprintln!("[error] {}", error.info);
+                    error.write(&cache, &mut std::io::stdout())?;
                     // writeln!(file, "// {}", error.info)?;
                 }
             }
         }
 
         // file.flush()?;
-        drop(file);
         previous = std::fs::metadata("test.trb")?.modified()?;
     }
 }

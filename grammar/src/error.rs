@@ -4,12 +4,12 @@ use crate::{
     token::{Error as TokenizationError, TokenInfo},
 };
 use ariadne::{ColorGenerator, Label, Report, ReportKind};
-use common::span::ProviderCache;
+use common::span::{ProviderCache, Src};
 use std::{
     fmt::{self, Display, Formatter, Result as FmtResult},
+    io::Write,
     string::ToString,
 };
-use std::io::Write;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TargetKind {
@@ -33,6 +33,7 @@ impl TargetKind {
         match self {
             Self::Nothing => String::new(),
             Self::Char(c) => c.to_string(),
+            Self::Token(TokenInfo::Whitespace) => "whitespace".to_string(),
             Self::Token(token) => token.to_string(),
             Self::Keyword(k) => (*k).to_string(),
             Self::OpeningDelimiter(d) => d.open().to_string(),
@@ -118,6 +119,30 @@ impl Display for TargetKind {
     }
 }
 
+/// An action to take to fix an error.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum HintAction {
+    /// Replace the span with the given string.
+    Replace(Span, String),
+    /// Insert the string before the span.
+    InsertBefore(Span, String),
+    /// Insert the string after the span.
+    InsertAfter(Span, String),
+    /// Remove the contents at the span.
+    Remove(Span),
+    /// Do nothing.
+    None,
+}
+
+/// A hint for how to fix the error.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Hint {
+    /// The message to display to the user.
+    pub message: String,
+    /// The action to take to fix the error.
+    pub action: HintAction,
+}
+
 /// Represents information about an error that occured during parsing.
 #[derive(Debug, PartialEq, Eq)]
 pub enum ErrorInfo {
@@ -156,30 +181,12 @@ pub enum ErrorInfo {
     /// An assignment target was specified as mutable, however assignment targets may not be
     /// specified as mutable. The span is the span of the `mut` keyword.
     MutableAssignmentTarget(Span, Spanned<String>),
-}
-
-/// An action to take to fix an error.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum HintAction {
-    /// Replace the span with the given string.
-    Replace(Span, String),
-    /// Insert the string before the span.
-    InsertBefore(Span, String),
-    /// Insert the string after the span.
-    InsertAfter(Span, String),
-    /// Remove the contents at the span.
-    Remove(Span),
-    /// Do nothing.
-    None,
-}
-
-/// A hint for how to fix the error.
-#[derive(Debug, PartialEq, Eq)]
-pub struct Hint {
-    /// The message to display to the user.
-    pub message: String,
-    /// The action to take to fix the error.
-    pub action: HintAction,
+    /// Multiple keyword parameter separators found in a function signature. The span is the span of
+    /// the second separator.
+    MultipleKeywordParameterSeparators(Span),
+    /// Keyword parameter cannot be a special pattern and must only be a single binding. The span is
+    /// the span of the pattern.
+    KeywordParameterNotIdent(Span),
 }
 
 impl Display for ErrorInfo {
@@ -187,9 +194,7 @@ impl Display for ErrorInfo {
         match self {
             Self::Tokenization(err) => err.fmt(f),
             Self::Unexpected {
-                expected,
-                found,
-                ..
+                expected, found, ..
             } => {
                 write!(f, "expected {expected}, found {found}")
             }
@@ -212,6 +217,12 @@ impl Display for ErrorInfo {
             Self::MutableAssignmentTarget(_, name) => {
                 write!(f, "assignment target `{name}` cannot be mutable")
             }
+            Self::MultipleKeywordParameterSeparators(_) => {
+                write!(f, "multiple keyword parameter separators found")
+            }
+            Self::KeywordParameterNotIdent(_) => {
+                write!(f, "keyword parameter must bind to a single identifier")
+            }
         }
     }
 }
@@ -232,6 +243,25 @@ impl ErrorInfo {
             Self::UnexpectedPositionalArgument(_) => 6,
             Self::ConstantWithoutValue(_) => 7,
             Self::MutableAssignmentTarget(..) => 8,
+            Self::MultipleKeywordParameterSeparators(_) => 9,
+            Self::KeywordParameterNotIdent(_) => 10,
+        }
+    }
+
+    /// The specific span of the error, if any.
+    #[must_use]
+    pub const fn inner_span(&self) -> Option<Span> {
+        match self {
+            Self::Unexpected { span, .. } => Some(*span),
+            Self::UnmatchedDelimiter { opening_span, .. } => Some(*opening_span),
+            Self::UnknownEscapeSequence(_, span) => Some(*span),
+            Self::InvalidHexEscapeSequence(_, span) => Some(*span),
+            Self::UnexpectedPositionalArgument(span) => Some(*span),
+            Self::ConstantWithoutValue(span) => Some(*span),
+            Self::MutableAssignmentTarget(span, _) => Some(*span),
+            Self::MultipleKeywordParameterSeparators(span) => Some(*span),
+            Self::KeywordParameterNotIdent(span) => Some(*span),
+            _ => None,
         }
     }
 }
@@ -249,6 +279,18 @@ pub struct Error {
     pub hint: Option<Hint>,
     /// Additional notes for the error.
     pub notes: Vec<String>,
+}
+
+impl Default for Error {
+    fn default() -> Self {
+        Self {
+            info: ErrorInfo::UnexpectedEof,
+            span: Span::new(Src::None, 0, 0),
+            label: None,
+            hint: None,
+            notes: Vec::new(),
+        }
+    }
 }
 
 impl Error {
@@ -362,6 +404,36 @@ impl Error {
         }
     }
 
+    /// Multiple keyword parameter separators found.
+    #[must_use]
+    pub fn multiple_keyword_parameter_separators(header_span: Span, span: Span) -> Self {
+        Self {
+            info: ErrorInfo::MultipleKeywordParameterSeparators(span),
+            span: header_span,
+            label: None,
+            hint: Some(Hint {
+                action: HintAction::Remove(span),
+                message: "remove this".to_string(),
+            }),
+            notes: Vec::new(),
+        }
+    }
+
+    /// Keyword parameter is not an identifier.
+    #[must_use]
+    pub fn keyword_parameter_not_ident(header_span: Span, span: Span) -> Self {
+        Self {
+            info: ErrorInfo::KeywordParameterNotIdent(span),
+            span: header_span,
+            label: None,
+            hint: Some(Hint {
+                action: HintAction::Replace(span, "param".to_string()),
+                message: "replace the pattern with a single binding".to_string(),
+            }),
+            notes: Vec::new(),
+        }
+    }
+
     /// Adds a note to the error.
     #[must_use]
     pub fn note<S: ToString + ?Sized>(mut self, note: &S) -> Self {
@@ -370,20 +442,24 @@ impl Error {
     }
 
     /// Writes the error as a diagnostic to the given writer.
-    pub fn write(self, cache: ProviderCache, writer: impl Write) -> std::io::Result<()> {
+    pub fn write(self, cache: &ProviderCache, writer: impl Write) -> std::io::Result<()> {
         let mut colors = ColorGenerator::new();
         let primary = colors.next();
 
         let mut report = Report::build(ReportKind::Error, self.span.src, self.span.start)
-            .with_code(self.info.code())
+            .with_code(format!("E{:03}", self.info.code()))
             .with_message("invalid syntax")
-            .with_label(Label::new(self.span)
-                .with_message(self.info)
-                .with_color(primary)
+            .with_label(
+                Label::new(self.info.inner_span().unwrap_or(self.span))
+                    .with_message(self.info)
+                    .with_color(primary),
             );
 
         if let Some(hint) = self.hint {
             report = report.with_help(hint.message); // TODO: this does not write the action
+        }
+        if let Some(note) = self.notes.into_iter().next() {
+            report = report.with_note(note); // TOOD: this only writes the first note
         }
         report.finish().write(cache, writer)
     }

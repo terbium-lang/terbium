@@ -175,6 +175,16 @@ impl<T> Spanned<T> {
         Spanned(f(self.0), self.1)
     }
 
+    /// Consumes and maps the fallible inner value, mapping the span if the inner value is `Ok`
+    /// and propagating the error otherwise.
+    #[allow(
+        clippy::missing_const_for_fn,
+        reason = "closure is not supposed to be const"
+    )]
+    pub fn try_map<U, E>(self, f: impl FnOnce(T) -> Result<U, E>) -> Result<Spanned<U>, E> {
+        Ok(Spanned(f(self.0)?, self.1))
+    }
+
     /// Returns a tuple (value, span).
     #[must_use]
     #[allow(clippy::missing_const_for_fn, reason = "destructors can't be const")]
@@ -275,6 +285,9 @@ impl<'a> Provider<'a> {
 
 impl Provider<'static> {
     /// Resolves a provider from a file path.
+    ///
+    /// # Errors
+    /// * If the file cannot be read.
     pub fn read_from_file(path: impl AsRef<Path>) -> std::io::Result<Self> {
         Ok(Self(
             Src::from_path(path.as_ref()),
@@ -299,6 +312,7 @@ pub struct ProviderCache<'a>(HashMap<Src, (&'a str, ariadne::Source)>);
 
 impl<'a> ProviderCache<'a> {
     /// Creates an empty provider cache.
+    #[must_use]
     pub fn new() -> Self {
         Self(HashMap::new())
     }
@@ -333,6 +347,7 @@ impl<'a> ProviderCache<'a> {
     }
 
     /// Gets a provider from the cache.
+    #[must_use]
     pub fn get_provider(&self, src: Src) -> Option<Provider<'a>> {
         self.0
             .get(&src)
@@ -340,15 +355,16 @@ impl<'a> ProviderCache<'a> {
     }
 }
 
-impl ariadne::Cache<Src> for ProviderCache<'_> {
+impl ariadne::Cache<Src> for &ProviderCache<'_> {
     fn fetch(&mut self, id: &Src) -> Result<&ariadne::Source, Box<dyn Debug + '_>> {
-        self.0.get(&id).map(|(_, src)| src).ok_or_else(|| {
-            Box::new(format!("no source found for {id}")) as _
-        })
+        self.0
+            .get(id)
+            .map(|(_, src)| src)
+            .ok_or_else(|| Box::new(format!("no source found for {id}")) as _)
     }
 
     fn display<'a>(&self, id: &'a Src) -> Option<Box<dyn Display + 'a>> {
         self.get_provider(*id)
-            .map(|provider| Box::new(provider.content().to_string()) as _)
+            .map(|provider| Box::new(provider.src().to_string()) as _)
     }
 }

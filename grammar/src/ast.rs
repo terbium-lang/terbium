@@ -433,11 +433,68 @@ pub struct FieldVisibility {
     pub set: (Visibility, Option<Span>),
 }
 
+/// The assignment operator of an assignment expression.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum AssignmentOperator {
+    /// The `=` operator.
+    Assign,
+    /// The `+=` operator.
+    AddAssign,
+    /// The `-=` operator.
+    SubAssign,
+    /// The `*=` operator.
+    MulAssign,
+    /// The `/=` operator.
+    DivAssign,
+    /// The `%=` operator.
+    ModAssign,
+    /// The `&=` operator.
+    BitAndAssign,
+    /// The `|=` operator.
+    BitOrAssign,
+    /// The `^=` operator.
+    BitXorAssign,
+    /// The `<<=` operator.
+    ShlAssign,
+    /// The `>>=` operator.
+    ShrAssign,
+    /// The `**=` operator.
+    PowAssign,
+    /// The `||=` operator.
+    LogicalOrAssign,
+    /// The `&&=` operator.
+    LogicalAndAssign,
+}
+
+impl Display for AssignmentOperator {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Assign => write!(f, "="),
+            Self::AddAssign => write!(f, "+="),
+            Self::SubAssign => write!(f, "-="),
+            Self::MulAssign => write!(f, "*="),
+            Self::DivAssign => write!(f, "/="),
+            Self::ModAssign => write!(f, "%="),
+            Self::BitAndAssign => write!(f, "&="),
+            Self::BitOrAssign => write!(f, "|="),
+            Self::BitXorAssign => write!(f, "^="),
+            Self::ShlAssign => write!(f, "<<="),
+            Self::ShrAssign => write!(f, ">>="),
+            Self::PowAssign => write!(f, "**="),
+            Self::LogicalOrAssign => write!(f, "||="),
+            Self::LogicalAndAssign => write!(f, "&&="),
+        }
+    }
+}
+
 /// The assignment target of an assignment expression.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AssignmentTarget {
     /// A pattern match target.
     Pattern(Pattern),
+    /// A dereference of a mutable reference, directing the reassignment to what the reference is
+    /// pointing to instead of the reference itself, e.g. `&x = 1;`.
+    Pointer(Box<Spanned<Expr>>),
     /// An attribute access. Note that this overrides variant patterns such as `Enum.Variant`;
     /// that will parse as Attr { subject: Enum, attr: "Variant" }.
     Attr {
@@ -453,6 +510,17 @@ pub enum AssignmentTarget {
         /// The index of the index access.
         index: Box<Spanned<Expr>>,
     },
+}
+
+impl Display for AssignmentTarget {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Pattern(p) => p.fmt(f),
+            Self::Pointer(p) => write!(f, "&{p}"),
+            Self::Attr { subject, attr } => write!(f, "{subject}.{attr}"),
+            Self::Index { subject, index } => write!(f, "{subject}[{index}]"),
+        }
+    }
 }
 
 /// A pattern-match target used when matching values, including in function parameters and in
@@ -562,11 +630,8 @@ impl Display for Pattern {
                     fields
                         .iter()
                         .map(|(name, pat)| {
-                            if let Some(pat) = pat {
-                                format!("{name}: {pat}")
-                            } else {
-                                name.to_string()
-                            }
+                            pat.as_ref()
+                                .map_or_else(|| name.to_string(), |pat| format!("{name}: {pat}"))
                         })
                         .collect::<Vec<_>>()
                         .join(", ")
@@ -575,11 +640,7 @@ impl Display for Pattern {
             Self::As(lhs, rhs) => write!(f, "{lhs} as {rhs}"),
             Self::Wildcard(pat) => {
                 f.write_str("*")?;
-                if let Some(pat) = pat {
-                    write!(f, "{pat}")
-                } else {
-                    Ok(())
-                }
+                pat.as_ref().map_or(Ok(()), |pat| write!(f, "{pat}"))
             }
         }
     }
@@ -822,6 +883,19 @@ pub enum Expr {
         /// The body of the block.
         body: Spanned<Vec<Spanned<Node>>>,
     },
+    /// An assignment expression. Assignment expressions are used to assign values to declared
+    /// variables.
+    ///
+    /// These are experssions that return the value that was assigned. For example, `a = 1`
+    /// evaluates to `1`, and so something like `let (a, b); a = b = 0;` can be written.
+    Assign {
+        /// The target of the assignment.
+        target: Spanned<AssignmentTarget>,
+        /// The assignment operator.
+        op: Spanned<AssignmentOperator>,
+        /// The value being assigned.
+        value: Box<Spanned<Self>>,
+    },
 }
 
 trait Indent {
@@ -985,6 +1059,9 @@ impl Display for Expr {
                 }
                 f.write_str("\n}")
             }
+            Self::Assign { target, op, value } => {
+                write!(f, "{target} {op} {value}")
+            }
         }
     }
 }
@@ -1015,21 +1092,28 @@ impl Display for FuncParam {
 pub enum Node {
     /// An expression represented as a statement.
     Expr(Spanned<Expr>),
-    /// A variable declaration.
-    Decl {
+    /// A variable declaration using `let`.
+    Let {
         /// The span of the declaration keyword (i.e. let, const).
         kw: Span,
-        /// Whether the declaration is a const declaration.
-        is_const: bool,
-        /// If the declaration is mutable, this is the span of the mut keyword.
-        mut_kw: Option<Span>,
-        /// The identifier being declared. (TODO: allow destructuring)
-        ident: Spanned<String>,
+        /// The binding pattern of the declaration.
+        pat: Spanned<Pattern>,
         /// The type of the variable, if it is specified.
         ty: Option<Spanned<TypeExpr>>,
         /// The value of the variable, if it is specified.
         /// This is always specified for const declarations.
         value: Option<Spanned<Expr>>,
+    },
+    /// A constant declaration.
+    Const {
+        /// The span of the const keyword.
+        kw: Span,
+        /// The name of the constant.
+        name: Spanned<String>,
+        /// The type of the variable, if it is specified.
+        ty: Option<Spanned<TypeExpr>>,
+        /// The value of the constant.
+        value: Spanned<Expr>,
     },
     /// An explicit return statement. These return from the closest function.
     Return {
@@ -1106,19 +1190,8 @@ impl Display for Node {
 
         match self {
             Self::Expr(e) => write!(f, "{e};"),
-            Self::Decl {
-                is_const,
-                mut_kw,
-                ident,
-                ty,
-                value,
-                ..
-            } => {
-                write!(f, "{}", if *is_const { "const" } else { "let" })?;
-                if mut_kw.is_some() {
-                    f.write_str(" mut")?;
-                }
-                write!(f, " {ident}")?;
+            Self::Let { pat, ty, value, .. } => {
+                write!(f, "let {pat}")?;
                 if let Some(ty) = ty {
                     write!(f, ": {ty}")?;
                 }
@@ -1126,6 +1199,15 @@ impl Display for Node {
                     write!(f, " = {value}")?;
                 }
                 write!(f, ";")
+            }
+            Self::Const {
+                name, ty, value, ..
+            } => {
+                write!(f, "const {name}")?;
+                if let Some(ty) = ty {
+                    write!(f, ": {ty}")?;
+                }
+                write!(f, " = {value};")
             }
             Self::Return { value, cond, .. } => {
                 write_control_flow_stmt(f, "return", None, value, cond)

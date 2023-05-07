@@ -1,6 +1,9 @@
+use crate::ast::{AssignmentOperator, AssignmentTarget};
 use crate::{
-    ast::{expr_as_block, Atom, BinaryOp, Delimiter, Expr, Node, Pattern, TypeExpr, UnaryOp},
-    error::{Error, TargetKind},
+    ast::{
+        expr_as_block, Atom, BinaryOp, Delimiter, Expr, FuncParam, Node, Pattern, TypeExpr, UnaryOp,
+    },
+    error::Error,
     span::{Provider, Span, Spanned},
     token::{ChumskyTokenStreamer, StringLiteralFlags, TokenInfo, TokenReader},
 };
@@ -14,7 +17,6 @@ use chumsky::{
     stream::Stream,
 };
 use std::result::Result as StdResult;
-use crate::ast::FuncParam;
 
 pub type Result<T> = StdResult<T, Error>;
 pub type RecursiveParser<'a, T> = Recursive<'a, TokenInfo, T, Error>;
@@ -194,6 +196,61 @@ pub fn pat_parser<'a>() -> RecursiveParser<'a, Spanned<Pattern>> {
     })
 }
 
+type ParamList = Vec<Spanned<FuncParam>>;
+
+#[derive(Clone)]
+struct FuncHeader {
+    name: Spanned<String>,
+    params: ParamList,
+    kw_params: ParamList,
+    ret: Option<Spanned<TypeExpr>>,
+}
+
+#[derive(Clone)]
+enum FuncParamOrSep {
+    FuncParam(Spanned<FuncParam>),
+    Sep(Span),
+}
+
+fn split_func_params(
+    hspan: Span,
+    mut params: Vec<FuncParamOrSep>,
+) -> Result<(ParamList, ParamList)> {
+    let partition = params
+        .iter()
+        .position(|p| matches!(p, FuncParamOrSep::Sep(_)))
+        .unwrap_or(params.len());
+    let kw_params = params.split_off(partition);
+
+    Ok((
+        params
+            .into_iter()
+            .map(|p| {
+                if let FuncParamOrSep::FuncParam(p) = p {
+                    p
+                } else {
+                    // SAFETY: `partition` is the index of the first separator, so
+                    // there will be no separators before `partition`.
+                    unsafe { std::hint::unreachable_unchecked() }
+                }
+            })
+            .collect(),
+        kw_params
+            .into_iter()
+            .skip(1)
+            .map(|p| match p {
+                FuncParamOrSep::FuncParam(p) => match p.value().pat.value() {
+                    Pattern::Ident { .. } => Ok(p),
+                    _ => Err(Error::keyword_parameter_not_ident(hspan, p.span())),
+                },
+                FuncParamOrSep::Sep(span) => {
+                    Err(Error::multiple_keyword_parameter_separators(hspan, span))
+                }
+            })
+            .collect::<Result<Vec<_>>>()?,
+    ))
+}
+
 /// A body parser, i.e. a list of statements.
 #[allow(clippy::too_many_lines)]
 pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
@@ -202,12 +259,6 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
     let block_label = block_label().pad_ws().or_not();
 
     recursive(move |body: RecursiveDef<Vec<Spanned<Node>>>| {
-        #[derive(Clone)]
-        enum FuncParamOrSep {
-            FuncParam(Spanned<FuncParam>),
-            Sep,
-        }
-
         let expr = expr_parser(body.clone());
 
         let ident = select! {
@@ -225,11 +276,41 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
             .map_with_span(Spanned)
             .labelled("expression");
 
-        // Declaration, either `let` or `const`
-        let decl = kw!("let")
-            .map(|spanned| spanned.map(|_| false))
-            .or(kw!("const").map(|spanned| spanned.map(|_| true)))
-            .then(kw!("mut").map(|spanned| spanned.span()).pad_ws().or_not())
+        // `let` declaration, for example `let x: int32 = 0;`
+        let let_decl = kw!("let")
+            .map_with_span(|_, span| span)
+            .then_ws()
+            .then(pat.clone())
+            .then(
+                just(TokenInfo::Colon)
+                    .pad_ws()
+                    .ignore_then(ty.clone())
+                    .or_not(),
+            )
+            .then(
+                just(TokenInfo::Equals)
+                    .pad_ws()
+                    .ignore_then(expr.clone())
+                    .or_not(),
+            )
+            .then_ignore(just(TokenInfo::Semicolon))
+            .map_with_span(|(((kw_span, pat), ty), value), span| {
+                Spanned(
+                    Node::Let {
+                        kw: kw_span,
+                        pat,
+                        ty,
+                        value,
+                    },
+                    span,
+                )
+            })
+            .labelled("let declaration")
+            .boxed();
+
+        // `const` declaration, for example `const ZERO: int32 = 0;`
+        let const_decl = kw!("const")
+            .map_with_span(|_, span| span)
             .then(ident.clone())
             .then(
                 just(TokenInfo::Colon)
@@ -237,35 +318,20 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
                     .ignore_then(ty.clone())
                     .or_not(),
             )
-            .then(just(TokenInfo::Equals).ignore_then(expr.clone()).or_not())
-            .then(just(TokenInfo::Semicolon).map_with_span(|_, span| span))
-            .try_map(
-                |(((((Spanned(is_const, kw_span), mut_kw), ident), ty), value), semicolon),
-                 span| {
-                    if is_const {
-                        if let Some(mut_kw) = mut_kw {
-                            let keyword = TargetKind::Keyword("mut");
-                            return Err(Error::unexpected(mut_kw, None::<TargetKind>, &keyword)
-                                .note("constants cannot be mutable"));
-                        }
-                        if value.is_none() {
-                            return Err(Error::constant_without_value(span, semicolon));
-                        }
-                    }
-                    Ok(Spanned(
-                        Node::Decl {
-                            kw: kw_span,
-                            mut_kw,
-                            ident,
-                            ty,
-                            value,
-                            is_const,
-                        },
-                        span,
-                    ))
-                },
-            )
-            .labelled("declaration")
+            .then(just(TokenInfo::Equals).pad_ws().ignore_then(expr.clone()))
+            .then_ignore(just(TokenInfo::Semicolon))
+            .map_with_span(|(((kw_span, name), ty), value), span| {
+                Spanned(
+                    Node::Const {
+                        kw: kw_span,
+                        name,
+                        ty,
+                        value,
+                    },
+                    span,
+                )
+            })
+            .labelled("const declaration")
             .boxed();
 
         // Single function parameter
@@ -278,13 +344,16 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
                     .ignore_then(expr.clone())
                     .or_not(),
             )
-            .map_with_span(|((pat, ty), default), span| Spanned(FuncParam { pat, ty, default }, span));
+            .map_with_span(|((pat, ty), default), span| {
+                Spanned(FuncParam { pat, ty, default }, span)
+            });
 
         // Function header starting from "func", i.e. `func f()`
         let func_header = kw!("func")
             .ignore_then(ident.clone())
             .then(
-                just(TokenInfo::Asterisk).to(FuncParamOrSep::Sep)
+                just(TokenInfo::Asterisk)
+                    .map_with_span(|_, span| FuncParamOrSep::Sep(span))
                     .or(func_param.map(FuncParamOrSep::FuncParam))
                     .separated_by(just(TokenInfo::Comma).pad_ws())
                     .delimited(Delimiter::Paren),
@@ -294,28 +363,54 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
                     .pad_ws()
                     .ignore_then(ty.clone())
                     .or_not(),
-            );
+            )
+            .try_map(|((name, params), ty), span| {
+                let (params, kw_params) = split_func_params(span, params)?;
+                Ok(FuncHeader {
+                    name,
+                    params,
+                    kw_params,
+                    ret: ty,
+                })
+            });
 
         // Function, i.e. `func f() {}` or `func f() = expr;`
-        let func = block_label
-            .then(func_header)
+        let func = func_header // TODO: function block labels
             .then(
                 body.delimited(Delimiter::Brace)
                     .map_with_span(Spanned)
                     .pad_ws()
                     .then_ignore(just(TokenInfo::Semicolon).or_not())
-                    .or(
-                        just(TokenInfo::Equals)
-                            .pad_ws()
-                            .ignore_then(expr.clone())
-                            .then_ignore(just(TokenInfo::Semicolon))
-                            .map(expr_as_block)
-                            .pad_ws()
-                    )
+                    .or(just(TokenInfo::Equals)
+                        .pad_ws()
+                        .ignore_then(expr.clone())
+                        .then_ignore(just(TokenInfo::Semicolon))
+                        .map(expr_as_block)
+                        .pad_ws()),
             )
-            .map_with_span(|((label, ((name, params), ty)), body), span| {
-                todo!()
-            })
+            .try_map(
+                |(
+                    FuncHeader {
+                        name,
+                        params,
+                        kw_params,
+                        ret,
+                    },
+                    body,
+                ),
+                 span| {
+                    Ok(Spanned(
+                        Node::Func {
+                            name,
+                            params,
+                            kw_params,
+                            body,
+                            ret,
+                        },
+                        span,
+                    ))
+                },
+            )
             .pad_ws()
             .labelled("function")
             .boxed();
@@ -382,20 +477,28 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
             .labelled("return")
             .boxed();
 
-        choice((decl, break_stmt, continue_stmt, return_stmt, expression))
-            .pad_ws()
-            .repeated()
-            .then(
-                expr.map(|value| {
-                    let span = value.span();
-                    Spanned(Node::ImplicitReturn(value), span)
-                })
-                .or_not(),
-            )
-            .map(|(mut nodes, implicit_return)| {
-                nodes.extend(implicit_return);
-                nodes
+        choice((
+            let_decl,
+            const_decl,
+            func,
+            break_stmt,
+            continue_stmt,
+            return_stmt,
+            expression,
+        ))
+        .pad_ws()
+        .repeated()
+        .then(
+            expr.map(|value| {
+                let span = value.span();
+                Spanned(Node::ImplicitReturn(value), span)
             })
+            .or_not(),
+        )
+        .map(|(mut nodes, implicit_return)| {
+            nodes.extend(implicit_return);
+            nodes
+        })
     })
 }
 
@@ -889,7 +992,79 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
             .pad_ws()
             .boxed();
 
-        choice((brace_ending_expr(expr, body), ternary_if, bitwise))
+        // Any expression that must be disambiguated against
+        let ambiguous_expr = choice((brace_ending_expr(expr.clone(), body), ternary_if, bitwise));
+
+        macro_rules! op {
+            ($($token:ident)+ => $to:ident) => {{
+                just([$(TokenInfo::$token),+]).to(AssignmentOperator::$to)
+            }};
+        }
+
+        let assign_op = choice((
+            // Three-character operators
+            op!(Lt Lt Equals => ShlAssign),
+            op!(Gt Gt Equals => ShrAssign),
+            op!(Asterisk Asterisk Equals => PowAssign),
+            op!(Or Or Equals => LogicalOrAssign),
+            op!(And And Equals => LogicalAndAssign),
+            // Two-character operators
+            op!(Plus Equals => AddAssign),
+            op!(Minus Equals => SubAssign),
+            op!(Asterisk Equals => MulAssign),
+            op!(Divide Equals => DivAssign),
+            op!(Modulus Equals => ModAssign),
+            op!(Or Equals => BitOrAssign),
+            op!(And Equals => BitAndAssign),
+            op!(Caret Equals => BitXorAssign),
+            // One-character operators
+            op!(Equals => Assign),
+        ))
+        .map_with_span(Spanned)
+        .pad_ws();
+
+        // Assignment target
+        let assign_target = choice((
+            // FIXME: this is broken and causes parsing to freeze
+            // expr.clone().try_map(|e, _| {
+            //     e.try_map(|e| match e {
+            //         Expr::Attr { subject, attr, .. } => {
+            //             Ok(AssignmentTarget::Attr { subject, attr })
+            //         }
+            //         Expr::Index { subject, index } => {
+            //             Ok(AssignmentTarget::Index { subject, index })
+            //         }
+            //         _ => Err(Error::default()),
+            //     })
+            // }),
+            pat_parser().map(|pat| pat.map(AssignmentTarget::Pattern)),
+            just(TokenInfo::And)
+                .then_ws()
+                .ignore_then(expr)
+                .map_with_span(|expr, span| {
+                    Spanned(AssignmentTarget::Pointer(Box::new(expr)), span)
+                }),
+        ));
+
+        // Assignment expressions, i.e. a = b, a += b
+        assign_target
+            .then(assign_op)
+            .repeated()
+            .then(ambiguous_expr)
+            .foldr(|(target, op), expr| {
+                let span = target.span().merge(expr.span());
+                Spanned(
+                    Expr::Assign {
+                        target,
+                        op,
+                        value: Box::new(expr),
+                    },
+                    span,
+                )
+            })
+            .pad_ws()
+            .labelled("assignment")
+            .boxed()
     })
 }
 
