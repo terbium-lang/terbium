@@ -73,6 +73,15 @@ impl Radix {
     }
 }
 
+/// Metadata about an integer literal.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct IntLiteralInfo {
+    /// The radix of the integer.
+    pub radix: Radix,
+    /// Whether the integer is declared as unsigned.
+    pub unsigned: bool,
+}
+
 /// Represents information about a lexical token in the source code.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TokenInfo {
@@ -106,9 +115,9 @@ pub enum TokenInfo {
     /// A byte-string literal, such as b"sample". These may not be valid UTF-8.
     ByteStringLiteral(Vec<u8>, StringLiteralFlags, Span),
     /// A character literal, such as c'a'.
-    CharLiteral(char, Span),
+    CharLiteral(String, Span),
     /// An integer literal, such as 123, 0, or 0x123.
-    IntLiteral(String, Radix),
+    IntLiteral(String, IntLiteralInfo),
     /// A float literal, such as 1.23, 0.0, or 1e-10.
     FloatLiteral(String),
     /// Left parenthesis, `(`.
@@ -191,7 +200,12 @@ impl fmt::Display for TokenInfo {
                 write!(f, "b\"{}\"", String::from_utf8_lossy(bytes))
             }
             Self::CharLiteral(c, _) => write!(f, "c'{c}'"),
-            Self::IntLiteral(int, radix) => write!(f, "{}{int}", radix.prefix()),
+            Self::IntLiteral(int, info) => write!(
+                f,
+                "{}{int}{}",
+                info.radix.prefix(),
+                if info.unsigned { "u" } else { "" }
+            ),
             Self::FloatLiteral(float) => f.write_str(float),
             Self::LeftParen => f.write_str("("),
             Self::RightParen => f.write_str(")"),
@@ -478,6 +492,27 @@ impl<'a> TokenReader<'a> {
         None
     }
 
+    /// Possibly consumes a character literal. Returns None if no character was found.
+    fn consume_char_literal(&mut self) -> Option<Token> {
+        if self.cursor.peek()? != 'c' && self.cursor.peek_second()? != '\'' {
+            return None;
+        }
+
+        let original = self.cursor.clone();
+        let start = self.cursor.pos();
+        self.cursor.advance()?;
+        self.cursor.advance()?;
+
+        let Some((content, content_span)) = self.consume_string_content(0, '\'', false) else {
+            self.cursor = original;
+            return None;
+        };
+        Some(Spanned(
+            TokenInfo::CharLiteral(content, content_span),
+            Span::new(self.src, start, self.pos()),
+        ))
+    }
+
     /// Possibly consumes a string literal. Returns None if no string was found.
     fn consume_string_literal(&mut self) -> Option<Token> {
         let next = self.cursor.peek()?;
@@ -588,6 +623,7 @@ impl<'a> TokenReader<'a> {
         };
 
         let mut is_float = false;
+        let mut is_unsigned = false;
 
         if radix == Radix::Decimal {
             macro_rules! consume_ignore_underscore {
@@ -635,6 +671,12 @@ impl<'a> TokenReader<'a> {
                 if c != '_' {
                     content.push(c);
                 }
+                // Attempt to consume an unsigned suffix
+                if let Some('u') = self.cursor.peek() {
+                    is_unsigned = true;
+                    self.cursor.advance();
+                    break;
+                }
             }
 
             // Attempt to consume an exponent if it is safe to do so
@@ -663,7 +705,13 @@ impl<'a> TokenReader<'a> {
             )
         } else {
             Spanned(
-                TokenInfo::IntLiteral(content, radix),
+                TokenInfo::IntLiteral(
+                    content,
+                    IntLiteralInfo {
+                        radix,
+                        unsigned: is_unsigned,
+                    },
+                ),
                 Span::new(self.src, start, self.pos()),
             )
         })
@@ -761,6 +809,7 @@ impl Iterator for TokenReader<'_> {
         }
 
         consider! {
+            self.consume_char_literal(),
             self.consume_string_literal(),
             self.consume_number(),
             self.consume_ident(),

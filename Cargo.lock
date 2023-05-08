@@ -127,6 +127,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "hir"
+version = "0.1.0"
+dependencies = [
+ "common",
+ "grammar",
+ "internment",
+]
+
+[[package]]
 name = "internment"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -231,6 +240,7 @@ dependencies = [
  "chumsky 1.0.0-alpha.3",
  "common",
  "grammar",
+ "hir",
 ]
 
 [[package]]

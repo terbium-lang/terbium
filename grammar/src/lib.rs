@@ -1,3 +1,20 @@
+//! Defines and parses the grammar of Terbium.
+//!
+//! # Example
+//! ```
+//! use common::span::{Src, Provider};
+//! use grammar::Parser;
+//!
+//! // Define the source code to parse
+//! let provider = Provider::new(Src::None, r#"func main() { println("Hello, world!"); }"#);
+//!
+//! // Create a parser over the provider
+//! let mut parser = Parser::from_provider(&provider);
+//!
+//! // Parse the source code into an AST
+//! let ast = parser.consume_body_until_end();
+//! ```
+
 #![allow(
     clippy::uninlined_format_args,
     reason = "editor will complain about unused variables otherwise"
@@ -23,3 +40,4 @@ pub mod parser;
 pub mod token;
 
 pub use common::span;
+pub use parser::Parser;

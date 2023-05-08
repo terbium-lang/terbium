@@ -3,7 +3,7 @@
 use crate::{
     error::Error,
     span::{Span, Spanned},
-    token::{Radix, TokenInfo},
+    token::{IntLiteralInfo, TokenInfo},
 };
 use std::fmt::{self, Display, Formatter};
 
@@ -204,8 +204,8 @@ pub enum TypeExpr {
     Member(Box<TypeExpr>, String),
     /// A tuple type, e.g. `(Type, Type)`.
     Tuple(Vec<TypeExpr>),
-    /// An array type, e.g. `Type[]`, `Type[5]`, or `Type[CONSTANT]`.
-    Array(Box<TypeExpr>, Option<Box<Expr>>),
+    /// An array type, e.g. `[Type]`, `[Type; 5]`, or `[Type; CONSTANT]`.
+    Array(Box<TypeExpr>, Option<Atom>),
     /// A function type, e.g. `(Type, Type) -> Type`.
     Func {
         /// Positional parameters.
@@ -321,13 +321,17 @@ impl Display for TypeExpr {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Atom {
     /// An integer litereal.
-    Int(String, Radix),
+    Int(String, IntLiteralInfo),
     /// A floating-point number literal.
     Float(String),
     /// A string literal. This is after resolving escape sequences.
     String(String),
+    /// A char literal. This is after resolving escape sequences.
+    Char(char),
     /// A boolean literal.
     Bool(bool),
+    /// The `void` keyword, which represents the absence of a value.
+    Void,
     /// A non-keyword identifier.
     Ident(String),
 }
@@ -335,19 +339,17 @@ pub enum Atom {
 impl Display for Atom {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Int(s, radix) => write!(
+            Self::Int(s, info) => write!(
                 f,
-                "{}{s}",
-                match radix {
-                    Radix::Decimal => "",
-                    Radix::Hexadecimal => "0x",
-                    Radix::Octal => "0o",
-                    Radix::Binary => "0b",
-                }
+                "{}{s}{}",
+                info.radix.prefix(),
+                if info.unsigned { "u" } else { "" },
             ),
             Self::Float(s) | Self::Ident(s) => write!(f, "{s}"),
             Self::String(s) => write!(f, "{s:?}"),
+            Self::Char(c) => write!(f, "c{c:?}"),
             Self::Bool(b) => write!(f, "{b}"),
+            Self::Void => write!(f, "void"),
         }
     }
 }
@@ -368,9 +370,37 @@ pub enum Visibility {
     /// (i.e. self + subclasses)
     Sub,
     /// This item is visible only within the definition implementation. (i.e. self)
-    /// This can be written as either `public(private)` or `private`, but the latter is always
-    /// preferred.
+    /// This can be written as either `public(private)` or `private`, but the latter is obviously
+    /// cleaner.
     Private,
+}
+
+impl Visibility {
+    /// Returns the inner visibility specifier, if any.
+    #[must_use]
+    pub const fn inner_visibility(&self) -> Option<&'static str> {
+        Some(match self {
+            Self::Public => return None,
+            Self::Lib => "lib",
+            Self::Parent => "parent",
+            Self::Mod => "mod",
+            Self::Sub => "sub",
+            Self::Private => "private",
+        })
+    }
+}
+
+impl Display for Visibility {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Public => write!(f, "public"),
+            Self::Lib => write!(f, "public(lib)"),
+            Self::Parent => write!(f, "public(parent)"),
+            Self::Mod => write!(f, "public(mod)"),
+            Self::Sub => write!(f, "public(sub)"),
+            Self::Private => write!(f, "private"),
+        }
+    }
 }
 
 /// A visibility specifier for struct or class fields, which allows for finer visibility control
@@ -431,6 +461,21 @@ pub struct FieldVisibility {
     pub get: (Visibility, Option<Span>),
     /// The visibility of the setter.
     pub set: (Visibility, Option<Span>),
+}
+
+impl Display for FieldVisibility {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str("public(")?;
+        if let Some(vis) = self.get.0.inner_visibility() {
+            write!(f, "{} ", vis)?;
+        }
+        f.write_str("get, ")?;
+
+        if let Some(vis) = self.set.0.inner_visibility() {
+            write!(f, "{} ", vis)?;
+        }
+        f.write_str("set)")
+    }
 }
 
 /// The assignment operator of an assignment expression.
@@ -908,11 +953,8 @@ impl<T: ToString> Indent for T {
         const INDENT: &str = "    ";
         let s = self.to_string();
 
-        for (i, line) in s.lines().enumerate() {
-            if i > 0 {
-                writeln!(f)?;
-            }
-            write!(f, "{INDENT}{line}")?;
+        for line in s.lines() {
+            writeln!(f, "{INDENT}{line}")?;
         }
         Ok(())
     }
@@ -988,14 +1030,14 @@ impl Display for Expr {
                 for node in body.value() {
                     node.write_indent(f)?;
                 }
-                f.write_str("\n}")?;
+                f.write_str("}")?;
 
                 if let Some(else_body) = else_body {
                     f.write_str(" else {\n")?;
                     for node in else_body.value() {
                         node.write_indent(f)?;
                     }
-                    f.write_str("\n}")?;
+                    f.write_str("}")?;
                 }
                 Ok(())
             }
@@ -1012,13 +1054,14 @@ impl Display for Expr {
                 for node in body.value() {
                     node.write_indent(f)?;
                 }
-                f.write_str("\n}")?;
+                f.write_str("}")?;
 
                 if let Some(else_body) = else_body {
                     f.write_str(" else {\n")?;
                     for node in else_body.value() {
                         node.write_indent(f)?;
                     }
+                    f.write_str("}")?;
                 }
                 Ok(())
             }
@@ -1030,7 +1073,7 @@ impl Display for Expr {
                 for node in body.value() {
                     node.write_indent(f)?;
                 }
-                f.write_str("\n}")
+                f.write_str("}")
             }
             Self::When {
                 label,
@@ -1047,7 +1090,7 @@ impl Display for Expr {
                 if let Some(else_value) = else_value {
                     format!("else -> {else_value}").write_indent(f)?;
                 }
-                f.write_str("\n}")
+                f.write_str("}")
             }
             Self::Block { label, body } => {
                 if let Some(label) = label {
@@ -1057,7 +1100,7 @@ impl Display for Expr {
                 for node in body.value() {
                     node.write_indent(f)?;
                 }
-                f.write_str("\n}")
+                f.write_str("}")
             }
             Self::Assign { target, op, value } => {
                 write!(f, "{target} {op} {value}")
@@ -1251,7 +1294,7 @@ impl Display for Node {
                 for node in body.value() {
                     node.write_indent(f)?;
                 }
-                f.write_str("\n}")
+                f.write_str("}")
             }
         }
     }

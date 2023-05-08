@@ -268,10 +268,19 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
         .pad_ws();
 
         // Expression as a statement, i.e. `f();`;
-        let expression = brace_ending_expr(expr.clone(), body.clone())
-            .or(expr
-                .clone()
-                .then_ignore(just(TokenInfo::Semicolon).pad_ws()))
+        let expression = expr
+            .clone()
+            .then_ignore(just(TokenInfo::Semicolon).pad_ws())
+            .or(brace_ending_expr(expr.clone(), body.clone()).then_ignore(
+                // FIXME: is this the best way to disambiguate?
+                //  there may be a better way with lazy parsing
+                just(TokenInfo::RightBrace)
+                    .pad_ws()
+                    .ignored()
+                    .or(end())
+                    .not()
+                    .rewind(),
+            ))
             .map(Node::Expr)
             .map_with_span(Spanned)
             .labelled("expression");
@@ -644,6 +653,7 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
             TokenInfo::Ident(name, _) => Expr::Atom(match name.as_str() {
                 "true" => Atom::Bool(true),
                 "false" => Atom::Bool(false),
+                "void" => Atom::Void,
                 _ => Atom::Ident(name),
             })
         }
@@ -657,10 +667,15 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
         let atom = filter_map(|span, token| {
             Ok(Spanned(
                 Expr::Atom(match token {
-                    TokenInfo::IntLiteral(val, radix) => Atom::Int(val, radix),
+                    TokenInfo::IntLiteral(val, info) => Atom::Int(val, info),
                     TokenInfo::FloatLiteral(val) => Atom::Float(val),
                     TokenInfo::StringLiteral(content, flags, inner_span) => {
                         Atom::String(resolve_string(content, flags, inner_span)?)
+                    }
+                    // FIXME: this needs to raise an error whenever a char literal has more than one character
+                    TokenInfo::CharLiteral(content, inner_span) => {
+                        let content = resolve_string(content, StringLiteralFlags(0), inner_span)?;
+                        Atom::Char(content.chars().next().unwrap())
                     }
                     _ => return Err(Error::expected_input_found(span, None, Some(token))),
                 }),
@@ -1017,8 +1032,9 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
             op!(Or Equals => BitOrAssign),
             op!(And Equals => BitAndAssign),
             op!(Caret Equals => BitXorAssign),
-            // One-character operators
-            op!(Equals => Assign),
+            // Ensure that no equals sign is present after the oeprator to remove ambiguity
+            // with the == operator.
+            op!(Equals => Assign).then_ignore(just(TokenInfo::Equals).not().rewind()),
         ))
         .map_with_span(Spanned)
         .pad_ws();

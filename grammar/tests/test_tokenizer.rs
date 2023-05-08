@@ -1,6 +1,11 @@
 use grammar::{
     span::{Provider, Span, Spanned, Src},
-    token::{Radix, StringLiteralFlags, Token, TokenInfo, TokenReader},
+    token::{IntLiteralInfo, Radix, StringLiteralFlags, Token, TokenInfo, TokenReader},
+};
+
+pub const NORMAL: IntLiteralInfo = IntLiteralInfo {
+    radix: Radix::Decimal,
+    unsigned: false,
 };
 
 pub struct WhitespaceDiscarder<'a> {
@@ -35,20 +40,20 @@ macro_rules! assert_tokens {
 fn test_tokenizer_simple() {
     assert_tokens! {
         "func a() -> b { 1 + (2 * 3) }",
-        TokenInfo::Ident("func".into()) => 0..4,
-        TokenInfo::Ident("a".into()) => 5..6,
+        TokenInfo::Ident("func".into(), false) => 0..4,
+        TokenInfo::Ident("a".into(), false) => 5..6,
         TokenInfo::LeftParen => 6..7,
         TokenInfo::RightParen => 7..8,
         TokenInfo::Minus => 9..10,
         TokenInfo::Gt => 10..11,
-        TokenInfo::Ident("b".into()) => 12..13,
+        TokenInfo::Ident("b".into(), false) => 12..13,
         TokenInfo::LeftBrace => 14..15,
-        TokenInfo::IntLiteral("1".into(), Radix::Decimal) => 16..17,
+        TokenInfo::IntLiteral("1".into(), NORMAL) => 16..17,
         TokenInfo::Plus => 18..19,
         TokenInfo::LeftParen => 20..21,
-        TokenInfo::IntLiteral("2".into(), Radix::Decimal) => 21..22,
+        TokenInfo::IntLiteral("2".into(), NORMAL) => 21..22,
         TokenInfo::Asterisk => 23..24,
-        TokenInfo::IntLiteral("3".into(), Radix::Decimal) => 25..26,
+        TokenInfo::IntLiteral("3".into(), NORMAL) => 25..26,
         TokenInfo::RightParen => 26..27,
         TokenInfo::RightBrace => 28..29,
     }
@@ -56,13 +61,18 @@ fn test_tokenizer_simple() {
 
 #[test]
 fn test_tokenizer_integer_radix() {
+    let radix = |radix| IntLiteralInfo {
+        radix,
+        unsigned: false,
+    };
+    
     assert_tokens! {
         "0xAC + 0o123 + 0b1010",
-        TokenInfo::IntLiteral("AC".into(), Radix::Hexadecimal) => 0..4,
+        TokenInfo::IntLiteral("AC".into(), radix(Radix::Hexadecimal)) => 0..4,
         TokenInfo::Plus => 5..6,
-        TokenInfo::IntLiteral("123".into(), Radix::Octal) => 7..12,
+        TokenInfo::IntLiteral("123".into(), radix(Radix::Octal)) => 7..12,
         TokenInfo::Plus => 13..14,
-        TokenInfo::IntLiteral("1010".into(), Radix::Binary) => 15..21,
+        TokenInfo::IntLiteral("1010".into(), radix(Radix::Binary)) => 15..21,
     }
 }
 
@@ -117,12 +127,12 @@ fn test_tokenizer_float_disambiguation() {
         TokenInfo::FloatLiteral("1.0e5".into()) => 6..11,
         TokenInfo::Plus => 12..13,
         // 1.e5 -> (1).(e5)
-        TokenInfo::IntLiteral("1".into(), Radix::Decimal) => 14..15,
+        TokenInfo::IntLiteral("1".into(), NORMAL) => 14..15,
         TokenInfo::Dot => 15..16,
-        TokenInfo::Ident("e5".into()) => 16..18,
+        TokenInfo::Ident("e5".into(), false) => 16..18,
         TokenInfo::Plus => 19..20,
         // 1..2.0 -> (1)..(2.0)
-        TokenInfo::IntLiteral("1".into(), Radix::Decimal) => 21..22,
+        TokenInfo::IntLiteral("1".into(), NORMAL) => 21..22,
         TokenInfo::Dot => 22..23,
         TokenInfo::Dot => 23..24,
         TokenInfo::FloatLiteral("2.0".into()) => 24..27,
@@ -134,14 +144,14 @@ fn test_tokenizer_float_disambiguation() {
         TokenInfo::FloatLiteral("1.0".into()) => 35..38,
         TokenInfo::Plus => 39..40,
         // 1...2 -> (1) (.) (.) (.) (2)
-        TokenInfo::IntLiteral("1".into(), Radix::Decimal) => 41..42,
+        TokenInfo::IntLiteral("1".into(), NORMAL) => 41..42,
         TokenInfo::Dot => 42..43,
         TokenInfo::Dot => 43..44,
         TokenInfo::Dot => 44..45,
-        TokenInfo::IntLiteral("2".into(), Radix::Decimal) => 45..46,
+        TokenInfo::IntLiteral("2".into(), NORMAL) => 45..46,
         TokenInfo::Plus => 47..48,
         // 0..1. -> (0)..(1.)
-        TokenInfo::IntLiteral("0".into(), Radix::Decimal) => 49..50,
+        TokenInfo::IntLiteral("0".into(), NORMAL) => 49..50,
         TokenInfo::Dot => 50..51,
         TokenInfo::Dot => 51..52,
         TokenInfo::FloatLiteral("1".into()) => 52..54,
@@ -149,6 +159,6 @@ fn test_tokenizer_float_disambiguation() {
         // 1.0e5.test -> (1.0e5).(test)
         TokenInfo::FloatLiteral("1.0e5".into()) => 57..62,
         TokenInfo::Dot => 62..63,
-        TokenInfo::Ident("test".into()) => 63..67,
+        TokenInfo::Ident("test".into(), false) => 63..67,
     }
 }

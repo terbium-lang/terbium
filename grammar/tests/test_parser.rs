@@ -2,7 +2,12 @@ use grammar::{
     ast::{Atom, BinaryOp, Expr, UnaryOp},
     parser::Parser,
     span::{Provider, Span, Spanned, Src},
-    token::Radix,
+    token::{IntLiteralInfo, Radix},
+};
+
+pub const NORMAL: IntLiteralInfo = IntLiteralInfo {
+    radix: Radix::Decimal,
+    unsigned: false,
 };
 
 #[test]
@@ -20,14 +25,14 @@ fn test_expr_parser() {
                 left: Box::new(Spanned(
                     Expr::BinaryOp {
                         left: Box::new(Spanned(
-                            Expr::Atom(Atom::Int("5".to_string(), Radix::Decimal)),
+                            Expr::Atom(Atom::Int("5".to_string(), NORMAL)),
                             span(0, 1),
                         )),
                         op: Spanned(BinaryOp::Add, span(2, 4),),
                         right: Box::new(Spanned(
                             Expr::BinaryOp {
                                 left: Box::new(Spanned(
-                                    Expr::Atom(Atom::Int("4".to_string(), Radix::Decimal)),
+                                    Expr::Atom(Atom::Int("4".to_string(), NORMAL)),
                                     span(5, 6),
                                 )),
                                 op: Spanned(BinaryOp::Mul, span(7, 8),),
@@ -60,17 +65,17 @@ fn test_expr_parser() {
                                 span(16, 18),
                             ),
                             Spanned(
-                                Expr::Atom(Atom::Int("1".to_string(), Radix::Decimal)),
+                                Expr::Atom(Atom::Int("1".to_string(), NORMAL)),
                                 span(20, 21),
                             ),
                             Spanned(
                                 Expr::Array(vec![
                                     Spanned(
-                                        Expr::Atom(Atom::Int("2".to_string(), Radix::Decimal)),
+                                        Expr::Atom(Atom::Int("2".to_string(), NORMAL)),
                                         span(24, 25),
                                     ),
                                     Spanned(
-                                        Expr::Atom(Atom::Int("3".to_string(), Radix::Decimal)),
+                                        Expr::Atom(Atom::Int("3".to_string(), NORMAL)),
                                         span(27, 28),
                                     ),
                                 ],),
@@ -81,14 +86,14 @@ fn test_expr_parser() {
                             (
                                 "a".to_string(),
                                 Spanned(
-                                    Expr::Atom(Atom::Int("5".to_string(), Radix::Decimal)),
+                                    Expr::Atom(Atom::Int("5".to_string(), NORMAL)),
                                     span(34, 35),
                                 ),
                             ),
                             (
                                 "b".to_string(),
                                 Spanned(
-                                    Expr::Atom(Atom::Int("10".to_string(), Radix::Decimal)),
+                                    Expr::Atom(Atom::Int("10".to_string(), NORMAL)),
                                     span(40, 42),
                                 ),
                             ),
