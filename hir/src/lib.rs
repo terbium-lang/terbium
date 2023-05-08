@@ -1,6 +1,8 @@
 //! High-level intermediate representation. This IR is used for type analysis, validating code
 //! correctness, and desugaring.
 
+pub mod lower;
+
 use internment::Intern;
 use std::collections::HashMap;
 
@@ -33,8 +35,12 @@ impl ScopeId {
 pub struct Hir {
     /// A mapping of all top-level functions in the program.
     pub funcs: HashMap<ItemId, Func>,
+    /// A mapping of all constants in the program.
+    pub consts: HashMap<ItemId, Const>,
     /// A mapping of all lexical scopes within the program.
     pub scopes: HashMap<ScopeId, Scope>,
+    /// The root scope of the program.
+    pub root: ScopeId,
 }
 
 /// An HIR node.
@@ -46,7 +52,11 @@ pub enum Node {
         ty: Ty,
         value: Option<Expr>,
     },
+    Const(Const),
     Func(Func),
+    Break(Option<Ident>, Option<Expr>),
+    Continue(Option<Ident>),
+    Return(Option<Expr>),
 }
 
 #[derive(Clone, Debug)]
@@ -56,13 +66,17 @@ pub struct Scope {
     pub children: Vec<Node>,
 }
 
+#[derive(Clone, Debug)]
+pub struct Const {
+    pub name: Ident,
+    pub ty: Ty,
+    pub value: Expr,
+}
+
 /// A pattern that can be matched against.
 #[derive(Clone, Debug)]
 pub enum Pattern {
-    Ident {
-        ident: Ident,
-        is_mut: bool,
-    },
+    Ident { ident: Ident, is_mut: bool },
     Tuple(Vec<Self>),
 }
 
@@ -137,6 +151,7 @@ pub enum PrimitiveTy {
 
 #[derive(Clone, Debug)]
 pub enum Ty {
+    Unknown,
     Primitive(PrimitiveTy),
     Tuple(Vec<Ty>),
 }
@@ -149,6 +164,7 @@ pub enum Literal {
     Bool(bool),
     Char(char),
     String(String),
+    Void,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -187,9 +203,14 @@ pub enum Expr {
         args: Vec<Self>,
         kwargs: Vec<(Ident, Self)>,
     },
-    Attr(Box<Self>, Ident),
+    Cast(Box<Self>, Ty),
+    GetAttr(Box<Self>, Ident),
+    SetAttr(Box<Self>, Ident, Box<Self>),
+    GetIndex(Box<Self>, Box<Self>),
+    SetIndex(Box<Self>, Box<Self>, Box<Self>),
     Block(ScopeId),
     If(Box<Self>, ScopeId, ScopeId),
     While(Box<Self>, ScopeId, ScopeId),
     Loop(ScopeId),
+    Assign(Pattern, Box<Self>),
 }
