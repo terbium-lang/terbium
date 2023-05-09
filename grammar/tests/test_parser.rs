@@ -64,10 +64,7 @@ fn test_expr_parser() {
                                 },
                                 span(16, 18),
                             ),
-                            Spanned(
-                                Expr::Atom(Atom::Int("1".to_string(), NORMAL)),
-                                span(20, 21),
-                            ),
+                            Spanned(Expr::Atom(Atom::Int("1".to_string(), NORMAL)), span(20, 21),),
                             Spanned(
                                 Expr::Array(vec![
                                     Spanned(

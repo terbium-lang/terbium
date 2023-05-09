@@ -5,7 +5,7 @@ use crate::{
     span::{Span, Spanned},
     token::{IntLiteralInfo, TokenInfo},
 };
-use std::fmt::{self, Display, Formatter};
+use std::fmt::{self, Debug, Display, Formatter};
 
 /// An enumeration of possible unary operators.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -176,7 +176,7 @@ pub struct FuncTypeParam {
     /// The name of the parameter if one is given.
     pub name: Option<String>,
     /// The type of the parameter.
-    pub ty: TypeExpr,
+    pub ty: Spanned<TypeExpr>,
     /// Whether the parameter is optional.
     pub optional: bool,
 }
@@ -195,17 +195,86 @@ impl Display for FuncTypeParam {
     }
 }
 
+/// A generic type application, e.g. `Type<A, B>`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TypeApplication {
+    /// The standard type arguments.
+    pub args: Vec<Spanned<TypeExpr>>,
+    /// The associated type (keyword) arguments.
+    pub kwargs: Vec<(Spanned<String>, Spanned<TypeExpr>)>,
+}
+
+impl Display for TypeApplication {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let args = self
+            .args
+            .iter()
+            .map(ToString::to_string)
+            .chain(
+                self.kwargs
+                    .iter()
+                    .map(|(name, ty)| format!("{name} = {ty}")),
+            )
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        write!(f, "<{args}>")
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TypePathSeg(pub Spanned<String>, pub Option<Spanned<TypeApplication>>);
+
+impl Display for TypePathSeg {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)?;
+        if let Some(app) = &self.1 {
+            write!(f, "{}", app)?;
+        }
+        Ok(())
+    }
+}
+
+/// A type path, e.g. `Type`, `Type.Member`, or `module.Type`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TypePath(pub Vec<Spanned<TypePathSeg>>);
+
+impl Display for TypePath {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            self.0
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(".")
+        )
+    }
+}
+
+/// A type qualification, i.e. the `<Type: Trait>` in `<Type: Trait>.AssociatedType`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[allow(unused)] // TODO: implement qualified types
+pub struct TypeQual {
+    /// The type being qualified.
+    pub ty: Spanned<Box<TypeExpr>>,
+    /// The target trait.
+    pub r#trait: Spanned<TypePath>,
+}
+
 /// A type expression.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TypeExpr {
-    /// A type identifier, e.g. `Type`.
-    Ident(String),
-    /// A type path access, e.g. `Type.Member` or `module.Type`.
-    Member(Box<TypeExpr>, String),
+    /// An inference placeholder, i.e. `_`.
+    Infer,
+    /// A standalone type path, e.g. `Type`, `Type.Member`, or `module.Type`.
+    /// This may include a type application, e.g. `Type<A, B>` or `module.Type<A>.AssociatedType`.
+    Path(Spanned<TypePath>),
     /// A tuple type, e.g. `(Type, Type)`.
-    Tuple(Vec<TypeExpr>),
+    Tuple(Vec<Spanned<TypeExpr>>),
     /// An array type, e.g. `[Type]`, `[Type; 5]`, or `[Type; CONSTANT]`.
-    Array(Box<TypeExpr>, Option<Atom>),
+    Array(Box<Spanned<TypeExpr>>, Option<Spanned<Atom>>),
     /// A function type, e.g. `(Type, Type) -> Type`.
     Func {
         /// Positional parameters.
@@ -213,36 +282,27 @@ pub enum TypeExpr {
         /// Keyword-only parameters, represented as (name, type_expr, is_optional).
         kw_params: Vec<FuncTypeParam>,
         /// The return type.
-        ret: Option<Box<TypeExpr>>,
+        ret: Option<Box<Spanned<TypeExpr>>>,
     },
     /// A type union, e.g. `Type | Type`.
-    Union(Vec<TypeExpr>),
+    Union(Vec<Spanned<TypeExpr>>),
     /// A product ("and") type, e.g. `Type & Type`.
-    And(Vec<TypeExpr>),
+    And(Vec<Spanned<TypeExpr>>),
     /// A negation ("not") type, e.g. `!Type`.
-    Not(Box<TypeExpr>),
+    Not(Box<Spanned<TypeExpr>>),
     /// The `mut` modifier which allows the type to be mutable and have access to mutable methods,
     /// e.g. `mut Type`.
-    Mut(Box<TypeExpr>),
+    Mut(Box<Spanned<TypeExpr>>),
     /// The `to` modifier which allows any type that has a cast function to the given type,
     /// e.g. `to Type` or `to string`.
-    To(Box<TypeExpr>),
-    /// A generic type application, e.g. `Type<A, B>`.
-    Application {
-        /// The type being applied to.
-        ty: Box<TypeExpr>,
-        /// The standard type arguments.
-        args: Vec<TypeExpr>,
-        /// The associated type (keyword) arguments.
-        kwargs: Vec<(String, TypeExpr)>,
-    },
+    To(Box<Spanned<TypeExpr>>),
 }
 
 impl Display for TypeExpr {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Ident(s) => write!(f, "{s}"),
-            Self::Member(ty, s) => write!(f, "{ty}.{s}"),
+            Self::Infer => f.write_str("_"),
+            Self::Path(path) => write!(f, "{path}"),
             Self::Tuple(tys) => {
                 f.write_str("(")?;
                 let tys = tys
@@ -299,17 +359,6 @@ impl Display for TypeExpr {
             Self::Not(ty) => write!(f, "!{ty}"),
             Self::To(ty) => write!(f, "to {ty}"),
             Self::Mut(ty) => write!(f, "mut {ty}"),
-            Self::Application { ty, args, kwargs } => {
-                write!(f, "{ty}<")?;
-
-                let args = args
-                    .iter()
-                    .map(ToString::to_string)
-                    .chain(kwargs.iter().map(|(name, ty)| format!("{name} = {ty}")))
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                write!(f, "{args}>")
-            }
         }
     }
 }
@@ -354,35 +403,58 @@ impl Display for Atom {
     }
 }
 
-/// A visibility specifier, which determines the visibility of a declaration or item.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub enum Visibility {
+/// A visibility specifier of a top-level item.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+pub enum ItemVisibility {
     /// This item is visible to everything.
     Public,
     /// This item is visible only to the current library.
     Lib,
     /// This item is visible only to the parent module.
-    Parent,
-    /// This item is visible only to the current module.
+    Super,
+    /// This item is visible only to the current module. This is equivalent to `private`.
     #[default]
     Mod,
-    /// This item is visible only within the definition implementation and extensions.
-    /// (i.e. self + subclasses)
-    Sub,
-    /// This item is visible only within the definition implementation. (i.e. self)
-    /// This can be written as either `public(private)` or `private`, but the latter is obviously
-    /// cleaner.
-    Private,
 }
 
-impl Visibility {
+impl Display for ItemVisibility {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Public => write!(f, "public"),
+            Self::Lib => write!(f, "public(lib)"),
+            Self::Super => write!(f, "public(super)"),
+            Self::Mod => write!(f, "private"),
+        }
+    }
+}
+
+/// A visibility specifier of a type member.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub enum MemberVisibility {
+    /// This item is visible to everything.
+    Public = 5,
+    /// This item is visible only to the current library.
+    Lib = 4,
+    /// This item is visible only to the parent module.
+    Super = 3,
+    /// This item is visible only to the current module.
+    #[default]
+    Mod = 2,
+    /// This item is visible only within the definition implementation and extensions.
+    /// (i.e. self + subclasses)
+    Sub = 1,
+    /// This item is visible only within the definition implementation. (i.e. self)
+    Private = 0,
+}
+
+impl MemberVisibility {
     /// Returns the inner visibility specifier, if any.
     #[must_use]
     pub const fn inner_visibility(&self) -> Option<&'static str> {
         Some(match self {
             Self::Public => return None,
             Self::Lib => "lib",
-            Self::Parent => "parent",
+            Self::Super => "super",
             Self::Mod => "mod",
             Self::Sub => "sub",
             Self::Private => "private",
@@ -390,12 +462,12 @@ impl Visibility {
     }
 }
 
-impl Display for Visibility {
+impl Display for MemberVisibility {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Public => write!(f, "public"),
             Self::Lib => write!(f, "public(lib)"),
-            Self::Parent => write!(f, "public(parent)"),
+            Self::Super => write!(f, "public(super)"),
             Self::Mod => write!(f, "public(mod)"),
             Self::Sub => write!(f, "public(sub)"),
             Self::Private => write!(f, "private"),
@@ -455,12 +527,12 @@ impl Display for Visibility {
 /// When visibility is not specified, default to:
 ///     public(mod) expands to public(mod get, mod set)
 /// ```
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct FieldVisibility {
     /// The visibility of the getter.
-    pub get: (Visibility, Option<Span>),
+    pub get: (MemberVisibility, Option<Span>),
     /// The visibility of the setter.
-    pub set: (Visibility, Option<Span>),
+    pub set: (MemberVisibility, Option<Span>),
 }
 
 impl Display for FieldVisibility {
@@ -560,7 +632,7 @@ pub enum AssignmentTarget {
 impl Display for AssignmentTarget {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Pattern(p) => p.fmt(f),
+            Self::Pattern(p) => write!(f, "{p}"),
             Self::Pointer(p) => write!(f, "&{p}"),
             Self::Attr { subject, attr } => write!(f, "{subject}.{attr}"),
             Self::Index { subject, index } => write!(f, "{subject}[{index}]"),
@@ -644,7 +716,7 @@ impl Display for Pattern {
                 if mut_kw.is_some() {
                     f.write_str("mut ")?;
                 }
-                ident.fmt(f)
+                write!(f, "{ident}")
             }
             Self::Tuple(path, pats) => {
                 fmt_path(path)?;
@@ -1130,6 +1202,85 @@ impl Display for FuncParam {
     }
 }
 
+/// A generic type parameter.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TyParam {
+    /// The name of the type parameter.
+    pub name: Spanned<String>,
+    /// The bound of the type parameter, if any.
+    pub bound: Option<Spanned<TypeExpr>>,
+}
+
+impl Display for TyParam {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.name)?;
+        if let Some(bound) = &self.bound {
+            write!(f, ": {}", bound)?;
+        }
+        Ok(())
+    }
+}
+
+/// A field in a struct.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StructField {
+    /// The visibility of the field.
+    pub vis: FieldVisibility,
+    /// The name of the field.
+    pub name: Spanned<String>,
+    /// The type of the field.
+    pub ty: Spanned<TypeExpr>,
+    /// The default value of the field, if it is specified.
+    pub default: Option<Spanned<Expr>>,
+}
+
+impl Display for StructField {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {}: {}", self.vis, self.name, self.ty)?;
+        if let Some(default) = &self.default {
+            write!(f, " = {default}")?;
+        }
+        Ok(())
+    }
+}
+
+/// A struct-like type definition.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StructDef {
+    /// The visibility of the struct.
+    pub vis: ItemVisibility,
+    /// The name of the struct.
+    pub name: Spanned<String>,
+    /// The generic type parameters of the struct.
+    pub ty_params: Vec<TyParam>,
+    /// The fields of the struct.
+    pub fields: Vec<Spanned<StructField>>,
+    /// The struct this struct inherits its fields from, if any.
+    pub extends: Option<Spanned<TypeExpr>>,
+}
+
+impl Display for StructDef {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{} struct {}", self.vis, self.name)?;
+        if !self.ty_params.is_empty() {
+            write!(
+                f,
+                "<{}>",
+                self.ty_params
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )?;
+        }
+        write!(f, " {{\n")?;
+        for field in &self.fields {
+            writeln!(f, "    {field},")?;
+        }
+        f.write_str("}")
+    }
+}
+
 /// A node in the abstract syntax tree.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Node {
@@ -1149,6 +1300,8 @@ pub enum Node {
     },
     /// A constant declaration.
     Const {
+        /// The visibility of the constant.
+        vis: ItemVisibility,
         /// The span of the const keyword.
         kw: Span,
         /// The name of the constant.
@@ -1196,6 +1349,8 @@ pub enum Node {
     },
     /// A named function declaration.
     Func {
+        /// The visibility of the function.
+        vis: ItemVisibility,
         /// The name of the function.
         name: Spanned<String>,
         /// The positional parameters of the function.
@@ -1207,6 +1362,8 @@ pub enum Node {
         /// The body of the function.
         body: Spanned<Vec<Spanned<Node>>>,
     },
+    /// A struct declaration.
+    Struct(StructDef),
 }
 
 impl Display for Node {
@@ -1270,13 +1427,14 @@ impl Display for Node {
                 write!(f, ";")
             }
             Self::Func {
+                vis,
                 name,
                 params,
                 kw_params,
                 ret,
                 body,
             } => {
-                write!(f, "func {name}(")?;
+                write!(f, "{vis} func {name}(")?;
 
                 let params = params
                     .iter()
@@ -1296,6 +1454,7 @@ impl Display for Node {
                 }
                 f.write_str("}")
             }
+            Self::Struct(s) => write!(f, "{s}"),
         }
     }
 }

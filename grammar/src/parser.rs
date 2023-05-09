@@ -1,7 +1,9 @@
-use crate::ast::{AssignmentOperator, AssignmentTarget};
+use crate::ast::{StructDef, StructField, TyParam, TypeApplication, TypePath, TypePathSeg};
 use crate::{
     ast::{
-        expr_as_block, Atom, BinaryOp, Delimiter, Expr, FuncParam, Node, Pattern, TypeExpr, UnaryOp,
+        expr_as_block, AssignmentOperator, AssignmentTarget, Atom, BinaryOp, Delimiter, Expr,
+        FieldVisibility, FuncParam, ItemVisibility, MemberVisibility, Node, Pattern, TypeExpr,
+        UnaryOp,
     },
     error::Error,
     span::{Provider, Span, Spanned},
@@ -76,8 +78,8 @@ impl<O, T: ChumskyParser<TokenInfo, O, Error = Error>> WsPadExt<T, O> for T {
 }
 
 macro_rules! kw {
-    ($kw:literal) => {{
-        just(TokenInfo::Ident($kw.to_string(), false)).map_with_span(Spanned)
+    ($($kw:literal)|+) => {{
+        just([$(TokenInfo::Ident($kw.to_string(), false)),+]).map_with_span(Spanned)
     }};
     ($kw:ident) => {{
         kw!(stringify!($kw))
@@ -153,15 +155,193 @@ fn resolve_string(content: String, flags: StringLiteralFlags, span: Span) -> Res
     Ok(result)
 }
 
+pub fn item_vis_parser<'a>() -> impl TokenParser<ItemVisibility> + Clone + 'a {
+    kw!("private")
+        .to(ItemVisibility::Mod)
+        .or(kw!("public").ignore_then(
+            choice((
+                kw!("mod").to(ItemVisibility::Mod),
+                kw!("super").to(ItemVisibility::Super),
+                kw!("lib").to(ItemVisibility::Lib),
+            ))
+            .delimited(Delimiter::Paren)
+            .ws_then()
+            .or_not()
+            .map(|v| v.unwrap_or(ItemVisibility::Public)),
+        ))
+        .or_not()
+        .map(|v| v.unwrap_or(ItemVisibility::Mod))
+        .then_ws()
+}
+
+pub fn member_vis_parser<'a>() -> impl TokenParser<MemberVisibility> + Clone + 'a {
+    kw!("private")
+        .to(MemberVisibility::Private)
+        .or(kw!("public").ignore_then(
+            choice((
+                kw!("sub").to(MemberVisibility::Sub),
+                kw!("mod").to(MemberVisibility::Mod),
+                kw!("super").to(MemberVisibility::Super),
+                kw!("lib").to(MemberVisibility::Lib),
+            ))
+            .delimited(Delimiter::Paren)
+            .ws_then()
+            .or_not()
+            .map(|v| v.unwrap_or(MemberVisibility::Public)),
+        ))
+        .or_not()
+        .map(|v| v.unwrap_or(MemberVisibility::Mod))
+        .then_ws()
+}
+
+pub fn field_vis_parser<'a>() -> impl TokenParser<FieldVisibility> + Clone + 'a {
+    const FALLBACK: (MemberVisibility, Option<Span>) = (MemberVisibility::Private, None);
+
+    #[inline]
+    fn vis_map(
+        Spanned(v, span): Spanned<Option<MemberVisibility>>,
+    ) -> (MemberVisibility, Option<Span>) {
+        (v.unwrap_or(MemberVisibility::Public), Some(span))
+    }
+
+    let vis = choice((
+        kw!("private").to(MemberVisibility::Private),
+        kw!("sub").to(MemberVisibility::Sub),
+        kw!("mod").to(MemberVisibility::Mod),
+        kw!("super").to(MemberVisibility::Super),
+        kw!("lib").to(MemberVisibility::Lib),
+    ))
+    .or_not()
+    .then_ws();
+
+    let get_vis = vis
+        .clone()
+        .then_ignore(kw!("get"))
+        .map_with_span(Spanned)
+        .map(vis_map);
+
+    let set_vis = vis
+        .clone()
+        .then_ignore(kw!("set"))
+        .map_with_span(Spanned)
+        .map(vis_map);
+
+    let one_of = get_vis
+        .clone()
+        .map(|get| (get, FALLBACK))
+        .or(set_vis.clone().map(|set| (FALLBACK, set)));
+    let combo = get_vis
+        .then_ignore(just(TokenInfo::Comma).pad_ws())
+        .then(set_vis);
+
+    let unexpanded = member_vis_parser().map(|vis| FieldVisibility {
+        get: (vis, None),
+        set: (vis, None),
+    });
+    let expanded = kw!("public")
+        .ignore_then(combo.or(one_of).delimited(Delimiter::Paren))
+        .try_map(|(get, set), span| {
+            if get.0 < set.0 {
+                Err(Error::getter_less_visible_than_setter(span, get.1, set.1))
+            } else {
+                Ok(FieldVisibility { get, set })
+            }
+        });
+
+    expanded.or(unexpanded).then_ws()
+}
+
 pub fn type_expr_parser<'a>() -> RecursiveParser<'a, Spanned<TypeExpr>> {
-    recursive(|ty| {
-        let ident = select! {
-            TokenInfo::Ident(name, _) => TypeExpr::Ident(name),
+    recursive::<_, Spanned<_>, _, _, _>(|ty| {
+        let infer_ty = select!(TokenInfo::Ident(i, false) if i == "_" => TypeExpr::Infer)
+            .map_with_span(Spanned)
+            .pad_ws();
+
+        let ty_application = select!(TokenInfo::Ident(name, _) => name)
+            .map_with_span(Spanned)
+            .then_ignore(just(TokenInfo::Equals).pad_ws())
+            .or_not()
+            .then(ty.clone())
+            .separated_by(just(TokenInfo::Comma).pad_ws())
+            .at_least(1)
+            .allow_trailing()
+            .delimited(Delimiter::Angle)
+            .try_map(|mut args, _span| {
+                let partition = args
+                    .iter()
+                    .position(|(name, _)| name.is_some())
+                    .unwrap_or(args.len());
+                let kwargs = args.split_off(partition);
+
+                Ok(TypeApplication {
+                    args: args.into_iter().map(|(_, ty)| ty).collect(),
+                    kwargs: kwargs
+                        .into_iter()
+                        .map(|(name, ty)| {
+                            Ok((
+                                name.ok_or_else(|| {
+                                    Error::unexpected_positional_argument(ty.span())
+                                })?,
+                                ty,
+                            ))
+                        })
+                        .collect::<Result<Vec<_>>>()?,
+                })
+            })
+            .map_with_span(Spanned)
+            .or_not();
+
+        let path = select! { |span|
+            TokenInfo::Ident(name, _) => Spanned(name, span),
         }
+        .then(ty_application)
+        .map(|(ident, app)| TypePathSeg(ident, app))
+        .map_with_span(Spanned)
+        .separated_by(just(TokenInfo::Dot).pad_ws())
+        .at_least(1)
+        .map(TypePath)
+        .map_with_span(Spanned)
+        .map(TypeExpr::Path)
         .map_with_span(Spanned)
         .pad_ws();
 
-        ident
+        let tuple = ty
+            .clone()
+            .separated_by(just(TokenInfo::Comma).pad_ws())
+            .allow_trailing()
+            .delimited(Delimiter::Paren)
+            .map(TypeExpr::Tuple)
+            .map_with_span(Spanned)
+            .pad_ws()
+            .boxed();
+
+        let array = ty
+            .clone()
+            .map(Box::new)
+            .then_ignore(just(TokenInfo::Semicolon).pad_ws())
+            .then(
+                select! {
+                    TokenInfo::IntLiteral(value, info) => Atom::Int(value, info),
+                    TokenInfo::Ident(name, _) => Atom::Ident(name),
+                }
+                .map_with_span(Spanned)
+                .or_not(),
+            )
+            .delimited(Delimiter::Bracket)
+            .map(|(ty, size)| TypeExpr::Array(ty, size))
+            .map_with_span(Spanned)
+            .pad_ws()
+            .boxed();
+
+        let ty_atom = choice((
+            ty.clone().delimited(Delimiter::Paren),
+            infer_ty,
+            path,
+            tuple,
+            array,
+        ));
+
+        ty_atom
     })
 }
 
@@ -257,6 +437,8 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
     let ty = type_expr_parser();
     let pat = pat_parser();
     let block_label = block_label().pad_ws().or_not();
+    let item_vis = item_vis_parser();
+    let field_vis = field_vis_parser();
 
     recursive(move |body: RecursiveDef<Vec<Spanned<Node>>>| {
         let expr = expr_parser(body.clone());
@@ -318,8 +500,9 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
             .boxed();
 
         // `const` declaration, for example `const ZERO: int32 = 0;`
-        let const_decl = kw!("const")
-            .map_with_span(|_, span| span)
+        let const_decl = item_vis
+            .clone()
+            .then(kw!("const").map_with_span(|_, span| span))
             .then(ident.clone())
             .then(
                 just(TokenInfo::Colon)
@@ -329,9 +512,10 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
             )
             .then(just(TokenInfo::Equals).pad_ws().ignore_then(expr.clone()))
             .then_ignore(just(TokenInfo::Semicolon))
-            .map_with_span(|(((kw_span, name), ty), value), span| {
+            .map_with_span(|((((vis, kw_span), name), ty), value), span| {
                 Spanned(
                     Node::Const {
+                        vis,
                         kw: kw_span,
                         name,
                         ty,
@@ -365,6 +549,7 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
                     .map_with_span(|_, span| FuncParamOrSep::Sep(span))
                     .or(func_param.map(FuncParamOrSep::FuncParam))
                     .separated_by(just(TokenInfo::Comma).pad_ws())
+                    .allow_trailing()
                     .delimited(Delimiter::Paren),
             )
             .then(
@@ -384,7 +569,9 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
             });
 
         // Function, i.e. `func f() {}` or `func f() = expr;`
-        let func = func_header // TODO: function block labels
+        let func = item_vis
+            .clone()
+            .then(func_header)
             .then(
                 body.delimited(Delimiter::Brace)
                     .map_with_span(Spanned)
@@ -399,17 +586,21 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
             )
             .try_map(
                 |(
-                    FuncHeader {
-                        name,
-                        params,
-                        kw_params,
-                        ret,
-                    },
+                    (
+                        vis,
+                        FuncHeader {
+                            name,
+                            params,
+                            kw_params,
+                            ret,
+                        },
+                    ),
                     body,
                 ),
                  span| {
                     Ok(Spanned(
                         Node::Func {
+                            vis,
                             name,
                             params,
                             kw_params,
@@ -486,10 +677,81 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
             .labelled("return")
             .boxed();
 
+        let type_params = ident
+            .clone()
+            .then(
+                just(TokenInfo::Colon)
+                    .pad_ws()
+                    .ignore_then(ty.clone())
+                    .or_not(),
+            )
+            .map(|(name, bound)| TyParam { name, bound })
+            .separated_by(just(TokenInfo::Comma).pad_ws())
+            .allow_trailing()
+            .delimited(Delimiter::Angle)
+            .pad_ws()
+            .or_not();
+
+        let struct_field = field_vis
+            .then(ident.clone())
+            .then_ignore(just(TokenInfo::Colon).then_ws())
+            .then(ty.clone())
+            .then(
+                just(TokenInfo::Equals)
+                    .pad_ws()
+                    .ignore_then(expr.clone())
+                    .or_not(),
+            )
+            .map_with_span(|(((vis, name), ty), default), span| {
+                Spanned(
+                    StructField {
+                        vis,
+                        name,
+                        ty,
+                        default,
+                    },
+                    span,
+                )
+            });
+
+        // Struct declaration, i.e. `struct Foo { ... }`
+        let struct_decl = item_vis
+            .then(kw!("struct").then_ws().ignore_then(ident.clone()))
+            .then(type_params)
+            .then(
+                just(TokenInfo::Colon)
+                    .pad_ws()
+                    .ignore_then(ty.clone())
+                    .or_not(),
+            )
+            .then(
+                struct_field
+                    .separated_by(just(TokenInfo::Comma).pad_ws())
+                    .allow_trailing()
+                    .delimited(Delimiter::Brace),
+            )
+            .then_ignore(just(TokenInfo::Semicolon).or_not())
+            .map_with_span(|((((vis, name), ty_params), extends), fields), span| {
+                Spanned(
+                    Node::Struct(StructDef {
+                        vis,
+                        name,
+                        ty_params: ty_params.unwrap_or_else(Vec::new),
+                        fields,
+                        extends,
+                    }),
+                    span,
+                )
+            })
+            .pad_ws()
+            .labelled("struct declaration")
+            .boxed();
+
         choice((
             let_decl,
             const_decl,
             func,
+            struct_decl,
             break_stmt,
             continue_stmt,
             return_stmt,

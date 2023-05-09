@@ -187,6 +187,8 @@ pub enum ErrorInfo {
     /// Keyword parameter cannot be a special pattern and must only be a single binding. The span is
     /// the span of the pattern.
     KeywordParameterNotIdent(Span),
+    /// Visibility for field access was specified to be more private than field mutation.
+    GetterLessVisibleThanSetter(Option<Span>, Option<Span>),
 }
 
 impl Display for ErrorInfo {
@@ -223,6 +225,9 @@ impl Display for ErrorInfo {
             Self::KeywordParameterNotIdent(_) => {
                 write!(f, "keyword parameter must bind to a single identifier")
             }
+            Self::GetterLessVisibleThanSetter(..) => {
+                write!(f, "getter cannot be less visible than setter")
+            }
         }
     }
 }
@@ -245,6 +250,7 @@ impl ErrorInfo {
             Self::MutableAssignmentTarget(..) => 8,
             Self::MultipleKeywordParameterSeparators(_) => 9,
             Self::KeywordParameterNotIdent(_) => 10,
+            Self::GetterLessVisibleThanSetter(..) => 11,
         }
     }
 
@@ -431,6 +437,43 @@ impl Error {
                 message: "replace the pattern with a single binding".to_string(),
             }),
             notes: Vec::new(),
+        }
+    }
+
+    #[must_use]
+    pub fn getter_less_visible_than_setter(
+        span: Span,
+        get_vis: Option<Span>,
+        set_vis: Option<Span>,
+    ) -> Self {
+        let mut note = String::from(
+            "the visibility of the getter must be greater than or equal to the setter",
+        );
+
+        let (hint, add) = if let Some(ref set_vis) = set_vis {
+            (
+                Some(Hint {
+                    action: HintAction::Remove(*set_vis),
+                    message: "remove this".to_string(),
+                }),
+                ", try unspecifying the setter visibility".to_string(),
+            )
+        } else if get_vis.is_some() {
+            (
+                None,
+                ", try generalizing visibility to both get and set".to_string(),
+            )
+        } else {
+            (None, String::new())
+        };
+        note.push_str(&add);
+
+        Self {
+            info: ErrorInfo::GetterLessVisibleThanSetter(get_vis, set_vis),
+            span,
+            label: None,
+            hint,
+            notes: vec![note],
         }
     }
 

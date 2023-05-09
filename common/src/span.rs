@@ -165,6 +165,13 @@ impl<T> Spanned<T> {
         &self.0
     }
 
+    /// Consumes this span and returns the inner value.
+    #[must_use]
+    #[allow(clippy::missing_const_for_fn, reason = "destructors can't be const")]
+    pub fn into_value(self) -> T {
+        self.0
+    }
+
     /// Returns the span.
     #[must_use]
     pub const fn span(&self) -> Span {

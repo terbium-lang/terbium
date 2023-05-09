@@ -65,7 +65,7 @@ fn test_tokenizer_integer_radix() {
         radix,
         unsigned: false,
     };
-    
+
     assert_tokens! {
         "0xAC + 0o123 + 0b1010",
         TokenInfo::IntLiteral("AC".into(), radix(Radix::Hexadecimal)) => 0..4,

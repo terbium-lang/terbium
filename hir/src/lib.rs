@@ -1,28 +1,45 @@
 //! High-level intermediate representation. This IR is used for type analysis, validating code
 //! correctness, and desugaring.
 
+#![feature(let_chains)]
+
+pub mod error;
 pub mod lower;
 
+use grammar::ast::StructDef;
 use internment::Intern;
 use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Ident(Intern<String>);
 
+impl Display for Ident {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 /// The ID of a module.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ModuleId(Intern<Vec<String>>);
+
+impl Display for  ModuleId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0.iter().map(AsRef::as_ref).collect::<Vec<_>>().join("."))
+    }
+}
 
 /// The ID of a top-level item.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ItemId {
-    /// The key of the item, which is unique within the module.
-    pub key: Ident,
+pub struct ItemId(
     /// The module in which the item is defined.
-    pub module: ModuleId,
-}
+    ModuleId,
+    /// The name of the item, which is unique within the module.
+    Ident,
+);
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct ScopeId(usize);
 
 impl ScopeId {
@@ -32,11 +49,18 @@ impl ScopeId {
 }
 
 /// HIR of a Terbium program.
+#[derive(Default)]
 pub struct Hir {
+    /// A mapping of all modules within the program.
+    pub modules: HashMap<ModuleId, Vec<Node>>,
     /// A mapping of all top-level functions in the program.
     pub funcs: HashMap<ItemId, Func>,
     /// A mapping of all constants in the program.
     pub consts: HashMap<ItemId, Const>,
+    /// A mapping of all raw structs within the program.
+    pub structs: HashMap<ItemId, StructDef>,
+    /// A mapping of all types within the program.
+    pub types: HashMap<ItemId, Ty>,
     /// A mapping of all lexical scopes within the program.
     pub scopes: HashMap<ScopeId, Scope>,
     /// The root scope of the program.
@@ -62,7 +86,6 @@ pub enum Node {
 #[derive(Clone, Debug)]
 pub struct Scope {
     pub label: Option<Ident>,
-    pub parent: Option<ScopeId>,
     pub children: Vec<Node>,
 }
 
@@ -93,6 +116,22 @@ pub enum ItemVisibility {
     Private,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum MemberVisibility {
+    Public,
+    Lib,
+    Super,
+    Mod,
+    Sub,
+    Private,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct FieldVisibility {
+    pub get: MemberVisibility,
+    pub set: MemberVisibility,
+}
+
 #[derive(Clone, Debug)]
 pub struct FuncParam {
     pub pat: Pattern,
@@ -115,14 +154,15 @@ pub struct Func {
     pub body: ScopeId,
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
-#[repr(u8)]
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq, Ord, PartialOrd)]
 pub enum IntWidth {
     Int8 = 8,
     Int16 = 16,
+    #[default]
     Int32 = 32,
     Int64 = 64,
     Int128 = 128,
+    Unknown = !0,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -131,11 +171,12 @@ pub enum IntSign {
     Unsigned,
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd)]
-#[repr(u8)]
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq, Ord, PartialOrd)]
 pub enum FloatWidth {
     Float32 = 32,
+    #[default]
     Float64 = 64,
+    Unknown = !0,
     // Float128 = 128,
 }
 
@@ -153,7 +194,31 @@ pub enum PrimitiveTy {
 pub enum Ty {
     Unknown,
     Primitive(PrimitiveTy),
+    Generic(TyParam),
     Tuple(Vec<Ty>),
+    Struct(ItemId, Vec<Ty>),
+}
+
+#[derive(Clone, Debug)]
+pub struct TyParam {
+    pub name: Ident,
+    pub bound: Option<Box<Ty>>,
+}
+
+#[derive(Clone, Debug)]
+pub struct StructField {
+    pub vis: FieldVisibility,
+    pub name: Ident,
+    pub ty: Ty,
+    pub default: Option<Expr>,
+}
+
+#[derive(Clone, Debug)]
+pub struct StructTy {
+    pub vis: ItemVisibility,
+    pub name: Ident,
+    pub ty_params: Vec<TyParam>,
+    pub fields: Vec<StructField>,
 }
 
 #[derive(Clone, Debug)]
@@ -169,27 +234,81 @@ pub enum Literal {
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Intrinsic {
+    IntNeg,
     IntAdd,
     IntSub,
     IntMul,
     IntDiv,
+    IntPow,
     IntMod,
-    FloatAdd,
-    FloatSub,
-    FloatMul,
-    FloatDiv,
-    FloatMod,
+    IntBitOr,
+    IntBitAnd,
+    IntBitNot,
+    IntBitXor,
+    IntShl,
+    IntShr,
     IntEq,
     IntLt,
     IntLe,
     IntGt,
     IntGe,
+    FloatPos,
+    FloatNeg,
+    FloatAdd,
+    FloatSub,
+    FloatMul,
+    FloatDiv,
+    FloatPow,
+    FloatMod,
     FloatEq,
     FloatLt,
     FloatLe,
     FloatGt,
     FloatGe,
     BoolEq,
+    BoolNot,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum Op {
+    Pos,
+    Neg,
+    Add,
+    AddAssign,
+    Sub,
+    SubAssign,
+    Mul,
+    MulAssign,
+    Div,
+    DivAssign,
+    Mod,
+    ModAssign,
+    Pow,
+    PowAssign,
+    Eq,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    Not,
+    BitOr,
+    BitOrAssign,
+    BitAnd,
+    BitAndAssign,
+    BitXor,
+    BitXorAssign,
+    BitNot,
+    Shl,
+    ShlAssign,
+    Shr,
+    ShrAssign,
+    Index,
+    IndexMut,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum StaticOp {
+    New,
 }
 
 #[derive(Clone, Debug)]
@@ -203,11 +322,11 @@ pub enum Expr {
         args: Vec<Self>,
         kwargs: Vec<(Ident, Self)>,
     },
+    CallOp(Op, Box<Self>, Vec<Self>),
+    CallStaticOp(StaticOp, Ty, Vec<Self>),
     Cast(Box<Self>, Ty),
     GetAttr(Box<Self>, Ident),
     SetAttr(Box<Self>, Ident, Box<Self>),
-    GetIndex(Box<Self>, Box<Self>),
-    SetIndex(Box<Self>, Box<Self>, Box<Self>),
     Block(ScopeId),
     If(Box<Self>, ScopeId, ScopeId),
     While(Box<Self>, ScopeId, ScopeId),
