@@ -1262,6 +1262,9 @@ pub struct StructDef {
 impl Display for StructDef {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{} struct {}", self.vis, self.name)?;
+        if let Some(ref extends) = self.extends {
+            write!(f, ": {extends}")?;
+        }
         if !self.ty_params.is_empty() {
             write!(
                 f,

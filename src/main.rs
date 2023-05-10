@@ -1,6 +1,8 @@
-use common::span::ProviderCache;
+use common::span::{ProviderCache, Src};
 use grammar::parser::Parser;
 use grammar::span::Provider;
+use hir::lower::AstLowerer;
+use hir::{Hir, ModuleId};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let interval = std::time::Duration::from_millis(500);
@@ -23,14 +25,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let cache = ProviderCache::from_providers([&provider]);
 
         match nodes {
-            Ok(ref nodes) => {
+            Ok(nodes) => {
                 println!("{nodes:#?}");
-                for node in nodes {
+                for node in &nodes {
                     println!("{node}");
                     // for line in node.to_string().lines() {
                     //     writeln!(file, "// {line}")?;
                     // }
                 }
+
+                let mut lowerer = AstLowerer::new(nodes);
+                lowerer.resolve_top_level_types(ModuleId::from(Src::None))?;
+
+                println!("HIR: {:#?}", lowerer.hir);
             }
             Err(errors) => {
                 for error in errors {

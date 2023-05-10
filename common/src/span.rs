@@ -155,7 +155,7 @@ impl ariadne::Span for Span {
 }
 
 /// A compound of a span and a value.
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct Spanned<T>(pub T, pub Span);
 
 impl<T> Spanned<T> {
@@ -178,6 +178,12 @@ impl<T> Spanned<T> {
         self.1
     }
 
+    /// Converts from `Spanned<T>` to `Spanned<&T>`.
+    #[must_use]
+    pub const fn as_ref(&self) -> Spanned<&T> {
+        Spanned(&self.0, self.1)
+    }
+
     /// Consumes and maps the inner value.
     #[must_use]
     #[allow(
@@ -190,6 +196,9 @@ impl<T> Spanned<T> {
 
     /// Consumes and maps the fallible inner value, mapping the span if the inner value is `Ok`
     /// and propagating the error otherwise.
+    ///
+    /// # Errors
+    /// If the inner value is `Err`, the error is propagated.
     #[allow(
         clippy::missing_const_for_fn,
         reason = "closure is not supposed to be const"
