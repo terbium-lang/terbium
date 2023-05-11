@@ -1,9 +1,14 @@
 use crate::{Ident, ModuleId};
 use ariadne::{ColorGenerator, Label, Report, ReportKind};
-use common::span::{ProviderCache, Span, Spanned};
+use common::{
+    pluralize,
+    span::{ProviderCache, Span, Spanned},
+};
 use grammar::ast::{TypeExpr, TypePath};
-use std::fmt::{Display, Formatter};
-use std::io::Write;
+use std::{
+    fmt::{Display, Formatter},
+    io::Write,
+};
 
 pub type Result<T> = std::result::Result<T, AstLoweringError>;
 
@@ -145,70 +150,91 @@ impl AstLoweringError {
             .with_message(self.simple_message());
 
         report = match self {
-            Self::CannotExtendFieldsFromType(ty) => report
-                .with_label(Label::new(ty.span())
-                    .with_message(format!("cannot extend fields from `{ty}`"))
-                    .with_color(primary),
-                )
-                .with_help("you can only extend fields from concrete struct types, nothing else"),
-            Self::NameConflict(def_span, src) => report
-                .with_label(Label::new(def_span)
-                    .with_message(format!("item with name {src} defined here"))
-                    .with_color(primary)
-                )
-                .with_label(Label::new(src.span())
-                    .with_message("but it is also defined here")
-                    .with_color(colors.next())
-                )
-                .with_help("try renaming to something else"),
-            Self::IntegerLiteralOverflow(span) => report
-                .with_label(Label::new(span)
-                    .with_message("this integer literal here")
-                    .with_color(primary)
-                )
-                .with_help("represent the integer as a string, and then convert to a type that can fit this large of an integer at runtime"),
-            Self::FloatLiteralOverflow(span) => report
-                .with_label(Label::new(span)
-                    .with_message("this float literal here")
-                    .with_color(primary)
-                )
-                .with_help("represent the float as a string, and then convert to a type that can fit this large of an float at runtime"),
-            Self::TypeNotFound(_, name, module) => report
-                .with_label(Label::new(name.span())
-                    .with_message(format!("could not find type `{name}` in {module}"))
-                    .with_color(primary)
-                )
-                .with_help("check the spelling of the type"), // TODO: maybe you meant...
-            Self::ModuleNotFound(name) => report
-                .with_label(Label::new(name.span())
-                    .with_message(format!("could not find module `{name}`"))
-                    .with_color(primary)
-                )
-                .with_message("check the spelling of the module"),
-            Self::IncorrectTypeArgumentCount { span, ty, expected, actual } => report
-                .with_label(Label::new(span)
-                    .with_message(format!("provided {actual} type arguments to {ty}"))
-                    .with_color(primary)
-                )
-                .with_label(Label::new(ty.span())
-                    .with_message(format!("...but it expects {expected} type arguments"))
-                    .with_color(colors.next())
-                )
-                .with_help(r#"try specifying the required number of type arguments. if you do not want to specify types in full, you can specify the inference type `_` instead"#),
-            Self::CircularTypeReference { src, dest, circular_at } => report
-                .with_label(Label::new(src.span())
-                    .with_message(format!("source type `{src}` defined here"))
-                    .with_color(primary)
-                )
-                .with_label(Label::new(dest.span())
-                    .with_message(format!("reference to type `{dest}` found here"))
-                    .with_color(colors.next())
-                )
-                .with_label(Label::new(circular_at)
-                    .with_message(format!("the type `{dest}` references `{src}` here, causing a circular reference"))
-                    .with_color(colors.next())
-                )
-                .with_help("try adding a level of indirection or removing the circular type completely"),
+            Self::CannotExtendFieldsFromType(ty) => {
+                report
+                    .with_label(
+                        Label::new(ty.span())
+                                    .with_message(format!("cannot extend fields from `{ty}`"))
+                                    .with_color(primary),
+                    )
+                    .with_help("you can only extend fields from concrete struct types, nothing else")
+            },
+            Self::NameConflict(def_span, src) => {
+                report
+                    .with_label(Label::new(def_span)
+                        .with_message(format!("item with name {src} defined here"))
+                        .with_color(primary)
+                        .with_order(0)
+                    )
+                    .with_label(Label::new(src.span())
+                        .with_message("but it is also defined here")
+                        .with_color(colors.next())
+                        .with_order(1)
+                    )
+                    .with_help("try renaming to something else")
+            },
+            Self::IntegerLiteralOverflow(span) => {
+                report
+                    .with_label(Label::new(span)
+                        .with_message("this integer literal here")
+                        .with_color(primary)
+                    )
+                    .with_help("represent the integer as a string, and then convert to a type that can fit this large of an integer at runtime")
+            },
+            Self::FloatLiteralOverflow(span) => {
+                report
+                    .with_label(Label::new(span)
+                        .with_message("this float literal here")
+                        .with_color(primary)
+                    )
+                    .with_help("represent the float as a string, and then convert to a type that can fit this large of an float at runtime")
+            },
+            Self::TypeNotFound(_, name, module) => {
+                report
+                    .with_label(Label::new(name.span())
+                        .with_message(format!("could not find type `{name}` in {module}"))
+                        .with_color(primary)
+                    )
+                    .with_help("check the spelling of the type") // TODO: maybe you meant...
+            },
+            Self::ModuleNotFound(name) => {
+                report
+                    .with_label(Label::new(name.span())
+                        .with_message(format!("could not find module `{name}`"))
+                        .with_color(primary)
+                    )
+                    .with_message("check the spelling of the module")
+            },
+            Self::IncorrectTypeArgumentCount { span, ty, expected, actual } => {
+                report
+                    .with_label(Label::new(span)
+                        .with_message(format!("provided {actual} type {} to {ty}", pluralize(actual, "argument", "arguments")))
+                        .with_color(primary)
+                        .with_order(0)
+                    )
+                    .with_label(Label::new(ty.span())
+                        .with_message(format!("{ty} expects {expected} type {}", pluralize(actual, "argument", "arguments")))
+                        .with_color(colors.next())
+                        .with_order(1)
+                    )
+                    .with_help(r#"try specifying the required number of type arguments. if you do not want to specify types in full, you can specify the inference type `_` instead"#)
+            },
+            Self::CircularTypeReference { src, dest, circular_at } => {
+                report
+                    .with_label(Label::new(src.span())
+                        .with_message(format!("source type `{src}` defined here"))
+                        .with_color(primary)
+                    )
+                    .with_label(Label::new(dest.span())
+                        .with_message(format!("reference to type `{dest}` found here"))
+                        .with_color(colors.next())
+                    )
+                    .with_label(Label::new(circular_at)
+                        .with_message(format!("the type `{dest}` references `{src}` here, causing a circular reference"))
+                        .with_color(colors.next())
+                    )
+                    .with_help("try adding a level of indirection or removing the circular type completely")
+            },
         };
 
         report.finish().write(cache, writer)

@@ -1,8 +1,8 @@
 use crate::{
     error::{AstLoweringError as Error, Result},
-    Expr, FieldVisibility, FloatWidth, Hir, Ident, IntSign, IntWidth, ItemId, ItemVisibility,
-    Literal, ModuleId, Node, Op, Pattern, PrimitiveTy, Scope, ScopeId, StructField, StructTy, Ty,
-    TyDef, TyParam,
+    Const, Expr, FieldVisibility, FloatWidth, Hir, Ident, IntSign, IntWidth, ItemId,
+    ItemVisibility, Literal, ModuleId, Node, Op, Pattern, PrimitiveTy, Scope, ScopeId, StructField,
+    StructTy, Ty, TyDef, TyParam,
 };
 use common::span::{Span, Spanned};
 use grammar::{
@@ -10,7 +10,7 @@ use grammar::{
     token::IntLiteralInfo,
 };
 use internment::Intern;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 const BOOL: Ty = Ty::Primitive(PrimitiveTy::Bool);
 
@@ -102,6 +102,13 @@ impl AstLowerer {
         })
     }
 
+    /// Completely performs a pass over a module.
+    pub fn resolve_module(&mut self, module: ModuleId) -> Result<()> {
+        self.resolve_top_level_types(module)?;
+        self.resolve_top_level_consts(module)?;
+        Ok(())
+    }
+
     /// Perform a pass over the AST to simply resolve all top-level types.
     pub fn resolve_top_level_types(&mut self, module: ModuleId) -> Result<()> {
         let nodes = self.module_nodes.get(&module).expect("module not found");
@@ -191,6 +198,34 @@ impl AstLowerer {
         Ok(())
     }
 
+    /// Perform a pass over the AST to resolve all top-level constants
+    pub fn resolve_top_level_consts(&mut self, module: ModuleId) -> Result<()> {
+        let nodes = self.module_nodes.get(&module).expect("module not found");
+        let ctx = Ctx::new(module);
+
+        // TODO: Cloning may not be necessary here...
+        for node in nodes.clone() {
+            if let ast::Node::Const {
+                vis,
+                name,
+                ty,
+                value,
+                ..
+            } = node.into_value()
+            {
+                let name = name.as_ref().map(get_ident_from_ref);
+                let cnst = Const {
+                    vis: ItemVisibility::from_ast(vis),
+                    name,
+                    ty: self.lower_ty_or_infer(&ctx, ty)?,
+                    value: self.lower_expr(&ctx, value)?,
+                };
+                self.hir.consts.insert(ItemId(module, *name.value()), cnst);
+            }
+        }
+        Ok(())
+    }
+
     #[inline]
     fn pass_over_ty_def(
         &self,
@@ -268,6 +303,7 @@ impl AstLowerer {
                     vis: FieldVisibility::from_ast(field.vis),
                     name: get_ident(field.name.into_value()),
                     ty: self.lower_ty(&ctx, field.ty.into_value())?,
+                    // TODO: resolution of this expr should be resolved later
                     default: field
                         .default
                         .map(|d| self.lower_expr(&ctx, d))
@@ -319,7 +355,7 @@ impl AstLowerer {
     }
 
     #[inline]
-    fn lower_ty_or_infer(&mut self, ctx: &Ctx, ty: Option<Spanned<TypeExpr>>) -> Result<Ty> {
+    fn lower_ty_or_infer(&self, ctx: &Ctx, ty: Option<Spanned<TypeExpr>>) -> Result<Ty> {
         if let Some(ty) = ty {
             self.lower_ty(ctx, ty.into_value())
         } else {
@@ -437,17 +473,18 @@ impl AstLowerer {
         }
     }
 
-    /// Lowers a node into an HIR node.
-    pub fn lower_node(&mut self, ctx: &Ctx, node: ast::Node) -> Result<Node> {
-        match node {
-            ast::Node::Expr(expr) => Ok(Node::Expr(self.lower_expr(ctx, expr)?)),
-            ast::Node::Let { pat, ty, value, .. } => Ok(Node::Let {
+    /// Lowers a statement into an HIR node.
+    pub fn lower_stmt(&mut self, ctx: &Ctx, node: Spanned<ast::Node>) -> Result<Option<Node>> {
+        let node = match node.into_value() {
+            ast::Node::Expr(expr) => Node::Expr(self.lower_expr(ctx, expr)?),
+            ast::Node::Let { pat, ty, value, .. } => Node::Let {
                 pat: self.lower_pat(pat.into_value()),
                 ty: self.lower_ty_or_infer(ctx, ty)?,
                 value: value.map(|value| self.lower_expr(ctx, value)).transpose()?,
-            }),
-            _ => todo!(),
-        }
+            },
+            _ => return Ok(None),
+        };
+        Ok(Some(node))
     }
 
     /// Lowers a pattern into an HIR pattern.
@@ -459,6 +496,23 @@ impl AstLowerer {
             },
             _ => todo!(),
         }
+    }
+
+    pub fn lower_body(
+        &mut self,
+        ctx: &Ctx,
+        label: Option<Spanned<String>>,
+        nodes: Vec<Spanned<ast::Node>>,
+    ) -> Result<ScopeId> {
+        let children = nodes
+            .into_iter()
+            .filter_map(|node| self.lower_stmt(ctx, node).transpose())
+            .collect::<Result<_>>()?;
+
+        Ok(self.register_scope(Scope {
+            label: label.map(|l| get_ident(l.into_value())),
+            children,
+        }))
     }
 
     /// Lowers an expression into an HIR node.
@@ -496,14 +550,14 @@ impl AstLowerer {
                     .map(|e| self.lower_expr(ctx, e))
                     .collect::<Result<Vec<_>>>()?,
             ),
-            E::Block { label, body } => Expr::Block(self.register_scope(Scope {
-                label: label.map(|l| get_ident(l.into_value())),
-                children: todo!(),
-            })),
+            E::Block { label, body } => {
+                Expr::Block(self.lower_body(ctx, label, body.into_value())?)
+            }
             _ => todo!(),
         })
     }
 
+    #[inline]
     pub fn lower_ident_expr(&mut self, ctx: &Ctx, ident: Ident) -> Expr {
         let item_id = ItemId(ctx.module, ident);
         if let Some(cnst) = self.hir.consts.get(&item_id) {

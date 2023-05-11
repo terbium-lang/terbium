@@ -11,8 +11,7 @@ use grammar::ast::{self, Indent};
 use internment::Intern;
 use std::{
     collections::HashMap,
-    fmt,
-    fmt::{Display, Formatter},
+    fmt::{self, Display, Formatter},
 };
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -142,6 +141,7 @@ pub struct Scope {
 
 #[derive(Clone, Debug)]
 pub struct Const {
+    pub vis: ItemVisibility,
     pub name: Spanned<Ident>,
     pub ty: Ty,
     pub value: Expr,
@@ -483,7 +483,7 @@ impl Display for TyParam {
         }
         write!(f, "{}", self.name)?;
         if let Some(bound) = self.bound.as_ref() {
-            write!(f, "{bound}")?;
+            write!(f, ": {bound}")?;
         }
         Ok(())
     }

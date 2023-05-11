@@ -40,7 +40,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let mut lowerer = AstLowerer::new(nodes);
 
                 let start = std::time::Instant::now();
-                match lowerer.resolve_top_level_types(ModuleId::from(Src::None)) {
+                match lowerer.resolve_module(ModuleId::from(Src::None)) {
                     Ok(_) => {
                         println!("lower: {:?}", start.elapsed());
                         println!("HIR: {:#?}", lowerer.hir);
