@@ -7,10 +7,11 @@ pub mod error;
 pub mod lower;
 
 use common::span::{Span, Spanned, Src};
-use grammar::ast;
+use grammar::ast::{self, Indent};
 use internment::Intern;
 use std::{
     collections::HashMap,
+    fmt,
     fmt::{Display, Formatter},
 };
 
@@ -18,7 +19,7 @@ use std::{
 pub struct Ident(Intern<String>);
 
 impl Display for Ident {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.0)
     }
 }
@@ -28,7 +29,7 @@ impl Display for Ident {
 pub struct ModuleId(Intern<Vec<String>>);
 
 impl Display for ModuleId {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         if self.0.is_empty() {
             f.write_str("<root>")
         } else {
@@ -71,7 +72,7 @@ pub struct ItemId(
 );
 
 impl Display for ItemId {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}.{}", self.0, self.1)
     }
 }
@@ -213,8 +214,19 @@ pub enum ItemVisibility {
     Private,
 }
 
+impl Display for ItemVisibility {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Public => "public",
+            Self::Lib => "public(lib)",
+            Self::Super => "public(super)",
+            Self::Private => "private",
+        })
+    }
+}
+
 impl ItemVisibility {
-    pub fn from_ast(v: ast::ItemVisibility) -> Self {
+    pub const fn from_ast(v: ast::ItemVisibility) -> Self {
         match v {
             ast::ItemVisibility::Public => Self::Public,
             ast::ItemVisibility::Lib => Self::Lib,
@@ -234,8 +246,34 @@ pub enum MemberVisibility {
     Private,
 }
 
+impl Display for MemberVisibility {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Public => "public",
+            Self::Lib => "public(lib)",
+            Self::Super => "public(super)",
+            Self::Mod => "public(mod)",
+            Self::Sub => "public(sub)",
+            Self::Private => "private",
+        })
+    }
+}
+
 impl MemberVisibility {
-    pub fn from_ast(v: ast::MemberVisibility) -> Self {
+    /// Returns the inner visibility specifier, if any.
+    #[must_use]
+    pub const fn inner_visibility(&self) -> Option<&'static str> {
+        Some(match self {
+            Self::Public => return None,
+            Self::Lib => "lib",
+            Self::Super => "super",
+            Self::Mod => "mod",
+            Self::Sub => "sub",
+            Self::Private => "private",
+        })
+    }
+
+    pub const fn from_ast(v: ast::MemberVisibility) -> Self {
         match v {
             ast::MemberVisibility::Public => Self::Public,
             ast::MemberVisibility::Lib => Self::Lib,
@@ -251,6 +289,21 @@ impl MemberVisibility {
 pub struct FieldVisibility {
     pub get: MemberVisibility,
     pub set: MemberVisibility,
+}
+
+impl Display for FieldVisibility {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str("public(")?;
+        if let Some(vis) = self.get.inner_visibility() {
+            write!(f, "{} ", vis)?;
+        }
+        f.write_str("get, ")?;
+
+        if let Some(vis) = self.set.inner_visibility() {
+            write!(f, "{} ", vis)?;
+        }
+        f.write_str("set)")
+    }
 }
 
 impl FieldVisibility {
@@ -321,7 +374,7 @@ pub enum PrimitiveTy {
 }
 
 impl Display for PrimitiveTy {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Int(sign, width) => {
                 if *sign == IntSign::Unsigned {
@@ -377,15 +430,26 @@ impl Ty {
             other => other,
         }
     }
+
+    fn iter_unknown_types<'a>(&'a mut self) -> Box<dyn Iterator<Item = &'a mut Self> + 'a> {
+        match self {
+            Self::Unknown => Box::new(std::iter::once(self)),
+            Self::Tuple(tys) => Box::new(tys.iter_mut().flat_map(|ty| ty.iter_unknown_types())),
+            Self::Struct(_, args) => {
+                Box::new(args.iter_mut().flat_map(|ty| ty.iter_unknown_types()))
+            }
+            _ => Box::new(std::iter::empty()),
+        }
+    }
+}
+
+#[inline]
+fn join_tys_by_comma<'a>(tys: impl Iterator<Item = &'a Ty> + 'a) -> String {
+    tys.map(ToString::to_string).collect::<Vec<_>>().join(", ")
 }
 
 impl Display for Ty {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        #[inline]
-        fn join_tys_by_comma<'a>(tys: impl Iterator<Item = &'a Ty> + 'a) -> String {
-            tys.map(ToString::to_string).collect::<Vec<_>>().join(", ")
-        }
-
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Unknown => f.write_str("<unknown>"),
             Self::Primitive(p) => write!(f, "{p}"),
@@ -412,6 +476,19 @@ pub struct TyParam {
     pub infer: bool,
 }
 
+impl Display for TyParam {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        if self.infer {
+            f.write_str("infer ")?;
+        }
+        write!(f, "{}", self.name)?;
+        if let Some(bound) = self.bound.as_ref() {
+            write!(f, "{bound}")?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct StructField {
     pub vis: FieldVisibility,
@@ -420,12 +497,45 @@ pub struct StructField {
     pub default: Option<Expr>,
 }
 
+impl Display for StructField {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {}: {}", self.vis, self.name, self.ty)?;
+        if let Some(_default) = &self.default {
+            write!(f, "{{default}}")?; // TODO
+        }
+        Ok(())
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct StructTy {
     pub vis: ItemVisibility,
     pub name: Spanned<Ident>,
     pub ty_params: Vec<TyParam>,
     pub fields: Vec<StructField>,
+}
+
+impl Display for StructTy {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{} struct {}", self.vis, self.name)?;
+        if !self.ty_params.is_empty() {
+            write!(
+                f,
+                "<{}>",
+                self.ty_params
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )?;
+        }
+
+        write!(f, " {{\n")?;
+        for field in &self.fields {
+            format!("{field},").write_indent(f)?;
+        }
+        write!(f, "}}")
+    }
 }
 
 impl StructTy {

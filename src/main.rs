@@ -45,11 +45,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         println!("lower: {:?}", start.elapsed());
                         println!("HIR: {:#?}", lowerer.hir);
 
-                        for (sid, sty) in lowerer.hir.structs {
-                            println!("struct {sid}");
-                            for field in sty.fields {
-                                println!("  {}: {}", field.name, field.ty);
-                            }
+                        for (_, sty) in lowerer.hir.structs {
+                            println!("{sty}");
                         }
                     }
                     Err(error) => {
