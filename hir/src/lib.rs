@@ -29,15 +29,19 @@ pub struct ModuleId(Intern<Vec<String>>);
 
 impl Display for ModuleId {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            self.0
-                .iter()
-                .map(AsRef::as_ref)
-                .collect::<Vec<_>>()
-                .join(".")
-        )
+        if self.0.is_empty() {
+            f.write_str("<root>")
+        } else {
+            write!(
+                f,
+                "{}",
+                self.0
+                    .iter()
+                    .map(AsRef::as_ref)
+                    .collect::<Vec<_>>()
+                    .join(".")
+            )
+        }
     }
 }
 
@@ -65,6 +69,12 @@ pub struct ItemId(
     /// The name of the item, which is unique within the module.
     Ident,
 );
+
+impl Display for ItemId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}.{}", self.0, self.1)
+    }
+}
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct ScopeId(usize);
@@ -300,6 +310,33 @@ pub enum PrimitiveTy {
     Void,
 }
 
+impl Display for PrimitiveTy {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Int(sign, width) => {
+                if *sign == IntSign::Unsigned {
+                    f.write_str("u")?;
+                }
+                f.write_str("int")?;
+                if *width != IntWidth::Unknown {
+                    write!(f, "{}", *width as isize)?;
+                }
+                Ok(())
+            }
+            Self::Float(width) => {
+                f.write_str("float")?;
+                if *width != FloatWidth::Unknown {
+                    write!(f, "{}", *width as isize)?;
+                }
+                Ok(())
+            }
+            Self::Bool => f.write_str("bool"),
+            Self::Char => f.write_str("char"),
+            Self::Void => f.write_str("void"),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum Ty {
     Unknown,
@@ -325,6 +362,31 @@ impl Ty {
                     .collect(),
             ),
             other => other,
+        }
+    }
+}
+
+impl Display for Ty {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        #[inline]
+        fn join_tys_by_comma<'a>(tys: impl Iterator<Item = &'a Ty> + 'a) -> String {
+            tys.map(ToString::to_string).collect::<Vec<_>>().join(", ")
+        }
+
+        match self {
+            Self::Unknown => f.write_str("<unknown>"),
+            Self::Primitive(p) => write!(f, "{p}"),
+            Self::Generic(i) => write!(f, "{i}"),
+            Self::Tuple(tys) => {
+                write!(f, "({})", join_tys_by_comma(tys.iter()))
+            }
+            Self::Struct(sid, args) => {
+                write!(f, "{sid}")?;
+                if !args.is_empty() {
+                    write!(f, "<{}>", join_tys_by_comma(args.iter()))?;
+                }
+                Ok(())
+            }
         }
     }
 }

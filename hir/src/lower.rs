@@ -4,11 +4,13 @@ use crate::{
     Literal, ModuleId, Node, Op, Pattern, PrimitiveTy, Scope, ScopeId, StructField, StructTy, Ty,
     TyDef, TyParam,
 };
-use common::span::Spanned;
-use grammar::ast::{StructDef, TypeExpr, TypePath};
-use grammar::{ast, token::IntLiteralInfo};
+use common::span::{Span, Spanned};
+use grammar::{
+    ast::{self, StructDef, TypeExpr, TypePath},
+    token::IntLiteralInfo,
+};
 use internment::Intern;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 const BOOL: Ty = Ty::Primitive(PrimitiveTy::Bool);
 
@@ -17,8 +19,13 @@ type NamedTyDef = (ItemId, TyDef);
 /// A temporary state used when lowering an AST to HIR.
 #[must_use = "the HIR is only constructed when this is used"]
 pub struct AstLowerer {
+    /// Synchronously increasing scope ID
     scope_id: ScopeId,
+    /// Lookup of module ASTs given a module ID
     module_nodes: HashMap<ModuleId, Vec<Spanned<ast::Node>>>,
+    /// During the lowering of structs to typerefs, this keeps a list of structs that need to
+    /// inherit fields.
+    sty_needs_field_resolution: HashMap<ItemId, (Span, ItemId, Spanned<TypePath>, Vec<Ty>)>,
     /// The HIR being constructed.
     pub hir: Hir,
 }
@@ -36,15 +43,35 @@ impl Ctx {
             ty_params: Vec::new(),
         }
     }
-
-    fn with_ty_params(self, ty_params: Vec<TyParam>) -> Self {
-        Self { ty_params, ..self }
-    }
 }
 
 #[inline]
-fn ty_params_into_ty(ty_params: &[TyParam]) -> Vec<Ty> {
-    ty_params.iter().map(|tp| Ty::Generic(tp.name)).collect()
+fn get_ident(ident: String) -> Ident {
+    Ident(Intern::new(ident))
+}
+
+#[inline]
+fn get_ident_from_ref(ident: impl AsRef<str>) -> Ident {
+    Ident(Intern::from_ref(ident.as_ref()))
+}
+
+#[inline]
+fn ty_params_into_ty(ty_params: &[ast::TyParam]) -> Vec<Ty> {
+    ty_params
+        .iter()
+        .map(|tp| Ty::Generic(get_ident_from_ref(tp.name.value())))
+        .collect()
+}
+
+#[inline]
+fn ty_params_into_unbounded_ty_param(ty_params: &[ast::TyParam]) -> Vec<TyParam> {
+    ty_params
+        .iter()
+        .map(|tp| TyParam {
+            name: get_ident_from_ref(tp.name.value()),
+            bound: None,
+        })
+        .collect()
 }
 
 impl AstLowerer {
@@ -53,13 +80,9 @@ impl AstLowerer {
         Self {
             scope_id: ScopeId(1),
             module_nodes: HashMap::from([(ModuleId::root(), root)]),
+            sty_needs_field_resolution: HashMap::new(),
             hir: Hir::default(),
         }
-    }
-
-    #[inline]
-    fn get_ident(&self, ident: String) -> Ident {
-        Ident(Intern::new(ident))
     }
 
     #[inline]
@@ -80,75 +103,119 @@ impl AstLowerer {
 
     /// Perform a pass over the AST to simply resolve all top-level types.
     pub fn resolve_top_level_types(&mut self, module: ModuleId) -> Result<()> {
-        for node in self
-            .module_nodes
-            .get(&module)
-            .cloned()
-            .expect("module not found")
-        {
-            if let Some((item_id, ty_def)) = self.register_ty_def(module, &node)? {
+        let nodes = self.module_nodes.get(&module).expect("module not found");
+
+        // Do a pass over all types to identify them
+        for node in nodes {
+            if let Some((item_id, ty_def)) = self.pass_over_ty_def(module, node)? {
                 self.hir.types.insert(item_id, ty_def);
             }
         }
+
+        // Do a second pass to register and resolve types
+        for Spanned(node, _) in nodes.clone() {
+            match node {
+                ast::Node::Struct(sct) => {
+                    let sct_name = sct.name.clone();
+                    let ident = get_ident(sct_name.0.clone());
+                    let item_id = ItemId(module, ident);
+                    let sty = self.lower_struct_def_into_ty(module, sct.clone())?;
+
+                    // Update type parameters with their bounds
+                    if let Some(ty_def) = self.hir.types.get_mut(&item_id) {
+                        ty_def.ty_params = sty.ty_params.clone();
+                    }
+                    if let Some(occupied) = self.hir.structs.insert(item_id, sty) {
+                        return Err(Error::NameConflict(occupied.name.span(), sct_name));
+                    }
+                }
+                _ => (),
+            }
+        }
+
+        let mut sty_parents =
+            std::mem::replace(&mut self.sty_needs_field_resolution, HashMap::new());
+
+        // Do a pass over all structs to resolve parent fields
+        while !sty_parents.is_empty() {
+            let mut seen = HashMap::with_capacity(sty_parents.len());
+            // Grab the next struct item ID to resolve
+            let mut key = unsafe {
+                // SAFETY: sty_parents is guaranteed to have elements
+                *sty_parents.keys().next().unwrap_unchecked()
+            };
+
+            let mut removed = Vec::with_capacity(sty_parents.len());
+            // Walk up in the FRO (field resolution order) tree, checking if we encounter
+            // a seen type again, and if so, this is a circular type reference.
+            while let Some((sid, (src_span, pid, dest, args))) = sty_parents.remove_entry(&key) {
+                // Has the destination type been seen?
+                if let Some(&circular_at) = seen.get(&pid) {
+                    // If so, this is a circular type reference
+                    return Err(Error::CircularTypeReference {
+                        src: Spanned(sid.1, src_span),
+                        dest,
+                        circular_at,
+                    });
+                }
+
+                let fields = self
+                    .hir
+                    .structs
+                    .get(&pid)
+                    .cloned()
+                    .expect("struct not found, this is a bug")
+                    .into_adhoc_struct_ty_with_applied_ty_params(Some(dest.span()), args)?
+                    .fields;
+                removed.push(sid);
+
+                for child in &removed {
+                    let sty = self
+                        .hir
+                        .structs
+                        .get_mut(&child)
+                        .expect("struct not found, this is a bug");
+
+                    let mut fields = fields.clone();
+                    fields.append(&mut sty.fields);
+                    sty.fields = fields;
+                }
+
+                key = pid;
+                seen.insert(sid, src_span);
+            }
+        }
+
         Ok(())
     }
 
     #[inline]
-    fn resolve_ty_def(
+    fn pass_over_ty_def(
         &self,
         module: ModuleId,
         Spanned(node, _span): &Spanned<ast::Node>,
     ) -> Result<Option<NamedTyDef>> {
-        // SAFETY: this is not safe at all
-        let self_mut = unsafe { &mut *(self as *const Self as *mut Self) };
         Ok(match node {
-            ast::Node::Struct(sct) => Some(self_mut.resolve_struct_def(module, sct)?.1),
+            ast::Node::Struct(sct) => Some(self.pass_over_struct_def(module, sct)?),
             _ => None,
         })
     }
 
-    #[inline]
-    fn register_ty_def(
-        &mut self,
-        module: ModuleId,
-        Spanned(node, _span): &Spanned<ast::Node>,
-    ) -> Result<Option<NamedTyDef>> {
-        Ok(match node {
-            ast::Node::Struct(sct) => {
-                let sct_name = sct.name.clone();
-                let (sty, def) = self.resolve_struct_def(module, sct)?;
-
-                if let Some(occupied) = self.hir.structs.insert(def.0, sty) {
-                    return Err(Error::NameConflict(occupied.name.span(), sct_name));
-                }
-                Some(def)
-            }
-            _ => None,
-        })
-    }
-
-    fn resolve_struct_def(
-        &mut self,
-        module: ModuleId,
-        sct: &StructDef,
-    ) -> Result<(StructTy, NamedTyDef)> {
+    fn pass_over_struct_def(&self, module: ModuleId, sct: &StructDef) -> Result<NamedTyDef> {
         let sct_name = sct.name.clone();
-        let ident = self.get_ident(sct_name.0.clone());
+        let ident = get_ident(sct_name.0.clone());
         let item_id = ItemId(module, ident);
 
-        let sty = self.lower_struct_def_into_ty(module, sct.clone())?;
-        let ty_params = sty.ty_params.clone();
-        let gen_params = ty_params_into_ty(&ty_params);
-
-        let def = (
+        Ok((
             item_id,
             TyDef {
-                name: sct_name.map(|ident| self.get_ident(ident)),
-                ty: Ty::Struct(item_id, gen_params),
-                ty_params,
+                name: sct_name.map(|ident| get_ident(ident)),
+                ty: Ty::Struct(item_id, ty_params_into_ty(&sct.ty_params)),
+                // This is only a pass over the struct def, so we don't actually care about
+                // the type bounds
+                ty_params: ty_params_into_unbounded_ty_param(&sct.ty_params),
             },
-        );
-        Ok((sty, def))
+        ))
     }
 
     pub fn lower_struct_def_into_ty(
@@ -160,7 +227,7 @@ impl AstLowerer {
         let mut ctx = Ctx::new(module);
         for param in struct_def.ty_params {
             let param = TyParam {
-                name: self.get_ident(param.name.into_value()),
+                name: get_ident(param.name.into_value()),
                 bound: param
                     .bound
                     .map(|bound| self.lower_ty(&ctx, bound.into_value()))
@@ -170,52 +237,48 @@ impl AstLowerer {
             ctx.ty_params.push(param);
         }
 
-        // Lower all parent fields
-        let mut fields = if let Some(parent) = struct_def.extends {
+        // Acknowledge fields from parent struct, we will resolve them later
+        if let Some(parent) = struct_def.extends {
             if let TypeExpr::Path(path) = parent.value() {
-                let path_span = path.span();
                 let ty = self.lower_ty_path(&ctx, path.clone())?;
+
                 if let Ty::Struct(sid, args) = ty {
-                    let applied = self
-                        .hir
-                        .structs
-                        .get(&sid)
-                        .cloned()
-                        .expect("struct not found, this is a bug")
-                        .into_adhoc_struct_ty_with_applied_ty_params(Some(path_span), args)?;
-                    applied.fields
+                    // Defer the field resolution to later
+                    self.sty_needs_field_resolution.insert(
+                        ItemId(module, get_ident_from_ref(struct_def.name.value())),
+                        (struct_def.name.span(), sid, path.clone(), args),
+                    );
                 } else {
                     return Err(Error::CannotExtendFieldsFromType(parent));
                 }
             } else {
                 return Err(Error::CannotExtendFieldsFromType(parent));
             }
-        } else {
-            Vec::new()
-        };
+        }
 
         // Lower the struct fields
-        fields.extend(
-            struct_def
-                .fields
-                .into_iter()
-                .map(|Spanned(field, _)| {
-                    Ok(StructField {
-                        vis: FieldVisibility::from_ast(field.vis),
-                        name: self.get_ident(field.name.into_value()),
-                        ty: self.lower_ty(&ctx, field.ty.into_value())?,
-                        default: field
-                            .default
-                            .map(|d| self.lower_expr(&ctx, d))
-                            .transpose()?,
-                    })
+        let fields = struct_def
+            .fields
+            .into_iter()
+            .map(|Spanned(field, _)| {
+                Ok(StructField {
+                    vis: FieldVisibility::from_ast(field.vis),
+                    name: get_ident(field.name.into_value()),
+                    ty: self.lower_ty(&ctx, field.ty.into_value())?,
+                    default: field
+                        .default
+                        .map(|d| self.lower_expr(&ctx, d))
+                        .transpose()?,
                 })
-                .collect::<Result<Vec<_>>>()?,
-        );
+            })
+            .collect::<Result<Vec<_>>>()?;
 
         Ok(StructTy {
             vis: ItemVisibility::from_ast(struct_def.vis),
-            name: struct_def.name.map(|name| self.get_ident(name)),
+            name: struct_def
+                .name
+                .as_ref()
+                .map(|name| get_ident_from_ref(name)),
             ty_params: ctx.ty_params,
             fields,
         })
@@ -277,7 +340,7 @@ impl AstLowerer {
 
         // UNWRAP: We know that we have at least one segment
         let tail = ty_module.pop().unwrap();
-        let ident = self.get_ident(tail.clone());
+        let ident = get_ident(tail.clone());
         let span = span_parts.pop().unwrap();
         let mid = if ty_module.is_empty() {
             // Check if the tail is a type parameter
@@ -296,10 +359,7 @@ impl AstLowerer {
             .types
             .get(&lookup)
             .cloned()
-            .map(Ok)
-            // TODO: fix this line, which should allow for forward declarations (i.e. top-level structs that are declared after they are used)
-            // .or_else(|| self.find_ty(lookup, span.end).transpose())
-            .ok_or(Error::TypeNotFound(full_span, Spanned(tail, span), mid))??;
+            .ok_or(Error::TypeNotFound(full_span, Spanned(tail, span), mid))?;
 
         let ty_params = match application {
             Some(app) => app
@@ -311,23 +371,6 @@ impl AstLowerer {
             None => Vec::new(),
         };
         ty_def.apply_params(span, ty_params)
-    }
-
-    /// Does a linear search for a type that matches the lookup.
-    pub fn find_ty(&self, item_id: ItemId, offset: usize) -> Result<Option<TyDef>> {
-        let module = item_id.0;
-        for node in self.module_nodes.get(&module).unwrap() {
-            // Skip nodes that are before the offset
-            if node.span().start < offset {
-                continue;
-            }
-            if let Ok(Some((item, def))) = self.resolve_ty_def(module, node)
-                && item == item_id
-            {
-                return Ok(Some(def));
-            }
-        }
-        Ok(None)
     }
 
     pub fn lower_ty_ident_into_primitive(s: &str) -> Option<PrimitiveTy> {
@@ -379,7 +422,7 @@ impl AstLowerer {
     pub fn lower_pat(&mut self, pat: ast::Pattern) -> Pattern {
         match pat {
             ast::Pattern::Ident { ident, mut_kw } => Pattern::Ident {
-                ident: self.get_ident(ident.into_value()),
+                ident: get_ident(ident.into_value()),
                 is_mut: mut_kw.is_some(),
             },
             _ => todo!(),
@@ -422,7 +465,7 @@ impl AstLowerer {
                     .collect::<Result<Vec<_>>>()?,
             ),
             E::Block { label, body } => Expr::Block(self.register_scope(Scope {
-                label: label.map(|l| self.get_ident(l.into_value())),
+                label: label.map(|l| get_ident(l.into_value())),
                 children: todo!(),
             })),
             _ => todo!(),
@@ -493,7 +536,7 @@ impl AstLowerer {
 
         let (atom, span) = atom.into_inner();
         Ok(match atom {
-            A::Ident(ident) => self.lower_ident_expr(ctx, self.get_ident(ident)),
+            A::Ident(ident) => self.lower_ident_expr(ctx, get_ident(ident)),
             A::Int(int, IntLiteralInfo { unsigned, .. }) => Expr::Literal(if unsigned {
                 Literal::UInt(
                     int.parse()

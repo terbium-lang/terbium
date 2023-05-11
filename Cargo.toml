@@ -19,7 +19,6 @@ categories = ["compilers", "command-line-interface", "parsing", "wasm"]
 members = ["common", "grammar", "hir"]
 
 [dependencies]
-chumsky = "1.0.0-alpha.3"
 common = { path = "common" }
 grammar = { path = "grammar" }
 hir = { path = "hir" }
