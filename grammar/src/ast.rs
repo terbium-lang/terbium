@@ -1015,7 +1015,7 @@ pub enum Expr {
     },
 }
 
-trait Indent {
+pub trait Indent {
     /// Indent all lines of the string by 4 spaces.
     fn write_indent(&self, f: &mut Formatter<'_>) -> fmt::Result;
 }

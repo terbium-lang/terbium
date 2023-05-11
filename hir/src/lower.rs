@@ -187,6 +187,7 @@ impl AstLowerer {
             }
         }
 
+        self.desugar_inferred_types_in_structs();
         Ok(())
     }
 
@@ -259,7 +260,7 @@ impl AstLowerer {
         }
 
         // Lower the struct fields
-        let mut fields = struct_def
+        let fields = struct_def
             .fields
             .into_iter()
             .map(|Spanned(field, _)| {
@@ -275,21 +276,6 @@ impl AstLowerer {
             })
             .collect::<Result<Vec<_>>>()?;
 
-        // Desugar inference type into generics that will be inferred anyways
-        for (i, field) in fields
-            .iter_mut()
-            .filter(|field| field.ty == Ty::Unknown)
-            .enumerate()
-        {
-            let name = get_ident(format!("_{i}"));
-            ctx.ty_params.push(TyParam {
-                name,
-                bound: None,
-                infer: true,
-            });
-            field.ty = Ty::Generic(name);
-        }
-
         Ok(StructTy {
             vis: ItemVisibility::from_ast(struct_def.vis),
             name: struct_def
@@ -299,6 +285,37 @@ impl AstLowerer {
             ty_params: ctx.ty_params,
             fields,
         })
+    }
+
+    /// Desugar inferred types in structs to generics, e.g.:
+    ///
+    /// ```text
+    /// struct A { a: _ }
+    /// ```
+    ///
+    /// Desugars to:
+    ///
+    /// ```text
+    /// struct A<__0> { a: __0 }
+    /// ```
+    fn desugar_inferred_types_in_structs(&mut self) {
+        for sty in self.hir.structs.values_mut() {
+            // Desugar inference type into generics that will be inferred anyways
+            for (i, ty) in sty
+                .fields
+                .iter_mut()
+                .flat_map(|field| field.ty.iter_unknown_types())
+                .enumerate()
+            {
+                let name = get_ident(format!("__{i}"));
+                sty.ty_params.push(TyParam {
+                    name,
+                    bound: None,
+                    infer: true,
+                });
+                *ty = Ty::Generic(name);
+            }
+        }
     }
 
     #[inline]
@@ -422,11 +439,9 @@ impl AstLowerer {
 
     /// Lowers a node into an HIR node.
     pub fn lower_node(&mut self, ctx: &Ctx, node: ast::Node) -> Result<Node> {
-        use ast::Node as N;
-
         match node {
-            N::Expr(expr) => Ok(Node::Expr(self.lower_expr(ctx, expr)?)),
-            N::Let { pat, ty, value, .. } => Ok(Node::Let {
+            ast::Node::Expr(expr) => Ok(Node::Expr(self.lower_expr(ctx, expr)?)),
+            ast::Node::Let { pat, ty, value, .. } => Ok(Node::Let {
                 pat: self.lower_pat(pat.into_value()),
                 ty: self.lower_ty_or_infer(ctx, ty)?,
                 value: value.map(|value| self.lower_expr(ctx, value)).transpose()?,
