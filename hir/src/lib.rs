@@ -147,6 +147,11 @@ pub struct Const {
 }
 
 #[inline]
+fn ty_params_len(params: &[TyParam]) -> usize {
+    params.iter().position(|p| p.infer).unwrap_or(params.len())
+}
+
+#[inline]
 fn assert_equal_params_length(
     span: Span,
     ty_name: Spanned<Ident>,
@@ -173,7 +178,12 @@ pub struct TyDef {
 
 impl TyDef {
     pub fn apply_params(&self, span: Span, params: Vec<Ty>) -> Result<Ty, error::AstLoweringError> {
-        assert_equal_params_length(span, self.name, self.ty_params.len(), params.len())?;
+        assert_equal_params_length(
+            span,
+            self.name,
+            ty_params_len(&self.ty_params),
+            params.len(),
+        )?;
 
         let mut ty = self.ty.clone();
         for (param, arg) in self.ty_params.iter().zip(params) {
@@ -337,7 +347,7 @@ impl Display for PrimitiveTy {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Ty {
     Unknown,
     Primitive(PrimitiveTy),
@@ -348,6 +358,9 @@ pub enum Ty {
 
 impl Ty {
     fn subst(self, param: &TyParam, ty: Ty) -> Self {
+        if param.infer {
+            return Self::Unknown;
+        }
         match self {
             Self::Generic(p) if p == param.name => ty,
             Self::Tuple(tys) => Self::Tuple(
@@ -395,6 +408,8 @@ impl Display for Ty {
 pub struct TyParam {
     pub name: Ident,
     pub bound: Option<Box<Ty>>,
+    /// Indicates you cannot explicitly specify this type
+    pub infer: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -422,7 +437,7 @@ impl StructTy {
         assert_equal_params_length(
             span.unwrap_or(self.name.span()),
             self.name,
-            self.ty_params.len(),
+            ty_params_len(&self.ty_params),
             params.len(),
         )?;
 

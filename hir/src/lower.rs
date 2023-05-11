@@ -70,6 +70,7 @@ fn ty_params_into_unbounded_ty_param(ty_params: &[ast::TyParam]) -> Vec<TyParam>
         .map(|tp| TyParam {
             name: get_ident_from_ref(tp.name.value()),
             bound: None,
+            infer: false,
         })
         .collect()
 }
@@ -233,6 +234,7 @@ impl AstLowerer {
                     .map(|bound| self.lower_ty(&ctx, bound.into_value()))
                     .transpose()?
                     .map(Box::new),
+                infer: false,
             };
             ctx.ty_params.push(param);
         }
@@ -257,7 +259,7 @@ impl AstLowerer {
         }
 
         // Lower the struct fields
-        let fields = struct_def
+        let mut fields = struct_def
             .fields
             .into_iter()
             .map(|Spanned(field, _)| {
@@ -272,6 +274,21 @@ impl AstLowerer {
                 })
             })
             .collect::<Result<Vec<_>>>()?;
+
+        // Desugar inference type into generics that will be inferred anyways
+        for (i, field) in fields
+            .iter_mut()
+            .filter(|field| field.ty == Ty::Unknown)
+            .enumerate()
+        {
+            let name = get_ident(format!("_{i}"));
+            ctx.ty_params.push(TyParam {
+                name,
+                bound: None,
+                infer: true,
+            });
+            field.ty = Ty::Generic(name);
+        }
 
         Ok(StructTy {
             vis: ItemVisibility::from_ast(struct_def.vis),
