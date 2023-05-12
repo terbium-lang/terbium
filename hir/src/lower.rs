@@ -1,10 +1,11 @@
 use crate::{
     error::{AstLoweringError as Error, Result},
-    Const, Expr, FieldVisibility, FloatWidth, Hir, Ident, IntSign, IntWidth, ItemId,
-    ItemVisibility, Literal, ModuleId, Node, Op, Pattern, PrimitiveTy, Scope, ScopeId, StructField,
-    StructTy, Ty, TyDef, TyParam,
+    Const, Expr, FieldVisibility, FloatWidth, Hir, Ident, IntSign, IntWidth, ItemId, Literal,
+    ModuleId, Node, Op, Pattern, PrimitiveTy, Scope, ScopeId, StructField, StructTy, Ty, TyDef,
+    TyParam,
 };
 use common::span::{Span, Spanned};
+use grammar::ast::While;
 use grammar::{
     ast::{self, StructDef, TypeExpr, TypePath},
     token::IntLiteralInfo,
@@ -215,7 +216,7 @@ impl AstLowerer {
             {
                 let name = name.as_ref().map(get_ident_from_ref);
                 let cnst = Const {
-                    vis: ItemVisibility::from_ast(vis),
+                    vis,
                     name,
                     ty: self.lower_ty_or_infer(&ctx, ty)?,
                     value: self.lower_expr(&ctx, value)?,
@@ -300,7 +301,7 @@ impl AstLowerer {
             .into_iter()
             .map(|Spanned(field, _)| {
                 Ok(StructField {
-                    vis: FieldVisibility::from_ast(field.vis),
+                    vis: FieldVisibility::from_ast(field.vis)?,
                     name: get_ident(field.name.into_value()),
                     ty: self.lower_ty(&ctx, field.ty.into_value())?,
                     // TODO: resolution of this expr should be resolved later
@@ -313,7 +314,7 @@ impl AstLowerer {
             .collect::<Result<Vec<_>>>()?;
 
         Ok(StructTy {
-            vis: ItemVisibility::from_ast(struct_def.vis),
+            vis: struct_def.vis,
             name: struct_def
                 .name
                 .as_ref()
@@ -501,16 +502,13 @@ impl AstLowerer {
     pub fn lower_body(
         &mut self,
         ctx: &Ctx,
-        label: Option<Spanned<String>>,
+        label: &Option<Spanned<String>>,
         nodes: Vec<Spanned<ast::Node>>,
     ) -> Result<ScopeId> {
-        let children = nodes
-            .into_iter()
-            .filter_map(|node| self.lower_stmt(ctx, node).transpose())
-            .collect::<Result<_>>()?;
+        let children = self.lower_ast_nodes(ctx, nodes)?;
 
         Ok(self.register_scope(Scope {
-            label: label.map(|l| get_ident(l.into_value())),
+            label: label.as_ref().map(|l| get_ident_from_ref(l.value())),
             children,
         }))
     }

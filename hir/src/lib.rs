@@ -8,6 +8,7 @@ pub mod lower;
 
 use common::span::{Span, Spanned, Src};
 use grammar::ast::{self, Indent};
+pub use grammar::ast::{ItemVisibility, MemberVisibility};
 use internment::Intern;
 use std::{
     collections::HashMap,
@@ -201,90 +202,6 @@ pub enum Pattern {
     Tuple(Vec<Self>),
 }
 
-/// Visibility of a top-level item.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub enum ItemVisibility {
-    /// The item is visible to all other items in the program.
-    Public,
-    /// The item is visible to all other items in the library.
-    Lib,
-    /// The item is visible to all items in the parent module and its submodules.
-    Super,
-    /// The item is only visible to the current module. This is the default visibility.
-    Private,
-}
-
-impl Display for ItemVisibility {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::Public => "public",
-            Self::Lib => "public(lib)",
-            Self::Super => "public(super)",
-            Self::Private => "private",
-        })
-    }
-}
-
-impl ItemVisibility {
-    pub const fn from_ast(v: ast::ItemVisibility) -> Self {
-        match v {
-            ast::ItemVisibility::Public => Self::Public,
-            ast::ItemVisibility::Lib => Self::Lib,
-            ast::ItemVisibility::Super => Self::Super,
-            ast::ItemVisibility::Mod => Self::Private,
-        }
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub enum MemberVisibility {
-    Public,
-    Lib,
-    Super,
-    Mod,
-    Sub,
-    Private,
-}
-
-impl Display for MemberVisibility {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Self::Public => "public",
-            Self::Lib => "public(lib)",
-            Self::Super => "public(super)",
-            Self::Mod => "public(mod)",
-            Self::Sub => "public(sub)",
-            Self::Private => "private",
-        })
-    }
-}
-
-impl MemberVisibility {
-    /// Returns the inner visibility specifier, if any.
-    #[must_use]
-    pub const fn inner_visibility(&self) -> Option<&'static str> {
-        Some(match self {
-            Self::Public => return None,
-            Self::Lib => "lib",
-            Self::Super => "super",
-            Self::Mod => "mod",
-            Self::Sub => "sub",
-            Self::Private => "private",
-        })
-    }
-
-    pub const fn from_ast(v: ast::MemberVisibility) -> Self {
-        match v {
-            ast::MemberVisibility::Public => Self::Public,
-            ast::MemberVisibility::Lib => Self::Lib,
-            ast::MemberVisibility::Super => Self::Super,
-            ast::MemberVisibility::Mod => Self::Mod,
-            ast::MemberVisibility::Sub => Self::Sub,
-            ast::MemberVisibility::Private => Self::Private,
-        }
-    }
-}
-
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct FieldVisibility {
     pub get: MemberVisibility,
@@ -307,10 +224,14 @@ impl Display for FieldVisibility {
 }
 
 impl FieldVisibility {
-    pub fn from_ast(v: ast::FieldVisibility) -> Self {
-        Self {
-            get: MemberVisibility::from_ast(v.get.0),
-            set: MemberVisibility::from_ast(v.set.0),
+    pub fn from_ast(v: Spanned<ast::FieldVisibility>) -> error::Result<Self> {
+        if v.0.get.0 < v.0.set.0 {
+            Err(error::AstLoweringError::GetterLessVisibleThanSetter(v))
+        } else {
+            Ok(Self {
+                get: v.0.get.0,
+                set: v.0.set.0,
+            })
         }
     }
 }
@@ -674,8 +595,7 @@ pub enum Expr {
     GetAttr(Box<Self>, Ident),
     SetAttr(Box<Self>, Ident, Box<Self>),
     Block(ScopeId),
-    If(Box<Self>, ScopeId, ScopeId),
-    While(Box<Self>, ScopeId, ScopeId),
+    If(Box<Self>, ScopeId, Option<ScopeId>),
     Loop(ScopeId),
     Assign(Pattern, Box<Self>),
 }

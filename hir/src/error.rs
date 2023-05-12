@@ -4,6 +4,7 @@ use common::{
     pluralize,
     span::{ProviderCache, Span, Spanned},
 };
+use grammar::ast;
 use grammar::ast::{TypeExpr, TypePath};
 use std::{
     fmt::{Display, Formatter},
@@ -49,6 +50,8 @@ pub enum AstLoweringError {
         /// The span where the type being referenced references the source type again.
         circular_at: Span,
     },
+    /// Visibility for field access is less than the visibility for field mutation.
+    GetterLessVisibleThanSetter(Spanned<ast::FieldVisibility>),
 }
 
 impl Display for AstLoweringError {
@@ -89,6 +92,13 @@ impl Display for AstLoweringError {
                     "circular type `{src}` references `{dest}`, which references `{src}` again"
                 )
             }
+            Self::GetterLessVisibleThanSetter(vis) => {
+                write!(
+                    f,
+                    "getter is less visible than setter ({} < {})",
+                    vis.0.get.0, vis.0.set.0
+                )
+            }
         }
     }
 }
@@ -106,6 +116,7 @@ impl AstLoweringError {
             Self::ModuleNotFound(..) => "could not resolve module",
             Self::IncorrectTypeArgumentCount { .. } => "incorrect number of type arguments",
             Self::CircularTypeReference { .. } => "encountered circular type reference",
+            Self::GetterLessVisibleThanSetter { .. } => "getter is less visible than setter",
         }
     }
 
@@ -123,6 +134,7 @@ impl AstLoweringError {
                 dest,
                 circular_at,
             } => src.span().merge(dest.span()).merge(*circular_at),
+            Self::GetterLessVisibleThanSetter(vis) => vis.span(),
         }
     }
 
@@ -136,6 +148,7 @@ impl AstLoweringError {
             Self::ModuleNotFound(..) => 105,
             Self::IncorrectTypeArgumentCount { .. } => 106,
             Self::CircularTypeReference { .. } => 107,
+            Self::GetterLessVisibleThanSetter(_) => 108,
         }
     }
 
@@ -154,8 +167,8 @@ impl AstLoweringError {
                 report
                     .with_label(
                         Label::new(ty.span())
-                                    .with_message(format!("cannot extend fields from `{ty}`"))
-                                    .with_color(primary),
+                            .with_message(format!("cannot extend fields from `{ty}`"))
+                            .with_color(primary),
                     )
                     .with_help("you can only extend fields from concrete struct types, nothing else")
             },
@@ -234,7 +247,28 @@ impl AstLoweringError {
                         .with_color(colors.next())
                     )
                     .with_help("try adding a level of indirection or removing the circular type completely")
-            },
+            }
+            Self::GetterLessVisibleThanSetter(Spanned(vis, _)) => {
+                if let Some(get_span) = vis.get.1 {
+                    report.add_label(Label::new(get_span)
+                        .with_message(format!("visibility of getter defined as {} here", vis.get.0))
+                        .with_color(primary)
+                    );
+                    report.set_help("try generalizing visibility to both get and set");
+                } else {
+                    report.set_note(format!("visibility of getter is implied to be {}", vis.get.0));
+                }
+                if let Some(set_span) = vis.set.1 {
+                    report.add_label(Label::new(set_span)
+                        .with_message(format!("visibility of setter defined as {} here", vis.set.0))
+                        .with_color(colors.next())
+                    );
+                    report.set_help("try unspecifying the setter visibility");
+                } else {
+                    report.set_note(format!("visibility of setter is implied to be {}", vis.set.0));
+                }
+                report
+            }
         };
 
         report.finish().write(cache, writer)
