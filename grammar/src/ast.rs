@@ -429,7 +429,7 @@ impl Display for ItemVisibility {
 }
 
 /// A visibility specifier of a type member.
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum MemberVisibility {
     /// This item is visible to everything.
     Public = 5,
@@ -850,6 +850,19 @@ pub fn expr_as_block(expr: Spanned<Expr>) -> Spanned<Vec<Spanned<Node>>> {
     Spanned(vec![Spanned(Node::ImplicitReturn(expr), span)], span)
 }
 
+/// A while loop statement.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct While {
+    /// The block label given to the conditional statement.
+    pub label: Option<Spanned<String>>,
+    /// The condition of the conditional statement.
+    pub cond: Box<Spanned<Expr>>,
+    /// The body of the statement.
+    pub body: Spanned<Vec<Spanned<Node>>>,
+    /// The body of the else block. This is `None` if there is no else block.
+    pub else_body: Option<Spanned<Vec<Spanned<Node>>>>,
+}
+
 /// An expression that can be evaluated to a value.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Expr {
@@ -944,6 +957,8 @@ pub enum Expr {
         cond: Box<Spanned<Self>>,
         /// The body of the if-statement.
         body: Spanned<Vec<Spanned<Node>>>,
+        /// The bodies of the else-if blocks.
+        else_if_bodies: Vec<(Spanned<Self>, Spanned<Vec<Spanned<Node>>>)>,
         /// The body of the else block. This is `None` if there is no else block.
         else_body: Option<Spanned<Vec<Spanned<Node>>>>,
         /// Whether the if-statement is a ternary-if expression.
@@ -957,20 +972,7 @@ pub enum Expr {
     },
     /// A while-loop. This is an expression in an AST because divergent while-loops
     /// are expressions.
-    While {
-        /// The block label given to the while-loop.
-        label: Option<Spanned<String>>,
-        /// The condition of the while-loop.
-        cond: Box<Spanned<Self>>,
-        /// The body of the while-loop.
-        body: Spanned<Vec<Spanned<Node>>>,
-        /// The body of the else block. This is `None` if there is no else block.
-        /// The else-block is executed if the while-loop finishes execution without a break.
-        ///
-        /// While-loops without else-blocks are considered non-diverging and should not be
-        /// considered as expressions.
-        else_body: Option<Spanned<Vec<Spanned<Node>>>>,
-    },
+    While(While),
     /// A loop expression. Loop expressions either never diverge due to infinite loops,
     /// or always diverge due to a break statement. Therefore, they can also be considered as
     /// expressions.
@@ -1090,6 +1092,7 @@ impl Display for Expr {
                 label,
                 cond,
                 body,
+                else_if_bodies,
                 else_body,
                 ..
             } => {
@@ -1104,6 +1107,13 @@ impl Display for Expr {
                 }
                 f.write_str("}")?;
 
+                for (cond, body) in else_if_bodies {
+                    write!(f, " else if {cond} {{\n")?;
+                    for node in body.value() {
+                        node.write_indent(f)?;
+                    }
+                    f.write_str("}")?;
+                }
                 if let Some(else_body) = else_body {
                     f.write_str(" else {\n")?;
                     for node in else_body.value() {
@@ -1113,12 +1123,12 @@ impl Display for Expr {
                 }
                 Ok(())
             }
-            Self::While {
+            Self::While(While {
                 label,
                 cond,
                 body,
                 else_body,
-            } => {
+            }) => {
                 if let Some(label) = label {
                     write!(f, ":{label} ")?;
                 }
@@ -1225,7 +1235,7 @@ impl Display for TyParam {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct StructField {
     /// The visibility of the field.
-    pub vis: FieldVisibility,
+    pub vis: Spanned<FieldVisibility>,
     /// The name of the field.
     pub name: Spanned<String>,
     /// The type of the field.

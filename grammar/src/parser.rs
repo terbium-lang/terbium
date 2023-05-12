@@ -1,4 +1,4 @@
-use crate::ast::{StructDef, StructField, TyParam, TypeApplication, TypePath, TypePathSeg};
+use crate::ast::{StructDef, StructField, TyParam, TypeApplication, TypePath, TypePathSeg, While};
 use crate::{
     ast::{
         expr_as_block, AssignmentOperator, AssignmentTarget, Atom, BinaryOp, Delimiter, Expr,
@@ -174,7 +174,7 @@ pub fn item_vis_parser<'a>() -> impl TokenParser<ItemVisibility> + Clone + 'a {
         .then_ws()
 }
 
-pub fn member_vis_parser<'a>() -> impl TokenParser<MemberVisibility> + Clone + 'a {
+pub fn member_vis_parser<'a>() -> impl TokenParser<Spanned<MemberVisibility>> + Clone + 'a {
     kw!("private")
         .to(MemberVisibility::Private)
         .or(kw!("public").ignore_then(
@@ -191,10 +191,11 @@ pub fn member_vis_parser<'a>() -> impl TokenParser<MemberVisibility> + Clone + '
         ))
         .or_not()
         .map(|v| v.unwrap_or(MemberVisibility::Mod))
+        .map_with_span(Spanned)
         .then_ws()
 }
 
-pub fn field_vis_parser<'a>() -> impl TokenParser<FieldVisibility> + Clone + 'a {
+pub fn field_vis_parser<'a>() -> impl TokenParser<Spanned<FieldVisibility>> + Clone + 'a {
     const FALLBACK: (MemberVisibility, Option<Span>) = (MemberVisibility::Private, None);
 
     #[inline]
@@ -234,19 +235,18 @@ pub fn field_vis_parser<'a>() -> impl TokenParser<FieldVisibility> + Clone + 'a 
         .then_ignore(just(TokenInfo::Comma).pad_ws())
         .then(set_vis);
 
-    let unexpanded = member_vis_parser().map(|vis| FieldVisibility {
-        get: (vis, None),
-        set: (vis, None),
+    let unexpanded = member_vis_parser().map(|vis| {
+        Spanned(
+            FieldVisibility {
+                get: (vis.0, None),
+                set: (vis.0, None),
+            },
+            vis.1,
+        )
     });
     let expanded = kw!("public")
         .ignore_then(combo.or(one_of).delimited(Delimiter::Paren))
-        .try_map(|(get, set), span| {
-            if get.0 < set.0 {
-                Err(Error::getter_less_visible_than_setter(span, get.1, set.1))
-            } else {
-                Ok(FieldVisibility { get, set })
-            }
-        });
+        .map_with_span(|(get, set), span| Spanned(FieldVisibility { get, set }, span));
 
     expanded.or(unexpanded).then_ws()
 }
@@ -808,25 +808,12 @@ pub fn brace_ending_expr<'a>(
         // since that is repeated and we dont want else {} else {} to be valid.
         .then(kw!("else").ignore_then(braced_body.clone()).or_not())
         .map_with_span(|((((label, cond), body), elif), else_body), span| {
-            let else_body = elif.into_iter().fold(else_body, |else_body, (cond, body)| {
-                let span = cond.span().merge(body.span());
-
-                Some(expr_as_block(Spanned(
-                    Expr::If {
-                        label: None,
-                        cond: Box::new(cond),
-                        body,
-                        else_body,
-                        ternary: false,
-                    },
-                    span,
-                )))
-            });
             Spanned(
                 Expr::If {
                     label,
                     cond: Box::new(cond),
                     body,
+                    else_if_bodies: elif,
                     else_body,
                     ternary: false,
                 },
@@ -846,12 +833,12 @@ pub fn brace_ending_expr<'a>(
         .then(kw!("else").ignore_then(braced_body.clone()).or_not())
         .map_with_span(|(((label, cond), body), else_body), span| {
             Spanned(
-                Expr::While {
+                Expr::While(While {
                     label,
                     cond: Box::new(cond),
                     body,
                     else_body,
-                },
+                }),
                 span,
             )
         })
@@ -1088,7 +1075,7 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
         let cast = unary
             .clone()
             .then(
-                just(TokenInfo::Colon)
+                just([TokenInfo::Colon, TokenInfo::Colon])
                     .ignore_then(just(TokenInfo::Colon))
                     .pad_ws()
                     .ignore_then(ty.clone())
@@ -1113,25 +1100,34 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
         let pow = cast
             .clone()
             .then(
-                just(TokenInfo::Asterisk)
-                    .ignore_then(just(TokenInfo::Asterisk))
+                just([TokenInfo::Asterisk, TokenInfo::Asterisk])
                     .to(BinaryOp::Pow)
                     .map_with_span(Spanned)
-                    .pad_ws(),
+                    .map(Some)
+                    .pad_ws()
+                    .then(cast)
+                    .repeated(),
             )
-            .repeated()
-            .then(cast)
-            .foldr(|(lhs, op), rhs| {
-                let span = lhs.span().merge(rhs.span());
-
-                Spanned(
-                    Expr::BinaryOp {
-                        left: Box::new(lhs),
-                        op,
-                        right: Box::new(rhs),
-                    },
-                    span,
-                )
+            .map(|(head, tail)| {
+                tail.into_iter()
+                    .rev()
+                    .chain(std::iter::once((None, head)))
+                    .reduce(|(rop, rhs), (op, lhs)| {
+                        let span = lhs.span().merge(rhs.span());
+                        (
+                            op,
+                            Spanned(
+                                Expr::BinaryOp {
+                                    left: Box::new(lhs),
+                                    op: rop.unwrap(),
+                                    right: Box::new(rhs),
+                                },
+                                span,
+                            ),
+                        )
+                    })
+                    .unwrap()
+                    .1
             })
             .labelled("pow")
             .boxed();
@@ -1260,6 +1256,7 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
                         label: None,
                         cond: Box::new(cond),
                         body: expr_as_block(then),
+                        else_if_bodies: Vec::new(),
                         else_body: Some(expr_as_block(els)),
                         ternary: true,
                     },
@@ -1303,17 +1300,17 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
 
         // Assignment target
         let assign_target = choice((
-            ambiguous_expr.clone().try_map(|e, _| {
-                e.try_map(|e| match e {
-                    Expr::Attr { subject, attr, .. } => {
-                        Ok(AssignmentTarget::Attr { subject, attr })
-                    }
-                    Expr::Index { subject, index } => {
-                        Ok(AssignmentTarget::Index { subject, index })
-                    }
-                    _ => Err(Error::default()),
-                })
-            }),
+            // ambiguous_expr.clone().try_map(|e, _| {
+            //     e.try_map(|e| match e {
+            //         Expr::Attr { subject, attr, .. } => {
+            //             Ok(AssignmentTarget::Attr { subject, attr })
+            //         }
+            //         Expr::Index { subject, index } => {
+            //             Ok(AssignmentTarget::Index { subject, index })
+            //         }
+            //         _ => Err(Error::default()),
+            //     })
+            // }),
             pat_parser().map(|pat| pat.map(AssignmentTarget::Pattern)),
             just(TokenInfo::And)
                 .then_ws()
