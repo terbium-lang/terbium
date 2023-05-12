@@ -499,6 +499,18 @@ impl AstLowerer {
         }
     }
 
+    #[inline]
+    pub fn lower_ast_nodes(
+        &mut self,
+        ctx: &Ctx,
+        nodes: Vec<Spanned<ast::Node>>,
+    ) -> Result<Vec<Node>> {
+        nodes
+            .into_iter()
+            .filter_map(|node| self.lower_stmt(ctx, node).transpose())
+            .collect()
+    }
+
     pub fn lower_body(
         &mut self,
         ctx: &Ctx,
@@ -549,10 +561,87 @@ impl AstLowerer {
                     .collect::<Result<Vec<_>>>()?,
             ),
             E::Block { label, body } => {
-                Expr::Block(self.lower_body(ctx, label, body.into_value())?)
+                Expr::Block(self.lower_body(ctx, &label, body.into_value())?)
+            }
+            E::If {
+                label,
+                cond,
+                body,
+                else_if_bodies,
+                mut else_body,
+                ..
+            } => {
+                // Desugar all else-if bodies into `else`
+                else_body =
+                    else_if_bodies
+                        .into_iter()
+                        .fold(else_body, |else_body, (cond, body)| {
+                            let span = cond.span().merge(body.span());
+
+                            Some(ast::expr_as_block(Spanned(
+                                ast::Expr::If {
+                                    label: None,
+                                    cond: Box::new(cond),
+                                    body,
+                                    else_if_bodies: Vec::new(),
+                                    else_body,
+                                    ternary: false,
+                                },
+                                span,
+                            )))
+                        });
+
+                Expr::If(
+                    Box::new(self.lower_expr(ctx, *cond)?),
+                    self.lower_body(ctx, &label, body.into_value())?,
+                    else_body
+                        .map(|body| self.lower_body(ctx, &label, body.into_value()))
+                        .transpose()?,
+                )
+            }
+            E::While(stmt) => self.lower_while_loop(ctx, stmt)?,
+            E::Loop { label, body } => {
+                Expr::Loop(self.lower_body(ctx, &label, body.into_value())?)
             }
             _ => todo!(),
         })
+    }
+
+    /// Lowers a while-loop into a loop block.
+    ///
+    /// For example, `while COND { STMT; }` desugars to `loop { if COND { STMT; } else { break; } }`
+    pub fn lower_while_loop(&mut self, ctx: &Ctx, stmt: While) -> Result<Expr> {
+        let label = stmt.label.as_ref().map(|l| get_ident_from_ref(l.value()));
+        let cond = self.lower_expr(ctx, *stmt.cond)?;
+
+        let children = self.lower_ast_nodes(ctx, stmt.body.into_value())?;
+        let then = self.register_scope(Scope {
+            label: None,
+            children,
+        });
+        let else_body = stmt
+            .else_body
+            .map(|body| {
+                let children = self.lower_ast_nodes(ctx, body.into_value())?;
+                Ok(self.register_scope(Scope {
+                    label: None,
+                    children,
+                }))
+            })
+            .transpose()?
+            // this is the `else { break; }` portion
+            .unwrap_or_else(|| {
+                self.register_scope(Scope {
+                    label: None,
+                    children: vec![Node::Break(label, None)],
+                })
+            });
+
+        let scope_id = self.register_scope(Scope {
+            label: stmt.label.as_ref().map(|l| get_ident_from_ref(l.value())),
+            children: vec![Node::Expr(Expr::If(Box::new(cond), then, Some(else_body)))],
+        });
+        Ok(Expr::Loop(scope_id))
     }
 
     #[inline]
@@ -608,8 +697,8 @@ impl AstLowerer {
         let rhs = self.anon_scope_from_expr(rhs);
 
         Ok(match op {
-            ast::BinaryOp::LogicalOr => Expr::If(cond, lhs, rhs),
-            ast::BinaryOp::LogicalAnd => Expr::If(cond, rhs, lhs),
+            ast::BinaryOp::LogicalOr => Expr::If(cond, lhs, Some(rhs)),
+            ast::BinaryOp::LogicalAnd => Expr::If(cond, rhs, Some(lhs)),
             _ => unimplemented!("logical op is not implemented for this operator"),
         })
     }
