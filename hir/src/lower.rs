@@ -5,9 +5,9 @@ use crate::{
     TyParam,
 };
 use common::span::{Span, Spanned};
-use grammar::ast::While;
+use grammar::ast::{AssignmentOperator, AssignmentTarget, Atom};
 use grammar::{
-    ast::{self, StructDef, TypeExpr, TypePath},
+    ast::{self, StructDef, TypeExpr, TypePath, While},
     token::IntLiteralInfo,
 };
 use internment::Intern;
@@ -80,7 +80,7 @@ impl AstLowerer {
     /// Creates a new AST lowerer.
     pub fn new(root: Vec<Spanned<ast::Node>>) -> Self {
         Self {
-            scope_id: ScopeId(1),
+            scope_id: ScopeId(0),
             module_nodes: HashMap::from([(ModuleId::root(), root)]),
             sty_needs_field_resolution: HashMap::new(),
             hir: Hir::default(),
@@ -103,10 +103,20 @@ impl AstLowerer {
         })
     }
 
-    /// Completely performs a pass over a module.
+    /// Completely performs a lowering pass over a module.
     pub fn resolve_module(&mut self, module: ModuleId) -> Result<()> {
         self.resolve_top_level_types(module)?;
         self.resolve_top_level_consts(module)?;
+
+        let ctx = Ctx::new(module);
+        let nodes = std::mem::replace(self.module_nodes.get_mut(&module).unwrap(), Vec::new());
+        let children = self.lower_ast_nodes(&ctx, nodes)?;
+        let scope_id = self.register_scope(Scope {
+            label: None,
+            children,
+        });
+        self.hir.modules.insert(module, scope_id);
+
         Ok(())
     }
 
@@ -474,6 +484,29 @@ impl AstLowerer {
         }
     }
 
+    /// Desugars a conditional control flow expression into an if-statement, e.g.
+    /// `break if COND` becomes `if COND { break; }`
+    #[inline]
+    fn desugar_conditional_ctrl(
+        &mut self,
+        ctx: &Ctx,
+        cond: Option<Spanned<ast::Expr>>,
+        base: Node,
+    ) -> Result<Node> {
+        Ok(if let Some(cond) = cond {
+            Node::Expr(Expr::If(
+                Box::new(self.lower_expr(ctx, cond)?),
+                self.register_scope(Scope {
+                    label: None,
+                    children: vec![base],
+                }),
+                None,
+            ))
+        } else {
+            base
+        })
+    }
+
     /// Lowers a statement into an HIR node.
     pub fn lower_stmt(&mut self, ctx: &Ctx, node: Spanned<ast::Node>) -> Result<Option<Node>> {
         let node = match node.into_value() {
@@ -483,6 +516,26 @@ impl AstLowerer {
                 ty: self.lower_ty_or_infer(ctx, ty)?,
                 value: value.map(|value| self.lower_expr(ctx, value)).transpose()?,
             },
+            ast::Node::Break {
+                label, value, cond, ..
+            } => {
+                let base = Node::Break(
+                    label.map(|label| get_ident(label.into_value())),
+                    value.map(|value| self.lower_expr(ctx, value)).transpose()?,
+                );
+                self.desugar_conditional_ctrl(ctx, cond, base)?
+            }
+            ast::Node::Continue { label, cond, .. } => self.desugar_conditional_ctrl(
+                ctx,
+                cond,
+                Node::Continue(label.map(|label| get_ident(label.into_value()))),
+            )?,
+            ast::Node::Return { value, cond, .. } => {
+                let base =
+                    Node::Return(value.map(|value| self.lower_expr(ctx, value)).transpose()?);
+                self.desugar_conditional_ctrl(ctx, cond, base)?
+            }
+            ast::Node::ImplicitReturn(expr) => Node::ImplicitReturn(self.lower_expr(ctx, expr)?),
             _ => return Ok(None),
         };
         Ok(Some(node))
@@ -603,13 +656,161 @@ impl AstLowerer {
             E::Loop { label, body } => {
                 Expr::Loop(self.lower_body(ctx, &label, body.into_value())?)
             }
+            E::Call { func, args, kwargs } => Expr::Call {
+                callee: Box::new(self.lower_expr(ctx, *func)?),
+                args: args
+                    .into_iter()
+                    .map(|arg| self.lower_expr(ctx, arg))
+                    .collect::<Result<Vec<_>>>()?,
+                kwargs: kwargs
+                    .into_iter()
+                    .map(|(name, arg)| Ok((get_ident(name), self.lower_expr(ctx, arg)?)))
+                    .collect::<Result<Vec<_>>>()?,
+            },
+            E::Assign { target, op, value } => {
+                match Self::lower_assign_op_into_op(*op.value()) {
+                    Some(op) => Expr::CallOp(
+                        op,
+                        Box::new(self.lower_assignment_target_into_expr(ctx, target)?),
+                        vec![self.lower_expr(ctx, *value)?],
+                    ),
+                    None => match op.value() {
+                        // Desugar a ||= b or a &&= b to `a = a || b` or `a = a && b`
+                        op @ (AssignmentOperator::LogicalOrAssign
+                        | AssignmentOperator::LogicalAndAssign) => {
+                            let rhs = self.lower_logical_into_if_stmt(
+                                ctx,
+                                Self::lower_assignment_target_into_ast_expr(target.clone())?,
+                                *value,
+                                match op {
+                                    AssignmentOperator::LogicalOrAssign => ast::BinaryOp::LogicalOr,
+                                    AssignmentOperator::LogicalAndAssign => {
+                                        ast::BinaryOp::LogicalAnd
+                                    }
+                                    _ => unreachable!(),
+                                },
+                            )?;
+                            self.lower_assignment(ctx, target, rhs)?
+                        }
+                        AssignmentOperator::Assign => {
+                            let value = self.lower_expr(ctx, *value)?;
+                            self.lower_assignment(ctx, target, value)?
+                        }
+                        _ => unimplemented!(),
+                    },
+                }
+            }
+            E::Attr { subject, attr, .. } => Expr::GetAttr(
+                Box::new(self.lower_expr(ctx, *subject)?),
+                attr.map(get_ident),
+            ),
             _ => todo!(),
         })
+    }
+
+    #[inline]
+    fn lower_assignment(
+        &mut self,
+        ctx: &Ctx,
+        lhs: Spanned<AssignmentTarget>,
+        rhs: Expr,
+    ) -> Result<Expr> {
+        Ok(match lhs.into_value() {
+            AssignmentTarget::Pattern(pat) => Expr::Assign(self.lower_pat(pat), Box::new(rhs)),
+            AssignmentTarget::Attr { subject, attr } => Expr::SetAttr(
+                Box::new(self.lower_expr(ctx, *subject)?),
+                attr.map(get_ident),
+                Box::new(rhs),
+            ),
+            AssignmentTarget::Index { subject, index } => Expr::AssignPtr(
+                Box::new(Expr::CallOp(
+                    Op::IndexMut,
+                    Box::new(self.lower_expr(ctx, *subject)?),
+                    vec![self.lower_expr(ctx, *index)?],
+                )),
+                Box::new(rhs),
+            ),
+            AssignmentTarget::Pointer(ptr) => {
+                Expr::AssignPtr(Box::new(self.lower_expr(ctx, *ptr)?), Box::new(rhs))
+            }
+        })
+    }
+
+    #[inline]
+    fn lower_assign_op_into_op(op: AssignmentOperator) -> Option<Op> {
+        Some(match op {
+            AssignmentOperator::AddAssign => Op::AddAssign,
+            AssignmentOperator::SubAssign => Op::SubAssign,
+            AssignmentOperator::MulAssign => Op::MulAssign,
+            AssignmentOperator::DivAssign => Op::DivAssign,
+            AssignmentOperator::ModAssign => Op::ModAssign,
+            AssignmentOperator::PowAssign => Op::PowAssign,
+            AssignmentOperator::BitAndAssign => Op::BitAndAssign,
+            AssignmentOperator::BitOrAssign => Op::BitOrAssign,
+            AssignmentOperator::BitXorAssign => Op::BitXorAssign,
+            AssignmentOperator::ShlAssign => Op::ShlAssign,
+            AssignmentOperator::ShrAssign => Op::ShrAssign,
+            _ => return None,
+        })
+    }
+
+    fn lower_assignment_target_into_ast_expr(
+        tgt: Spanned<AssignmentTarget>,
+    ) -> Result<Spanned<ast::Expr>> {
+        let (tgt, span) = tgt.into_inner();
+        match tgt {
+            AssignmentTarget::Pattern(p) => match p {
+                ast::Pattern::Ident {
+                    ident: Spanned(ident, span),
+                    ..
+                } => Ok(Spanned(ast::Expr::Atom(Atom::Ident(ident)), span)),
+                pat => Err(Error::InvalidAssignmentTarget(span, pat.name())),
+            },
+            AssignmentTarget::Attr { subject, attr } => Ok(Spanned(
+                ast::Expr::Attr {
+                    subject,
+                    dot: attr.span(),
+                    attr,
+                },
+                span,
+            )),
+            AssignmentTarget::Index { subject, index } => {
+                Ok(Spanned(ast::Expr::Index { subject, index }, span))
+            }
+            AssignmentTarget::Pointer(subject) => Ok(*subject),
+        }
+    }
+
+    fn lower_assignment_target_into_expr(
+        &mut self,
+        ctx: &Ctx,
+        tgt: Spanned<AssignmentTarget>,
+    ) -> Result<Expr> {
+        let (tgt, span) = tgt.into_inner();
+        match tgt {
+            AssignmentTarget::Pattern(p) => match p {
+                ast::Pattern::Ident { ident, .. } => {
+                    Ok(self.lower_ident_expr(ctx, get_ident(ident.into_value())))
+                }
+                pat => Err(Error::InvalidAssignmentTarget(span, pat.name())),
+            },
+            AssignmentTarget::Attr { subject, attr } => Ok(Expr::GetAttr(
+                Box::new(self.lower_expr(ctx, *subject)?),
+                attr.map(|a| get_ident(a)),
+            )),
+            AssignmentTarget::Index { subject, index } => Ok(Expr::CallOp(
+                Op::Index,
+                Box::new(self.lower_expr(ctx, *subject)?),
+                vec![self.lower_expr(ctx, *index)?],
+            )),
+            AssignmentTarget::Pointer(subject) => Ok(self.lower_expr(ctx, *subject)?),
+        }
     }
 
     /// Lowers a while-loop into a loop block.
     ///
     /// For example, `while COND { STMT; }` desugars to `loop { if COND { STMT; } else { break; } }`
+    /// Note that `while COND { STMT; } else { STMT; }` desugars to `loop { ... else { break { STMT; } } }`
     pub fn lower_while_loop(&mut self, ctx: &Ctx, stmt: While) -> Result<Expr> {
         let label = stmt.label.as_ref().map(|l| get_ident_from_ref(l.value()));
         let cond = self.lower_expr(ctx, *stmt.cond)?;
@@ -623,9 +824,13 @@ impl AstLowerer {
             .else_body
             .map(|body| {
                 let children = self.lower_ast_nodes(ctx, body.into_value())?;
-                Ok(self.register_scope(Scope {
+                let block = self.register_scope(Scope {
                     label: None,
                     children,
+                });
+                Ok(self.register_scope(Scope {
+                    label: None,
+                    children: vec![Node::Break(label, Some(Expr::Block(block)))],
                 }))
             })
             .transpose()?
@@ -704,13 +909,11 @@ impl AstLowerer {
     }
 
     /// Lowers an atom into an HIR literal expression.
-    pub fn lower_atom(&mut self, ctx: &Ctx, atom: Spanned<ast::Atom>) -> Result<Expr> {
-        use ast::Atom as A;
-
+    pub fn lower_atom(&mut self, ctx: &Ctx, atom: Spanned<Atom>) -> Result<Expr> {
         let (atom, span) = atom.into_inner();
         Ok(match atom {
-            A::Ident(ident) => self.lower_ident_expr(ctx, get_ident(ident)),
-            A::Int(int, IntLiteralInfo { unsigned, .. }) => Expr::Literal(if unsigned {
+            Atom::Ident(ident) => self.lower_ident_expr(ctx, get_ident(ident)),
+            Atom::Int(int, IntLiteralInfo { unsigned, .. }) => Expr::Literal(if unsigned {
                 Literal::UInt(
                     int.parse()
                         .map_err(|_| Error::IntegerLiteralOverflow(span))?,
@@ -721,13 +924,13 @@ impl AstLowerer {
                         .map_err(|_| Error::IntegerLiteralOverflow(span))?,
                 )
             }),
-            A::Float(f) => Expr::Literal(Literal::Float(
+            Atom::Float(f) => Expr::Literal(Literal::Float(
                 f.parse().map_err(|_| Error::FloatLiteralOverflow(span))?,
             )),
-            A::Bool(b) => Expr::Literal(Literal::Bool(b)),
-            A::Char(c) => Expr::Literal(Literal::Char(c)),
-            A::String(s) => Expr::Literal(Literal::String(s)),
-            A::Void => Expr::Literal(Literal::Void),
+            Atom::Bool(b) => Expr::Literal(Literal::Bool(b)),
+            Atom::Char(c) => Expr::Literal(Literal::Char(c)),
+            Atom::String(s) => Expr::Literal(Literal::String(s)),
+            Atom::Void => Expr::Literal(Literal::Void),
         })
     }
 }

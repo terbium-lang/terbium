@@ -42,12 +42,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let start = std::time::Instant::now();
                 match lowerer.resolve_module(ModuleId::from(Src::None)) {
                     Ok(_) => {
-                        println!("lower: {:?}", start.elapsed());
-                        println!("HIR: {:#?}", lowerer.hir);
-
-                        for (_, sty) in lowerer.hir.structs {
-                            println!("{sty}");
-                        }
+                        println!(
+                            "=== [ HIR ({:?} to lower) ] ===\n\n{}",
+                            start.elapsed(),
+                            lowerer.hir
+                        );
                     }
                     Err(error) => {
                         error.write(&cache, &mut std::io::stdout())?;

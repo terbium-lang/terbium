@@ -764,6 +764,17 @@ impl Display for Pattern {
 }
 
 impl Pattern {
+    pub const fn name(&self) -> &'static str {
+        match self {
+            Self::Ident { .. } => "identifier binding",
+            Self::Tuple(..) => "tuple pattern",
+            Self::Array(..) => "array pattern",
+            Self::Fields(..) => "field destructure pattern",
+            Self::As(..) => "as binding",
+            Self::Wildcard(_) => "wildcard pattern",
+        }
+    }
+
     /// Walks the pattern, ensuring that all bindings are not mutable. This is used during syntax
     /// checking on assignment patterns.
     pub fn assert_immutable_bindings(&self) -> Result<(), Error> {

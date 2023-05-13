@@ -1311,7 +1311,10 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
             //         _ => Err(Error::default()),
             //     })
             // }),
-            pat_parser().map(|pat| pat.map(AssignmentTarget::Pattern)),
+            pat_parser().try_map(|pat, _| {
+                pat.value().assert_immutable_bindings()?;
+                Ok(pat.map(AssignmentTarget::Pattern))
+            }),
             just(TokenInfo::And)
                 .then_ws()
                 .ignore_then(expr)

@@ -4,8 +4,7 @@ use common::{
     pluralize,
     span::{ProviderCache, Span, Spanned},
 };
-use grammar::ast;
-use grammar::ast::{TypeExpr, TypePath};
+use grammar::ast::{self, TypeExpr, TypePath};
 use std::{
     fmt::{Display, Formatter},
     io::Write,
@@ -52,6 +51,9 @@ pub enum AstLoweringError {
     },
     /// Visibility for field access is less than the visibility for field mutation.
     GetterLessVisibleThanSetter(Spanned<ast::FieldVisibility>),
+    /// Invalid assignment target. Operator-assigns desugar to convert the assignment target to a
+    /// valid expression, hence many forms of patterns are disallowed.
+    InvalidAssignmentTarget(Span, &'static str),
 }
 
 impl Display for AstLoweringError {
@@ -99,6 +101,9 @@ impl Display for AstLoweringError {
                     vis.0.get.0, vis.0.set.0
                 )
             }
+            Self::InvalidAssignmentTarget(_, subject) => {
+                write!(f, "cannot use {subject} as an assignment target")
+            }
         }
     }
 }
@@ -117,6 +122,7 @@ impl AstLoweringError {
             Self::IncorrectTypeArgumentCount { .. } => "incorrect number of type arguments",
             Self::CircularTypeReference { .. } => "encountered circular type reference",
             Self::GetterLessVisibleThanSetter { .. } => "getter is less visible than setter",
+            Self::InvalidAssignmentTarget(..) => "invalid assignment target",
         }
     }
 
@@ -126,7 +132,8 @@ impl AstLoweringError {
             Self::NameConflict(span, def) => span.merge(def.span()),
             Self::IntegerLiteralOverflow(span)
             | Self::FloatLiteralOverflow(span)
-            | Self::TypeNotFound(span, ..) => *span,
+            | Self::TypeNotFound(span, ..)
+            | Self::InvalidAssignmentTarget(span, _) => *span,
             Self::ModuleNotFound(name) => name.span(),
             Self::IncorrectTypeArgumentCount { span, ty, .. } => span.merge(ty.span()),
             Self::CircularTypeReference {
@@ -149,6 +156,7 @@ impl AstLoweringError {
             Self::IncorrectTypeArgumentCount { .. } => 106,
             Self::CircularTypeReference { .. } => 107,
             Self::GetterLessVisibleThanSetter(_) => 108,
+            Self::InvalidAssignmentTarget(..) => 109,
         }
     }
 
@@ -268,6 +276,14 @@ impl AstLoweringError {
                     report.set_note(format!("visibility of setter is implied to be {}", vis.set.0));
                 }
                 report
+            }
+            Self::InvalidAssignmentTarget(span, subject) => {
+                report
+                    .with_label(Label::new(span)
+                        .with_message(format!("cannot use {subject} as an assignment target"))
+                        .with_color(primary)
+                    )
+                    .with_help("assign to an identifier, field, or index instead")
             }
         };
 

@@ -12,7 +12,7 @@ pub use grammar::ast::{ItemVisibility, MemberVisibility};
 use internment::Intern;
 use std::{
     collections::HashMap,
-    fmt::{self, Display, Formatter},
+    fmt::{self, Debug, Display, Formatter, Write},
 };
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -80,6 +80,12 @@ impl Display for ItemId {
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct ScopeId(usize);
 
+impl Display for ScopeId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 impl ScopeId {
     pub const ROOT: Self = Self(0);
 
@@ -89,7 +95,7 @@ impl ScopeId {
 }
 
 /// HIR of a Terbium program.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Hir {
     /// A mapping of all modules within the program.
     pub modules: HashMap<ModuleId, ScopeId>,
@@ -105,16 +111,37 @@ pub struct Hir {
     pub scopes: HashMap<ScopeId, Scope>,
 }
 
-impl Default for Hir {
-    fn default() -> Self {
-        Self {
-            modules: HashMap::from([(ModuleId::root(), ScopeId::ROOT)]),
-            funcs: HashMap::new(),
-            consts: HashMap::new(),
-            structs: HashMap::new(),
-            types: HashMap::new(),
-            scopes: HashMap::new(),
+#[inline]
+fn join_by_comma<'a, T: ToString + 'a>(items: impl Iterator<Item = &'a T> + 'a) -> String {
+    items
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+impl Display for Hir {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        for (item, func) in &self.funcs {
+            writeln!(f, "{item}:")?;
+            WithHir(func, self).write_indent(f)?;
         }
+        for (item, cnst) in &self.consts {
+            writeln!(f, "{item}:")?;
+            WithHir(cnst, self).write_indent(f)?;
+        }
+        for (item, strct) in &self.structs {
+            writeln!(f, "{item}:")?;
+            WithHir(strct, self).write_indent(f)?;
+        }
+        for (module, scope) in &self.modules {
+            writeln!(f, "module {} {{", module)?;
+            let scope = self.scopes.get(scope).unwrap();
+            for node in &scope.children {
+                WithHir(node, self).write_indent(f)?;
+            }
+            write!(f, "}}")?;
+        }
+        Ok(())
     }
 }
 
@@ -127,11 +154,10 @@ pub enum Node {
         ty: Ty,
         value: Option<Expr>,
     },
-    Const(Const),
-    Func(Func),
     Break(Option<Ident>, Option<Expr>),
     Continue(Option<Ident>),
     Return(Option<Expr>),
+    ImplicitReturn(Expr),
 }
 
 #[derive(Clone, Debug)]
@@ -202,6 +228,20 @@ pub enum Pattern {
     Tuple(Vec<Self>),
 }
 
+impl Display for Pattern {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Ident { ident, is_mut } => {
+                if *is_mut {
+                    f.write_str("mut ")?;
+                }
+                write!(f, "{ident}")
+            }
+            Self::Tuple(items) => write!(f, "({})", join_by_comma(items.iter())),
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct FieldVisibility {
     pub get: MemberVisibility,
@@ -243,17 +283,23 @@ pub struct FuncParam {
     pub default: Option<Expr>,
 }
 
-/// HIR of a top-level function.
 #[derive(Clone, Debug)]
-pub struct Func {
-    /// The visibility of the item.
-    pub visibility: ItemVisibility,
+pub struct FuncHeader {
     /// The name of the function.
     pub name: Spanned<Ident>,
     /// The parameters of the function.
     pub params: Vec<FuncParam>,
     /// The return type of the function.
     pub ret_ty: Ty,
+}
+
+/// HIR of a top-level function.
+#[derive(Clone, Debug)]
+pub struct Func {
+    /// The visibility of the item.
+    pub vis: ItemVisibility,
+    /// The header of the function.
+    pub header: FuncHeader,
     /// The body of the function.
     pub body: ScopeId,
 }
@@ -364,11 +410,6 @@ impl Ty {
     }
 }
 
-#[inline]
-fn join_tys_by_comma<'a>(tys: impl Iterator<Item = &'a Ty> + 'a) -> String {
-    tys.map(ToString::to_string).collect::<Vec<_>>().join(", ")
-}
-
 impl Display for Ty {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -376,12 +417,12 @@ impl Display for Ty {
             Self::Primitive(p) => write!(f, "{p}"),
             Self::Generic(i) => write!(f, "{i}"),
             Self::Tuple(tys) => {
-                write!(f, "({})", join_tys_by_comma(tys.iter()))
+                write!(f, "({})", join_by_comma(tys.iter()))
             }
             Self::Struct(sid, args) => {
                 write!(f, "{sid}")?;
                 if !args.is_empty() {
-                    write!(f, "<{}>", join_tys_by_comma(args.iter()))?;
+                    write!(f, "<{}>", join_by_comma(args.iter()))?;
                 }
                 Ok(())
             }
@@ -418,16 +459,6 @@ pub struct StructField {
     pub default: Option<Expr>,
 }
 
-impl Display for StructField {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {}: {}", self.vis, self.name, self.ty)?;
-        if let Some(_default) = &self.default {
-            write!(f, "{{default}}")?; // TODO
-        }
-        Ok(())
-    }
-}
-
 #[derive(Clone, Debug)]
 pub struct StructTy {
     pub vis: ItemVisibility,
@@ -436,14 +467,25 @@ pub struct StructTy {
     pub fields: Vec<StructField>,
 }
 
-impl Display for StructTy {
+impl Display for WithHir<'_, StructField> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{} struct {}", self.vis, self.name)?;
-        if !self.ty_params.is_empty() {
+        write!(f, "{} {}: {}", self.0.vis, self.0.name, self.0.ty)?;
+        if let Some(default) = &self.0.default {
+            write!(f, "= {}", self.with(default))?;
+        }
+        Ok(())
+    }
+}
+
+impl Display for WithHir<'_, StructTy> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{} struct {}", self.0.vis, self.0.name)?;
+        if !self.0.ty_params.is_empty() {
             write!(
                 f,
                 "<{}>",
-                self.ty_params
+                self.0
+                    .ty_params
                     .iter()
                     .map(ToString::to_string)
                     .collect::<Vec<_>>()
@@ -452,8 +494,8 @@ impl Display for StructTy {
         }
 
         write!(f, " {{\n")?;
-        for field in &self.fields {
-            format!("{field},").write_indent(f)?;
+        for field in &self.0.fields {
+            format!("{},", self.with(field)).write_indent(f)?;
         }
         write!(f, "}}")
     }
@@ -499,7 +541,21 @@ pub enum Literal {
     Void,
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+impl Display for Literal {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::UInt(u) => write!(f, "{u}u"),
+            Self::Int(i) => write!(f, "{i}"),
+            Self::Float(n) => write!(f, "{n:?}"),
+            Self::Bool(b) => write!(f, "{b}"),
+            Self::Char(c) => f.write_char(*c),
+            Self::String(s) => write!(f, "{s:?}"),
+            Self::Void => f.write_str("void"),
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Intrinsic {
     IntNeg,
     IntAdd,
@@ -534,6 +590,56 @@ pub enum Intrinsic {
     FloatGe,
     BoolEq,
     BoolNot,
+}
+
+impl Intrinsic {
+    pub const fn name(&self) -> &'static str {
+        match self {
+            Self::IntNeg => "int_neg",
+            Self::IntAdd => "int_add",
+            Self::IntSub => "int_sub",
+            Self::IntMul => "int_mul",
+            Self::IntDiv => "int_div",
+            Self::IntPow => "int_pow",
+            Self::IntMod => "int_mod",
+            Self::IntBitOr => "int_bit_or",
+            Self::IntBitAnd => "int_bit_and",
+            Self::IntBitNot => "int_bit_not",
+            Self::IntBitXor => "int_bit_xor",
+            Self::IntShl => "int_shl",
+            Self::IntShr => "int_shr",
+            Self::IntEq => "int_eq",
+            Self::IntLt => "int_lt",
+            Self::IntLe => "int_le",
+            Self::IntGt => "int_gt",
+            Self::IntGe => "int_ge",
+            Self::FloatPos => "float_pos",
+            Self::FloatNeg => "float_neg",
+            Self::FloatAdd => "float_add",
+            Self::FloatSub => "float_sub",
+            Self::FloatMul => "float_mul",
+            Self::FloatDiv => "float_div",
+            Self::FloatPow => "float_pow",
+            Self::FloatMod => "float_mod",
+            Self::FloatEq => "float_eq",
+            Self::FloatLt => "float_lt",
+            Self::FloatLe => "float_le",
+            Self::FloatGt => "float_gt",
+            Self::FloatGe => "float_ge",
+            Self::BoolEq => "bool_eq",
+            Self::BoolNot => "bool_not",
+        }
+    }
+
+    pub fn qualified_name(&self) -> String {
+        "<intrinsics>.".to_string() + self.name()
+    }
+}
+
+impl Display for Intrinsic {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.qualified_name())
+    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -573,9 +679,57 @@ pub enum Op {
     IndexMut,
 }
 
+impl Display for Op {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::Pos => "pos",
+            Self::Neg => "neg",
+            Self::Add => "add",
+            Self::AddAssign => "add_assign",
+            Self::Sub => "sub",
+            Self::SubAssign => "sub_assign",
+            Self::Mul => "mul",
+            Self::MulAssign => "mul_assign",
+            Self::Div => "div",
+            Self::DivAssign => "div_assign",
+            Self::Mod => "mod",
+            Self::ModAssign => "mod_assign",
+            Self::Pow => "pow",
+            Self::PowAssign => "pow_assign",
+            Self::Eq => "eq",
+            Self::Lt => "lt",
+            Self::Le => "le",
+            Self::Gt => "gt",
+            Self::Ge => "ge",
+            Self::Not => "not",
+            Self::BitOr => "bit_or",
+            Self::BitOrAssign => "bit_or_assign",
+            Self::BitAnd => "bit_and",
+            Self::BitAndAssign => "bit_and_assign",
+            Self::BitXor => "bit_xor",
+            Self::BitXorAssign => "bit_xor_assign",
+            Self::BitNot => "bit_not",
+            Self::Shl => "shl",
+            Self::ShlAssign => "shl_assign",
+            Self::Shr => "shr",
+            Self::ShrAssign => "shr_assign",
+            Self::Index => "index",
+            Self::IndexMut => "index_mut",
+        })
+    }
+}
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum StaticOp {
     New,
+}
+
+impl Display for StaticOp {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::New => "new",
+        })
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -592,10 +746,218 @@ pub enum Expr {
     CallOp(Op, Box<Self>, Vec<Self>),
     CallStaticOp(StaticOp, Ty, Vec<Self>),
     Cast(Box<Self>, Ty),
-    GetAttr(Box<Self>, Ident),
-    SetAttr(Box<Self>, Ident, Box<Self>),
+    GetAttr(Box<Self>, Spanned<Ident>),
+    SetAttr(Box<Self>, Spanned<Ident>, Box<Self>),
     Block(ScopeId),
     If(Box<Self>, ScopeId, Option<ScopeId>),
     Loop(ScopeId),
     Assign(Pattern, Box<Self>),
+    AssignPtr(Box<Self>, Box<Self>),
+}
+
+struct WithHir<'a, T>(&'a T, &'a Hir);
+
+impl<'a, T> WithHir<'a, T> {
+    pub fn with<U>(&self, new: &'a U) -> WithHir<'a, U> {
+        WithHir(new, self.1)
+    }
+
+    pub fn get_scope(&self, sid: ScopeId) -> &Scope {
+        self.1
+            .scopes
+            .get(&sid)
+            .expect(&format!("invalid scope id {sid}"))
+    }
+
+    pub fn write_scope(
+        &self,
+        f: &mut Formatter,
+        sid: ScopeId,
+        header: impl FnOnce(&mut Formatter) -> fmt::Result,
+    ) -> fmt::Result {
+        let scope = self.get_scope(sid);
+        if let Some(label) = scope.label {
+            write!(f, ":{label} ")?;
+        }
+        header(f)?;
+        self.write_block(f, &scope.children)
+    }
+
+    pub fn write_block(&self, f: &mut Formatter, children: &[Node]) -> fmt::Result {
+        f.write_str("{\n")?;
+        for line in children {
+            self.with(line).write_indent(f)?;
+        }
+        f.write_str("}")
+    }
+}
+
+impl Display for WithHir<'_, Expr> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let comma_sep = |args: &[_]| -> String {
+            args.iter()
+                .map(|e| self.with(e).to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+
+        match self.0 {
+            Expr::Literal(l) => write!(f, "{l}"),
+            Expr::Ident(i) => write!(f, "{i}"),
+            Expr::Tuple(exprs) => write!(f, "({})", comma_sep(exprs)),
+            Expr::Intrinsic(intr, args) => {
+                write!(f, "{intr}({})", comma_sep(args))
+            }
+            Expr::Call {
+                callee,
+                args,
+                kwargs,
+            } => {
+                let args = args
+                    .iter()
+                    .map(|e| self.with(e).to_string())
+                    .chain(
+                        kwargs
+                            .iter()
+                            .map(|(name, e)| format!("{name}: {}", self.with(e))),
+                    )
+                    .collect::<Vec<_>>()
+                    .join(", ");
+
+                write!(f, "{}({args})", self.with(&**callee))
+            }
+            Expr::CallOp(op, slf, args) => {
+                write!(f, "{}.<{op}>({})", self.with(&**slf), comma_sep(args))
+            }
+            Expr::CallStaticOp(op, ty, args) => {
+                write!(f, "({ty}).{op}({})", comma_sep(args))
+            }
+            Expr::Cast(expr, ty) => {
+                write!(f, "({}::{ty})", self.with(&**expr))
+            }
+            Expr::GetAttr(expr, name) => {
+                write!(f, "({}.{name})", self.with(&**expr))
+            }
+            Expr::SetAttr(expr, name, value) => {
+                write!(
+                    f,
+                    "({}.{name} = {})",
+                    self.with(&**expr),
+                    self.with(&**value)
+                )
+            }
+            Expr::Block(sid) => self.write_scope(f, *sid, |_| Ok(())),
+            Expr::If(cond, then, els) => {
+                let then = self.get_scope(*then);
+                if let Some(label) = then.label {
+                    write!(f, ":{label} ")?;
+                }
+                write!(f, "if {} ", self.with(&**cond))?;
+                self.write_block(f, &then.children)?;
+
+                if let Some(els) = els {
+                    let els = self.get_scope(*els);
+                    write!(f, " else ")?;
+                    self.write_block(f, &els.children)?;
+                }
+                Ok(())
+            }
+            Expr::Loop(sid) => self.write_scope(f, *sid, |f| write!(f, "loop ")),
+            Expr::Assign(pat, value) => {
+                write!(f, "{pat} = {}", self.with(&**value))
+            }
+            Expr::AssignPtr(ptr, value) => {
+                write!(f, "&{} = {}", self.with(&**ptr), self.with(&**value))
+            }
+        }
+    }
+}
+
+impl Display for WithHir<'_, Node> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self.0 {
+            Node::Expr(e) => write!(f, "{};", self.with(e)),
+            Node::Let { pat, ty, value } => {
+                write!(f, "let {pat}: {ty}")?;
+                if let Some(value) = value {
+                    write!(f, " = {};", self.with(value))?;
+                }
+                Ok(())
+            }
+            Node::Break(label, value) => {
+                write!(f, "break")?;
+                if let Some(label) = label {
+                    write!(f, " :{label}")?;
+                }
+                if let Some(value) = value {
+                    write!(f, " {}", self.with(value))?;
+                }
+                f.write_str(";")
+            }
+            Node::Continue(label) => {
+                write!(f, "continue")?;
+                if let Some(label) = label {
+                    write!(f, " :{label}")?;
+                }
+                f.write_str(";")
+            }
+            Node::Return(value) => {
+                write!(f, "return")?;
+                if let Some(value) = value {
+                    write!(f, " {}", self.with(value))?;
+                }
+                f.write_str(";")
+            }
+            Node::ImplicitReturn(e) => {
+                write!(f, "{}", self.with(e))
+            }
+        }
+    }
+}
+
+impl Display for WithHir<'_, Const> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{} const {}: {} = {};",
+            self.0.vis,
+            self.0.name,
+            self.0.ty,
+            self.with(&self.0.value)
+        )
+    }
+}
+
+impl Display for WithHir<'_, FuncParam> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}: {}", self.0.pat, self.0.ty)?;
+        if let Some(default) = &self.0.default {
+            write!(f, " = {}", self.with(default))?;
+        }
+        Ok(())
+    }
+}
+
+impl Display for WithHir<'_, FuncHeader> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}({}) -> {}",
+            self.0.name,
+            self.0
+                .params
+                .iter()
+                .map(|p| self.with(p).to_string())
+                .collect::<Vec<_>>()
+                .join(", "),
+            self.0.ret_ty
+        )
+    }
+}
+
+impl Display for WithHir<'_, Func> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{} func {} ", self.0.vis, self.with(&self.0.header))?;
+        self.write_block(f, &self.get_scope(self.0.body).children)
+    }
 }
