@@ -1074,12 +1074,11 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
             .labelled("unary expression")
             .boxed();
 
-        // Type cast, e.g. a::b
+        // Type cast, e.g. `a to b`
         let cast = unary
             .clone()
             .then(
-                just([TokenInfo::Colon, TokenInfo::Colon])
-                    .ignore_then(just(TokenInfo::Colon))
+                kw!("to")
                     .pad_ws()
                     .ignore_then(ty.clone())
                     .repeated(),

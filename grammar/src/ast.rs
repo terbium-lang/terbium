@@ -1074,7 +1074,7 @@ impl Display for Expr {
             Self::Attr { subject, attr, .. } => write!(f, "({subject}.{attr})"),
             Self::Ref(_, subject) => write!(f, "(ref {subject})"),
             Self::Mut(_, subject) => write!(f, "(mut {subject})"),
-            Self::Cast { expr, ty } => write!(f, "({expr}::{ty})"),
+            Self::Cast { expr, ty } => write!(f, "({expr} to {ty})"),
             Self::Call { func, args, kwargs } => write!(
                 f,
                 "{func}({})",

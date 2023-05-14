@@ -3,6 +3,7 @@
 
 #![feature(let_chains)]
 
+pub mod infer;
 pub mod error;
 pub mod lower;
 pub mod warning;
@@ -834,7 +835,7 @@ impl Display for WithHir<'_, Expr> {
                 write!(f, "({ty}).{op}({})", comma_sep(args))
             }
             Expr::Cast(expr, ty) => {
-                write!(f, "({}::{ty})", self.with(&**expr))
+                write!(f, "({} to {ty})", self.with(&**expr))
             }
             Expr::GetAttr(expr, name) => {
                 write!(f, "({}.{name})", self.with(&**expr))
