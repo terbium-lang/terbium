@@ -7,7 +7,7 @@ use crate::{
     },
     error::Error,
     span::{Provider, Span, Spanned},
-    token::{ChumskyTokenStreamer, StringLiteralFlags, TokenInfo, TokenReader},
+    token::{ChumskyTokenStreamer, Keyword, StringLiteralFlags, TokenInfo, TokenReader},
 };
 use chumsky::{
     combinator::{DelimitedBy, IgnoreThen, Repeated, ThenIgnore},
@@ -78,14 +78,17 @@ impl<O, T: ChumskyParser<TokenInfo, O, Error = Error>> WsPadExt<T, O> for T {
 }
 
 macro_rules! kw {
-    ($($kw:literal)|+) => {{
-        just([$(TokenInfo::Ident($kw.to_string(), false)),+]).map_with_span(Spanned)
+    (@single $kw:literal) => {{
+        TokenInfo::Ident($kw.to_string(), false)
     }};
-    ($kw:ident) => {{
-        kw!(stringify!($kw))
+    (@single $kw:ident) => {{
+        TokenInfo::Keyword(Keyword::$kw)
     }};
     (@pad $kw:tt) => {{
         kw!($kw).pad_ws()
+    }};
+    ($($kw:tt)+) => {{
+        just([$(kw!(@single $kw)),+]).map_with_span(Spanned)
     }};
 }
 
@@ -356,7 +359,7 @@ pub fn block_label<'a>() -> impl TokenParser<Spanned<String>> + Clone + 'a {
 /// A pattern to match against in a declaration.
 pub fn pat_parser<'a>() -> RecursiveParser<'a, Spanned<Pattern>> {
     recursive(|pat| {
-        let ident = kw!("mut")
+        let ident = kw!(Mut)
             .then_ws()
             .or_not()
             .then(select!(TokenInfo::Ident(name, _) => name).map_with_span(Spanned))
@@ -468,7 +471,7 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
             .labelled("expression");
 
         // `let` declaration, for example `let x: int32 = 0;`
-        let let_decl = kw!("let")
+        let let_decl = kw!(Let)
             .map_with_span(|_, span| span)
             .then_ws()
             .then(pat.clone())
@@ -502,7 +505,7 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
         // `const` declaration, for example `const ZERO: int32 = 0;`
         let const_decl = item_vis
             .clone()
-            .then(kw!("const").map_with_span(|_, span| span))
+            .then(kw!(Const).map_with_span(|_, span| span))
             .then(ident.clone())
             .then(
                 just(TokenInfo::Colon)
@@ -615,10 +618,10 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
             .labelled("function")
             .boxed();
 
-        let control_flow_if_stmt = kw!("if").pad_ws().ignore_then(expr.clone()).or_not();
+        let control_flow_if_stmt = kw!(If).pad_ws().ignore_then(expr.clone()).or_not();
 
         // Break statement, i.e. `break;`, `break 5;`, or `break :a;`
-        let break_stmt = kw!("break")
+        let break_stmt = kw!(Break)
             .then(block_label.clone())
             .then(expr.clone().or_not())
             .then(control_flow_if_stmt.clone())
@@ -639,7 +642,7 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
             .boxed();
 
         // Continue statement, i.e. `continue;` or `continue :a;`
-        let continue_stmt = kw!("continue")
+        let continue_stmt = kw!(Continue)
             .then(block_label.clone())
             .then(control_flow_if_stmt.clone())
             .then_ignore(just(TokenInfo::Semicolon))
@@ -658,7 +661,7 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
             .boxed();
 
         // Return statement, i.e. `return;`
-        let return_stmt = kw!("return")
+        let return_stmt = kw!(Return)
             .then_ws()
             .then(expr.clone().or_not())
             .then(control_flow_if_stmt.clone())
@@ -793,20 +796,20 @@ pub fn brace_ending_expr<'a>(
     // Braced if-statement, i.e. if cond { ... }
     let braced_if = block_label
         .clone()
-        .then_ignore(kw!("if"))
+        .then_ignore(kw!(If))
         .then(expr.clone())
         .then(braced_body.clone())
         // else if cond { ... }
         .then(
-            kw!("else")
-                .ignore_then(kw!("if").pad_ws())
+            kw!(Else)
+                .ignore_then(kw!(If).pad_ws())
                 .ignore_then(expr.clone())
                 .then(braced_body.clone())
                 .repeated(),
         )
         // else { ... } ...note that this is parsed separately from the else-if
         // since that is repeated and we dont want else {} else {} to be valid.
-        .then(kw!("else").ignore_then(braced_body.clone()).or_not())
+        .then(kw!(Else).ignore_then(braced_body.clone()).or_not())
         .map_with_span(|((((label, cond), body), elif), else_body), span| {
             Spanned(
                 Expr::If {
@@ -827,10 +830,10 @@ pub fn brace_ending_expr<'a>(
     // While-loop, i.e. while cond { ... }
     let while_loop = block_label
         .clone()
-        .then_ignore(kw!("while"))
+        .then_ignore(kw!(While))
         .then(expr)
         .then(braced_body.clone())
-        .then(kw!("else").ignore_then(braced_body.clone()).or_not())
+        .then(kw!(Else).ignore_then(braced_body.clone()).or_not())
         .map_with_span(|(((label, cond), body), else_body), span| {
             Spanned(
                 Expr::While(While {
@@ -851,7 +854,7 @@ pub fn brace_ending_expr<'a>(
     // Loop-expression, i.e. loop { ... }
     let loop_expr = block_label
         .clone()
-        .then_ignore(kw!("loop"))
+        .then_ignore(kw!(Loop))
         .then(braced_body.clone())
         .map_with_span(simple_block(|label, body| Expr::Loop { label, body }))
         .pad_ws()
@@ -1244,11 +1247,11 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
         // ...is parsed as
         //     if a then b else (if c then d else e)
         // ...which works exactly the same.
-        let ternary_if = kw!("if")
+        let ternary_if = kw!(If)
             .ignore_then(expr.clone())
             .then_ignore(kw!("then"))
             .then(expr.clone())
-            .then_ignore(kw!("else"))
+            .then_ignore(kw!(Else))
             .then(expr.clone())
             .map_with_span(|((cond, then), els), span| {
                 Spanned(
@@ -1300,17 +1303,18 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
 
         // Assignment target
         let assign_target = choice((
-            // ambiguous_expr.clone().try_map(|e, _| {
-            //     e.try_map(|e| match e {
-            //         Expr::Attr { subject, attr, .. } => {
-            //             Ok(AssignmentTarget::Attr { subject, attr })
-            //         }
-            //         Expr::Index { subject, index } => {
-            //             Ok(AssignmentTarget::Index { subject, index })
-            //         }
-            //         _ => Err(Error::default()),
-            //     })
-            // }),
+            // TODO: this parser causes O(2^n) parsing time complexity
+            ambiguous_expr.clone().try_map(|e, _| {
+                e.try_map(|e| match e {
+                    Expr::Attr { subject, attr, .. } => {
+                        Ok(AssignmentTarget::Attr { subject, attr })
+                    }
+                    Expr::Index { subject, index } => {
+                        Ok(AssignmentTarget::Index { subject, index })
+                    }
+                    _ => Err(Error::default()),
+                })
+            }),
             pat_parser().try_map(|pat, _| {
                 pat.value().assert_immutable_bindings()?;
                 Ok(pat.map(AssignmentTarget::Pattern))

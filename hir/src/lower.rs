@@ -1,13 +1,12 @@
 use crate::{
-    error::{AstLoweringError as Error, Result},
+    error::{Error, Result},
     Const, Expr, FieldVisibility, FloatWidth, Hir, Ident, IntSign, IntWidth, ItemId, Literal,
     ModuleId, Node, Op, Pattern, PrimitiveTy, Scope, ScopeId, StructField, StructTy, Ty, TyDef,
     TyParam,
 };
 use common::span::{Span, Spanned};
-use grammar::ast::{AssignmentOperator, AssignmentTarget, Atom};
 use grammar::{
-    ast::{self, StructDef, TypeExpr, TypePath, While},
+    ast::{self, AssignmentOperator, AssignmentTarget, Atom, StructDef, TypeExpr, TypePath, While},
     token::IntLiteralInfo,
 };
 use internment::Intern;
@@ -99,8 +98,24 @@ impl AstLowerer {
     fn anon_scope_from_expr(&mut self, expr: Expr) -> ScopeId {
         self.register_scope(Scope {
             label: None,
-            children: vec![Node::Expr(expr)],
+            children: vec![Node::ImplicitReturn(expr)],
         })
+    }
+
+    /// Asserts the item ID is unique.
+    #[inline]
+    pub fn assert_item_unique(&self, item: &ItemId, src: Spanned<String>) -> Result<()> {
+        let occupied = if let Some(occupied) = self.hir.structs.get(item) {
+            Some(occupied.name.span())
+        } else if let Some(occupied) = self.hir.consts.get(item) {
+            Some(occupied.name.span())
+        } else {
+            None
+        };
+        if let Some(occupied) = occupied {
+            return Err(Error::NameConflict(occupied, src));
+        }
+        Ok(())
     }
 
     /// Completely performs a lowering pass over a module.
@@ -144,9 +159,8 @@ impl AstLowerer {
                     if let Some(ty_def) = self.hir.types.get_mut(&item_id) {
                         ty_def.ty_params = sty.ty_params.clone();
                     }
-                    if let Some(occupied) = self.hir.structs.insert(item_id, sty) {
-                        return Err(Error::NameConflict(occupied.name.span(), sct_name));
-                    }
+                    self.assert_item_unique(&item_id, sct_name)?;
+                    self.hir.structs.insert(item_id, sty);
                 }
                 _ => (),
             }
@@ -224,14 +238,16 @@ impl AstLowerer {
                 ..
             } = node.into_value()
             {
-                let name = name.as_ref().map(get_ident_from_ref);
+                let ident = name.as_ref().map(get_ident_from_ref);
                 let cnst = Const {
                     vis,
-                    name,
+                    name: ident,
                     ty: self.lower_ty_or_infer(&ctx, ty)?,
                     value: self.lower_expr(&ctx, value)?,
                 };
-                self.hir.consts.insert(ItemId(module, *name.value()), cnst);
+                let item = ItemId(module, *ident.value());
+                self.assert_item_unique(&item, name)?;
+                self.hir.consts.insert(item, cnst);
             }
         }
         Ok(())
@@ -704,6 +720,11 @@ impl AstLowerer {
                 Box::new(self.lower_expr(ctx, *subject)?),
                 attr.map(get_ident),
             ),
+            E::Index { subject, index } => Expr::CallOp(
+                Op::Index,
+                Box::new(self.lower_expr(ctx, *subject)?),
+                vec![self.lower_expr(ctx, *index)?],
+            ),
             _ => todo!(),
         })
     }
@@ -799,7 +820,7 @@ impl AstLowerer {
                 attr.map(|a| get_ident(a)),
             )),
             AssignmentTarget::Index { subject, index } => Ok(Expr::CallOp(
-                Op::Index,
+                Op::IndexMut,
                 Box::new(self.lower_expr(ctx, *subject)?),
                 vec![self.lower_expr(ctx, *index)?],
             )),
@@ -885,7 +906,13 @@ impl AstLowerer {
 
     /// Desugar logical operators into if statements.
     ///
-    /// For example, `a || b` becomes `if a::bool { a } else { b }`.
+    /// For example, `a || b` becomes:
+    /// ```text
+    /// {
+    ///     let __lhs = a;
+    ///     if __lhs { __lhs } else { b }
+    /// }
+    /// ```
     #[inline]
     pub fn lower_logical_into_if_stmt(
         &mut self,
@@ -896,16 +923,33 @@ impl AstLowerer {
     ) -> Result<Expr> {
         let lhs = self.lower_expr(ctx, lhs)?;
         let rhs = self.lower_expr(ctx, rhs)?;
-        let cond = Box::new(Expr::Cast(Box::new(lhs.clone()), BOOL));
+        let binding = get_ident_from_ref("__lhs");
+        let cond = Box::new(Expr::Cast(Box::new(Expr::Ident(binding)), BOOL));
 
-        let lhs = self.anon_scope_from_expr(lhs);
-        let rhs = self.anon_scope_from_expr(rhs);
-
-        Ok(match op {
-            ast::BinaryOp::LogicalOr => Expr::If(cond, lhs, Some(rhs)),
-            ast::BinaryOp::LogicalAnd => Expr::If(cond, rhs, Some(lhs)),
+        let then = self.anon_scope_from_expr(Expr::Ident(binding));
+        let els = self.anon_scope_from_expr(rhs);
+        let stmt = match op {
+            ast::BinaryOp::LogicalOr => Expr::If(cond, then, Some(els)),
+            ast::BinaryOp::LogicalAnd => Expr::If(cond, then, Some(els)),
             _ => unimplemented!("logical op is not implemented for this operator"),
-        })
+        };
+
+        let block = self.register_scope(Scope {
+            label: None,
+            children: vec![
+                // Store the LHS in a temporary binding
+                Node::Let {
+                    pat: Pattern::Ident {
+                        ident: binding,
+                        is_mut: false,
+                    },
+                    ty: Ty::Unknown,
+                    value: Some(lhs),
+                },
+                Node::ImplicitReturn(stmt),
+            ],
+        });
+        Ok(Expr::Block(block))
     }
 
     /// Lowers an atom into an HIR literal expression.

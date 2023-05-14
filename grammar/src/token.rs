@@ -82,6 +82,66 @@ pub struct IntLiteralInfo {
     pub unsigned: bool,
 }
 
+/// A hard (strict) keyword used in the language.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Keyword {
+    If,
+    Else,
+    Break,
+    Continue,
+    Return,
+    While,
+    Loop,
+    For,
+    In,
+    Is,
+    Let,
+    Mut,
+    Const,
+}
+
+impl fmt::Display for Keyword {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::If => write!(f, "if"),
+            Self::Else => write!(f, "else"),
+            Self::Break => write!(f, "break"),
+            Self::Continue => write!(f, "continue"),
+            Self::Return => write!(f, "return"),
+            Self::While => write!(f, "while"),
+            Self::Loop => write!(f, "loop"),
+            Self::For => write!(f, "for"),
+            Self::In => write!(f, "in"),
+            Self::Is => write!(f, "is"),
+            Self::Let => write!(f, "let"),
+            Self::Mut => write!(f, "mut"),
+            Self::Const => write!(f, "const"),
+        }
+    }
+}
+
+impl Keyword {
+    /// Get the keyword from the given string, if it is a keyword.
+    pub fn get(s: impl AsRef<str>) -> Option<Self> {
+        Some(match s.as_ref() {
+            "if" => Self::If,
+            "else" => Self::Else,
+            "break" => Self::Break,
+            "continue" => Self::Continue,
+            "return" => Self::Return,
+            "while" => Self::While,
+            "loop" => Self::Loop,
+            "for" => Self::For,
+            "in" => Self::In,
+            "is" => Self::Is,
+            "let" => Self::Let,
+            "mut" => Self::Mut,
+            "const" => Self::Const,
+            _ => return None,
+        })
+    }
+}
+
 /// Represents information about a lexical token in the source code.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TokenInfo {
@@ -106,6 +166,8 @@ pub enum TokenInfo {
     /// Only two escape sequences are supported in raw identifiers: backslash-backslash and
     /// backslash-backtick. All other escape sequences are invalid and will result in an error.
     Ident(String, bool),
+    /// A hard keyword that is not parsed as an identifier.
+    Keyword(Keyword),
     /// A string literal, such as "hello". This only includes the raw contents of the string,
     /// before any escape sequences are processed or any interpolation is done.
     ///
@@ -189,6 +251,7 @@ impl fmt::Display for TokenInfo {
             Self::DocComment { content, is_inner } => {
                 writeln!(f, "//{}{content}", if *is_inner { "!" } else { "/" })
             }
+            Self::Keyword(keyword) => write!(f, "{keyword}"),
             Self::Ident(ident, true) => write!(f, "`{ident}`"),
             Self::Ident(ident, false) => f.write_str(ident),
             Self::StringLiteral(string, flags, _) => {
@@ -776,10 +839,12 @@ impl<'a> TokenReader<'a> {
             }
         }
 
-        Some(Spanned(
-            TokenInfo::Ident(content, false),
-            Span::new(self.src, start, self.pos()),
-        ))
+        let token = if let Some(kw) = Keyword::get(&content) {
+            TokenInfo::Keyword(kw)
+        } else {
+            TokenInfo::Ident(content, false)
+        };
+        Some(Spanned(token, Span::new(self.src, start, self.pos())))
     }
 }
 

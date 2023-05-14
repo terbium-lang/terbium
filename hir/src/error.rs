@@ -10,11 +10,11 @@ use std::{
     io::Write,
 };
 
-pub type Result<T> = std::result::Result<T, AstLoweringError>;
+pub type Result<T> = std::result::Result<T, Error>;
 
 /// Represents an error that occurred during the lowering of AST to HIR.
 #[derive(Clone, Debug)]
-pub enum AstLoweringError {
+pub enum Error {
     /// The provided type is not a concrete struct. Structs may only extend fields from other
     /// structs.
     CannotExtendFieldsFromType(Spanned<TypeExpr>),
@@ -56,7 +56,7 @@ pub enum AstLoweringError {
     InvalidAssignmentTarget(Span, &'static str),
 }
 
-impl Display for AstLoweringError {
+impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::CannotExtendFieldsFromType(ty) => {
@@ -108,9 +108,9 @@ impl Display for AstLoweringError {
     }
 }
 
-impl std::error::Error for AstLoweringError {}
+impl std::error::Error for Error {}
 
-impl AstLoweringError {
+impl Error {
     pub const fn simple_message(&self) -> &'static str {
         match self {
             Self::CannotExtendFieldsFromType(_) => "cannot extend fields from type",

@@ -5,6 +5,7 @@
 
 pub mod error;
 pub mod lower;
+pub mod warning;
 
 use common::span::{Span, Spanned, Src};
 use grammar::ast::{self, Indent};
@@ -185,9 +186,9 @@ fn assert_equal_params_length(
     ty_name: Spanned<Ident>,
     ty_params_len: usize,
     ty_args_len: usize,
-) -> Result<(), error::AstLoweringError> {
+) -> Result<(), error::Error> {
     if ty_args_len != ty_params_len {
-        return Err(error::AstLoweringError::IncorrectTypeArgumentCount {
+        return Err(error::Error::IncorrectTypeArgumentCount {
             span,
             ty: ty_name.as_ref().map(ToString::to_string),
             expected: ty_params_len,
@@ -205,7 +206,7 @@ pub struct TyDef {
 }
 
 impl TyDef {
-    pub fn apply_params(&self, span: Span, params: Vec<Ty>) -> Result<Ty, error::AstLoweringError> {
+    pub fn apply_params(&self, span: Span, params: Vec<Ty>) -> Result<Ty, error::Error> {
         assert_equal_params_length(
             span,
             self.name,
@@ -266,7 +267,7 @@ impl Display for FieldVisibility {
 impl FieldVisibility {
     pub fn from_ast(v: Spanned<ast::FieldVisibility>) -> error::Result<Self> {
         if v.0.get.0 < v.0.set.0 {
-            Err(error::AstLoweringError::GetterLessVisibleThanSetter(v))
+            Err(error::Error::GetterLessVisibleThanSetter(v))
         } else {
             Ok(Self {
                 get: v.0.get.0,
@@ -506,7 +507,7 @@ impl StructTy {
         self,
         span: Option<Span>,
         params: Vec<Ty>,
-    ) -> Result<Self, error::AstLoweringError> {
+    ) -> Result<Self, error::Error> {
         assert_equal_params_length(
             span.unwrap_or(self.name.span()),
             self.name,
