@@ -3,8 +3,8 @@
 
 #![feature(let_chains)]
 
-pub mod infer;
 pub mod error;
+pub mod infer;
 pub mod lower;
 pub mod warning;
 
@@ -12,6 +12,7 @@ use common::span::{Span, Spanned, Src};
 use grammar::ast::{self, Indent};
 pub use grammar::ast::{ItemVisibility, MemberVisibility};
 use internment::Intern;
+use std::fmt::Pointer;
 use std::{
     collections::HashMap,
     fmt::{self, Debug, Display, Formatter, Write},
@@ -103,6 +104,8 @@ pub struct Hir {
     pub modules: HashMap<ModuleId, ScopeId>,
     /// A mapping of all top-level functions in the program.
     pub funcs: HashMap<ItemId, Func>,
+    /// A mapping of all aliases in the program.
+    pub aliases: HashMap<ItemId, Alias>,
     /// A mapping of all constants in the program.
     pub consts: HashMap<ItemId, Const>,
     /// A mapping of all raw structs within the program.
@@ -127,6 +130,10 @@ impl Display for Hir {
             writeln!(f, "{item}:")?;
             WithHir(func, self).write_indent(f)?;
         }
+        for (item, alias) in &self.aliases {
+            writeln!(f, "{item}:")?;
+            WithHir(alias, self).write_indent(f)?;
+        }
         for (item, cnst) in &self.consts {
             writeln!(f, "{item}:")?;
             WithHir(cnst, self).write_indent(f)?;
@@ -150,16 +157,16 @@ impl Display for Hir {
 /// An HIR node.
 #[derive(Clone, Debug)]
 pub enum Node {
-    Expr(Expr),
+    Expr(Spanned<Expr>),
     Let {
         pat: Pattern,
         ty: Ty,
-        value: Option<Expr>,
+        value: Option<Spanned<Expr>>,
     },
-    Break(Option<Ident>, Option<Expr>),
+    Break(Option<Ident>, Option<Spanned<Expr>>),
     Continue(Option<Ident>),
-    Return(Option<Expr>),
-    ImplicitReturn(Expr),
+    Return(Option<Spanned<Expr>>),
+    ImplicitReturn(Spanned<Expr>),
 }
 
 #[derive(Clone, Debug)]
@@ -173,7 +180,14 @@ pub struct Const {
     pub vis: ItemVisibility,
     pub name: Spanned<Ident>,
     pub ty: Ty,
-    pub value: Expr,
+    pub value: Spanned<Expr>,
+}
+
+#[derive(Clone, Debug)]
+pub struct Alias {
+    pub vis: ItemVisibility,
+    pub name: Spanned<Ident>,
+    pub value: Spanned<Expr>,
 }
 
 #[inline]
@@ -226,7 +240,7 @@ impl TyDef {
 /// A pattern that can be matched against.
 #[derive(Clone, Debug)]
 pub enum Pattern {
-    Ident { ident: Ident, is_mut: bool },
+    Ident { ident: Spanned<Ident>, is_mut: bool },
     Tuple(Vec<Self>),
 }
 
@@ -282,13 +296,15 @@ impl FieldVisibility {
 pub struct FuncParam {
     pub pat: Pattern,
     pub ty: Ty,
-    pub default: Option<Expr>,
+    pub default: Option<Spanned<Expr>>,
 }
 
 #[derive(Clone, Debug)]
 pub struct FuncHeader {
     /// The name of the function.
     pub name: Spanned<Ident>,
+    /// The type parameters of the function.
+    pub ty_params: Vec<TyParam>,
     /// The parameters of the function.
     pub params: Vec<FuncParam>,
     /// The return type of the function.
@@ -374,8 +390,10 @@ pub enum Ty {
     Unknown,
     Primitive(PrimitiveTy),
     Generic(Ident),
-    Tuple(Vec<Ty>),
-    Struct(ItemId, Vec<Ty>),
+    Tuple(Vec<Self>),
+    Array(Box<Self>, Option<usize>),
+    Struct(ItemId, Vec<Self>),
+    Func(Vec<Self>, Box<Self>),
 }
 
 impl Ty {
@@ -421,12 +439,23 @@ impl Display for Ty {
             Self::Tuple(tys) => {
                 write!(f, "({})", join_by_comma(tys.iter()))
             }
+            Self::Array(ty, len) => {
+                write!(f, "[{ty}")?;
+                if let Some(len) = len {
+                    write!(f, "; {len}")?;
+                }
+                write!(f, "]")
+            }
             Self::Struct(sid, args) => {
                 write!(f, "{sid}")?;
                 if !args.is_empty() {
                     write!(f, "<{}>", join_by_comma(args.iter()))?;
                 }
                 Ok(())
+            }
+            Self::Func(params, ret) => {
+                write!(f, "({})", join_by_comma(params.iter()))?;
+                write!(f, " -> {ret}")
             }
         }
     }
@@ -458,7 +487,7 @@ pub struct StructField {
     pub vis: FieldVisibility,
     pub name: Ident,
     pub ty: Ty,
-    pub default: Option<Expr>,
+    pub default: Option<Spanned<Expr>>,
 }
 
 #[derive(Clone, Debug)]
@@ -737,24 +766,25 @@ impl Display for StaticOp {
 #[derive(Clone, Debug)]
 pub enum Expr {
     Literal(Literal),
-    Ident(Ident),
-    Tuple(Vec<Self>),
-    Intrinsic(Intrinsic, Vec<Self>),
+    Ident(Spanned<Ident>, Option<Spanned<Vec<Ty>>>),
+    Tuple(Vec<Spanned<Self>>),
+    Array(Vec<Spanned<Self>>),
+    Intrinsic(Intrinsic, Vec<Spanned<Self>>),
     Call {
-        callee: Box<Self>,
-        args: Vec<Self>,
-        kwargs: Vec<(Ident, Self)>,
+        callee: Box<Spanned<Self>>,
+        args: Vec<Spanned<Self>>,
+        kwargs: Vec<(Ident, Spanned<Self>)>,
     },
-    CallOp(Op, Box<Self>, Vec<Self>),
-    CallStaticOp(StaticOp, Ty, Vec<Self>),
-    Cast(Box<Self>, Ty),
-    GetAttr(Box<Self>, Spanned<Ident>),
-    SetAttr(Box<Self>, Spanned<Ident>, Box<Self>),
+    CallOp(Op, Box<Spanned<Self>>, Vec<Spanned<Self>>),
+    CallStaticOp(StaticOp, Ty, Vec<Spanned<Self>>),
+    Cast(Box<Spanned<Self>>, Ty),
+    GetAttr(Box<Spanned<Self>>, Spanned<Ident>),
+    SetAttr(Box<Spanned<Self>>, Spanned<Ident>, Box<Spanned<Self>>),
     Block(ScopeId),
-    If(Box<Self>, ScopeId, Option<ScopeId>),
+    If(Box<Spanned<Self>>, ScopeId, Option<ScopeId>),
     Loop(ScopeId),
-    Assign(Pattern, Box<Self>),
-    AssignPtr(Box<Self>, Box<Self>),
+    Assign(Pattern, Box<Spanned<Self>>),
+    AssignPtr(Box<Spanned<Self>>, Box<Spanned<Self>>),
 }
 
 struct WithHir<'a, T>(&'a T, &'a Hir);
@@ -794,19 +824,43 @@ impl<'a, T> WithHir<'a, T> {
     }
 }
 
+impl<'a, T> Display for WithHir<'a, Spanned<T>>
+where
+    WithHir<'a, T>: Display,
+{
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        self.with(self.0.value()).fmt(f)
+    }
+}
+
 impl Display for WithHir<'_, Expr> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let comma_sep = |args: &[_]| -> String {
+        let comma_sep = |args: &[Spanned<Expr>]| -> String {
             args.iter()
-                .map(|e| self.with(e).to_string())
+                .map(|e| self.with(e.value()).to_string())
                 .collect::<Vec<_>>()
                 .join(", ")
         };
 
         match self.0 {
             Expr::Literal(l) => write!(f, "{l}"),
-            Expr::Ident(i) => write!(f, "{i}"),
+            Expr::Ident(i, args) => {
+                write!(f, "{i}")?;
+                if let Some(args) = args {
+                    write!(
+                        f,
+                        "<{}>",
+                        args.value()
+                            .iter()
+                            .map(|ty| ty.to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )?;
+                }
+                Ok(())
+            }
             Expr::Tuple(exprs) => write!(f, "({})", comma_sep(exprs)),
+            Expr::Array(exprs) => write!(f, "[{}]", comma_sep(exprs)),
             Expr::Intrinsic(intr, args) => {
                 write!(f, "{intr}({})", comma_sep(args))
             }
@@ -930,6 +984,18 @@ impl Display for WithHir<'_, Const> {
     }
 }
 
+impl Display for WithHir<'_, Alias> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{} alias {} = {};",
+            self.0.vis,
+            self.0.name,
+            self.with(&self.0.value)
+        )
+    }
+}
+
 impl Display for WithHir<'_, FuncParam> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}: {}", self.0.pat, self.0.ty)?;
@@ -942,10 +1008,24 @@ impl Display for WithHir<'_, FuncParam> {
 
 impl Display for WithHir<'_, FuncHeader> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let ty_params = if self.0.ty_params.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "<{}>",
+                self.0
+                    .ty_params
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        };
         write!(
             f,
-            "{}({}) -> {}",
+            "{}{}({}) -> {}",
             self.0.name,
+            ty_params,
             self.0
                 .params
                 .iter()

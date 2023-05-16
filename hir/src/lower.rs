@@ -1,10 +1,11 @@
 use crate::{
     error::{Error, Result},
-    Const, Expr, FieldVisibility, FloatWidth, Hir, Ident, IntSign, IntWidth, ItemId, Literal,
-    ModuleId, Node, Op, Pattern, PrimitiveTy, Scope, ScopeId, StructField, StructTy, Ty, TyDef,
-    TyParam,
+    Const, Expr, FieldVisibility, FloatWidth, Func, FuncHeader, FuncParam, Hir, Ident, IntSign,
+    IntWidth, ItemId, Literal, ModuleId, Node, Op, Pattern, PrimitiveTy, Scope, ScopeId,
+    StructField, StructTy, Ty, TyDef, TyParam,
 };
 use common::span::{Span, Spanned};
+use grammar::ast::GenericTyApp;
 use grammar::{
     ast::{self, AssignmentOperator, AssignmentTarget, Atom, StructDef, TypeExpr, TypePath, While},
     token::IntLiteralInfo,
@@ -95,7 +96,7 @@ impl AstLowerer {
     }
 
     #[inline]
-    fn anon_scope_from_expr(&mut self, expr: Expr) -> ScopeId {
+    fn anon_scope_from_expr(&mut self, expr: Spanned<Expr>) -> ScopeId {
         self.register_scope(Scope {
             label: None,
             children: vec![Node::ImplicitReturn(expr)],
@@ -122,6 +123,7 @@ impl AstLowerer {
     pub fn resolve_module(&mut self, module: ModuleId) -> Result<()> {
         self.resolve_top_level_types(module)?;
         self.resolve_top_level_consts(module)?;
+        self.resolve_top_level_funcs(module)?;
 
         let ctx = Ctx::new(module);
         let nodes = std::mem::replace(self.module_nodes.get_mut(&module).unwrap(), Vec::new());
@@ -282,6 +284,18 @@ impl AstLowerer {
         ))
     }
 
+    pub fn lower_ty_param(&mut self, ctx: &Ctx, param: ast::TyParam) -> Result<TyParam> {
+        Ok(TyParam {
+            name: get_ident(param.name.into_value()),
+            bound: param
+                .bound
+                .map(|bound| self.lower_ty(&ctx, bound.into_value()))
+                .transpose()?
+                .map(Box::new),
+            infer: false,
+        })
+    }
+
     pub fn lower_struct_def_into_ty(
         &mut self,
         module: ModuleId,
@@ -290,15 +304,7 @@ impl AstLowerer {
         // Accumulate all generic type parameters
         let mut ctx = Ctx::new(module);
         for param in struct_def.ty_params {
-            let param = TyParam {
-                name: get_ident(param.name.into_value()),
-                bound: param
-                    .bound
-                    .map(|bound| self.lower_ty(&ctx, bound.into_value()))
-                    .transpose()?
-                    .map(Box::new),
-                infer: false,
-            };
+            let param = self.lower_ty_param(&ctx, param)?;
             ctx.ty_params.push(param);
         }
 
@@ -500,6 +506,58 @@ impl AstLowerer {
         }
     }
 
+    /// Lowers a top-level function declaration into an HIR node.
+    pub fn resolve_top_level_funcs(&mut self, module: ModuleId) -> Result<()> {
+        let nodes = self.module_nodes.get(&module).expect("module not found");
+
+        for node in nodes.clone() {
+            if let ast::Node::Func {
+                vis,
+                name,
+                ty_params,
+                params,
+                kw_params: _, // TODO
+                ret,
+                body,
+            } = node.into_value()
+            {
+                let mut ctx = Ctx::new(module);
+                let ident = name.as_ref().map(get_ident_from_ref);
+                for ty_param in ty_params {
+                    ctx.ty_params.push(self.lower_ty_param(&ctx, ty_param)?);
+                }
+                let header = FuncHeader {
+                    name: ident,
+                    ty_params: ctx.ty_params.clone(),
+                    params: params
+                        .into_iter()
+                        .map(|param| {
+                            Ok(FuncParam {
+                                pat: self.lower_pat(param.0.pat.0),
+                                ty: self.lower_ty(&ctx, param.0.ty.0)?,
+                                default: param
+                                    .0
+                                    .default
+                                    .map(|expr| self.lower_expr(&ctx, expr))
+                                    .transpose()?,
+                            })
+                        })
+                        .collect::<Result<Vec<_>>>()?,
+                    ret_ty: self.lower_ty_or_infer(&ctx, ret)?,
+                };
+                let func = Func {
+                    vis,
+                    header,
+                    body: self.lower_body(&ctx, &None, body.0)?,
+                };
+                let item = ItemId(module, *ident.value());
+                self.assert_item_unique(&item, name)?;
+                self.hir.funcs.insert(item, func);
+            }
+        }
+        Ok(())
+    }
+
     /// Desugars a conditional control flow expression into an if-statement, e.g.
     /// `break if COND` becomes `if COND { break; }`
     #[inline]
@@ -509,14 +567,17 @@ impl AstLowerer {
         cond: Option<Spanned<ast::Expr>>,
         base: Node,
     ) -> Result<Node> {
-        Ok(if let Some(cond) = cond {
-            Node::Expr(Expr::If(
-                Box::new(self.lower_expr(ctx, cond)?),
-                self.register_scope(Scope {
-                    label: None,
-                    children: vec![base],
-                }),
-                None,
+        Ok(if let Some(cond @ Spanned(_, span)) = cond {
+            Node::Expr(Spanned(
+                Expr::If(
+                    Box::new(self.lower_expr(ctx, cond)?),
+                    self.register_scope(Scope {
+                        label: None,
+                        children: vec![base],
+                    }),
+                    None,
+                ),
+                span,
             ))
         } else {
             base
@@ -561,9 +622,14 @@ impl AstLowerer {
     pub fn lower_pat(&mut self, pat: ast::Pattern) -> Pattern {
         match pat {
             ast::Pattern::Ident { ident, mut_kw } => Pattern::Ident {
-                ident: get_ident(ident.into_value()),
+                ident: ident.map(get_ident),
                 is_mut: mut_kw.is_some(),
             },
+            ast::Pattern::Tuple(_variant, pats) => Pattern::Tuple(
+                pats.into_iter()
+                    .map(|pat| self.lower_pat(pat.into_value()))
+                    .collect(),
+            ),
             _ => todo!(),
         }
     }
@@ -595,13 +661,14 @@ impl AstLowerer {
     }
 
     /// Lowers an expression into an HIR node.
-    pub fn lower_expr(&mut self, ctx: &Ctx, expr: Spanned<ast::Expr>) -> Result<Expr> {
+    pub fn lower_expr(&mut self, ctx: &Ctx, expr: Spanned<ast::Expr>) -> Result<Spanned<Expr>> {
         use ast::Expr as E;
         use ast::UnaryOp as U;
 
         let (expr, span) = expr.into_inner();
-        Ok(match expr {
-            E::Atom(atom) => self.lower_atom(ctx, Spanned(atom, span))?,
+        let expr = match expr {
+            E::Atom(atom) => return self.lower_atom(Spanned(atom, span)),
+            E::Ident(ident, tys) => return self.lower_ident_expr(ctx, ident.map(get_ident), tys),
             E::UnaryOp { op, expr } => Expr::CallOp(
                 match *op.value() {
                     U::Plus => Op::Pos,
@@ -620,7 +687,7 @@ impl AstLowerer {
                         vec![self.lower_expr(ctx, *right)?],
                     )
                 } else {
-                    self.lower_logical_into_if_stmt(ctx, *left, *right, op.into_value())?
+                    return self.lower_logical_into_if_stmt(ctx, *left, *right, op.into_value());
                 }
             }
             E::Tuple(exprs) => Expr::Tuple(
@@ -725,8 +792,13 @@ impl AstLowerer {
                 Box::new(self.lower_expr(ctx, *subject)?),
                 vec![self.lower_expr(ctx, *index)?],
             ),
+            E::Cast { expr, ty } => Expr::Cast(
+                Box::new(self.lower_expr(ctx, *expr)?),
+                self.lower_ty(&ctx, ty.into_value())?,
+            ),
             _ => todo!(),
-        })
+        };
+        Ok(Spanned(expr, span))
     }
 
     #[inline]
@@ -734,9 +806,11 @@ impl AstLowerer {
         &mut self,
         ctx: &Ctx,
         lhs: Spanned<AssignmentTarget>,
-        rhs: Expr,
+        rhs: Spanned<Expr>,
     ) -> Result<Expr> {
-        Ok(match lhs.into_value() {
+        let (lhs, span) = lhs.into_inner();
+
+        Ok(match lhs {
             AssignmentTarget::Pattern(pat) => Expr::Assign(self.lower_pat(pat), Box::new(rhs)),
             AssignmentTarget::Attr { subject, attr } => Expr::SetAttr(
                 Box::new(self.lower_expr(ctx, *subject)?),
@@ -744,10 +818,13 @@ impl AstLowerer {
                 Box::new(rhs),
             ),
             AssignmentTarget::Index { subject, index } => Expr::AssignPtr(
-                Box::new(Expr::CallOp(
-                    Op::IndexMut,
-                    Box::new(self.lower_expr(ctx, *subject)?),
-                    vec![self.lower_expr(ctx, *index)?],
+                Box::new(Spanned(
+                    Expr::CallOp(
+                        Op::IndexMut,
+                        Box::new(self.lower_expr(ctx, *subject)?),
+                        vec![self.lower_expr(ctx, *index)?],
+                    ),
+                    span,
                 )),
                 Box::new(rhs),
             ),
@@ -782,9 +859,9 @@ impl AstLowerer {
         match tgt {
             AssignmentTarget::Pattern(p) => match p {
                 ast::Pattern::Ident {
-                    ident: Spanned(ident, span),
+                    ident: ident @ Spanned(_, span),
                     ..
-                } => Ok(Spanned(ast::Expr::Atom(Atom::Ident(ident)), span)),
+                } => Ok(Spanned(ast::Expr::Ident(ident, None), span)),
                 pat => Err(Error::InvalidAssignmentTarget(span, pat.name())),
             },
             AssignmentTarget::Attr { subject, attr } => Ok(Spanned(
@@ -806,23 +883,29 @@ impl AstLowerer {
         &mut self,
         ctx: &Ctx,
         tgt: Spanned<AssignmentTarget>,
-    ) -> Result<Expr> {
+    ) -> Result<Spanned<Expr>> {
         let (tgt, span) = tgt.into_inner();
         match tgt {
             AssignmentTarget::Pattern(p) => match p {
                 ast::Pattern::Ident { ident, .. } => {
-                    Ok(self.lower_ident_expr(ctx, get_ident(ident.into_value())))
+                    self.lower_ident_expr(ctx, ident.map(get_ident), None)
                 }
                 pat => Err(Error::InvalidAssignmentTarget(span, pat.name())),
             },
-            AssignmentTarget::Attr { subject, attr } => Ok(Expr::GetAttr(
-                Box::new(self.lower_expr(ctx, *subject)?),
-                attr.map(|a| get_ident(a)),
+            AssignmentTarget::Attr { subject, attr } => Ok(Spanned(
+                Expr::GetAttr(
+                    Box::new(self.lower_expr(ctx, *subject)?),
+                    attr.map(|a| get_ident(a)),
+                ),
+                span,
             )),
-            AssignmentTarget::Index { subject, index } => Ok(Expr::CallOp(
-                Op::IndexMut,
-                Box::new(self.lower_expr(ctx, *subject)?),
-                vec![self.lower_expr(ctx, *index)?],
+            AssignmentTarget::Index { subject, index } => Ok(Spanned(
+                Expr::CallOp(
+                    Op::IndexMut,
+                    Box::new(self.lower_expr(ctx, *subject)?),
+                    vec![self.lower_expr(ctx, *index)?],
+                ),
+                span,
             )),
             AssignmentTarget::Pointer(subject) => Ok(self.lower_expr(ctx, *subject)?),
         }
@@ -835,6 +918,10 @@ impl AstLowerer {
     pub fn lower_while_loop(&mut self, ctx: &Ctx, stmt: While) -> Result<Expr> {
         let label = stmt.label.as_ref().map(|l| get_ident_from_ref(l.value()));
         let cond = self.lower_expr(ctx, *stmt.cond)?;
+        let body_span = stmt
+            .body
+            .span()
+            .merge_opt(stmt.else_body.as_ref().map(Spanned::span));
 
         let children = self.lower_ast_nodes(ctx, stmt.body.into_value())?;
         let then = self.register_scope(Scope {
@@ -844,14 +931,15 @@ impl AstLowerer {
         let else_body = stmt
             .else_body
             .map(|body| {
-                let children = self.lower_ast_nodes(ctx, body.into_value())?;
+                let (body, span) = body.into_inner();
+                let children = self.lower_ast_nodes(ctx, body)?;
                 let block = self.register_scope(Scope {
                     label: None,
                     children,
                 });
                 Ok(self.register_scope(Scope {
                     label: None,
-                    children: vec![Node::Break(label, Some(Expr::Block(block)))],
+                    children: vec![Node::Break(label, Some(Spanned(Expr::Block(block), span)))],
                 }))
             })
             .transpose()?
@@ -865,18 +953,45 @@ impl AstLowerer {
 
         let scope_id = self.register_scope(Scope {
             label: stmt.label.as_ref().map(|l| get_ident_from_ref(l.value())),
-            children: vec![Node::Expr(Expr::If(Box::new(cond), then, Some(else_body)))],
+            children: vec![Node::Expr(Spanned(
+                Expr::If(Box::new(cond), then, Some(else_body)),
+                body_span,
+            ))],
         });
         Ok(Expr::Loop(scope_id))
     }
 
     #[inline]
-    pub fn lower_ident_expr(&mut self, ctx: &Ctx, ident: Ident) -> Expr {
-        let item_id = ItemId(ctx.module, ident);
-        if let Some(cnst) = self.hir.consts.get(&item_id) {
-            return cnst.value.clone();
-        }
-        Expr::Ident(ident)
+    pub fn lower_ident_expr(
+        &mut self,
+        ctx: &Ctx,
+        ident: Spanned<Ident>,
+        app: Option<GenericTyApp>,
+    ) -> Result<Spanned<Expr>> {
+        let item_id = ItemId(ctx.module, *ident.value());
+        Ok(if let Some(cnst) = self.hir.consts.get(&item_id) {
+            // TODO: true const-eval instead of inline (this will be replaced by `alias`)
+            if let Some(app) = app {
+                return Err(Error::ExplicitTypeArgumentsNotAllowed(app.span()));
+            }
+            cnst.value.clone()
+        } else {
+            Spanned(
+                Expr::Ident(
+                    ident,
+                    app.map(|app| {
+                        app.map(|app| {
+                            app.into_iter()
+                                .map(|ty| self.lower_ty(ctx, ty.into_value()))
+                                .collect::<Result<_>>()
+                        })
+                        .transpose()
+                    })
+                    .transpose()?,
+                ),
+                ident.span(),
+            )
+        })
     }
 
     #[inline]
@@ -920,13 +1035,19 @@ impl AstLowerer {
         lhs: Spanned<ast::Expr>,
         rhs: Spanned<ast::Expr>,
         op: ast::BinaryOp,
-    ) -> Result<Expr> {
+    ) -> Result<Spanned<Expr>> {
+        let span = lhs.span().merge(rhs.span());
+        let binding = Spanned(get_ident_from_ref("__lhs"), lhs.span());
+        let binding_expr = Spanned(Expr::Ident(binding, None), lhs.span());
+
         let lhs = self.lower_expr(ctx, lhs)?;
         let rhs = self.lower_expr(ctx, rhs)?;
-        let binding = get_ident_from_ref("__lhs");
-        let cond = Box::new(Expr::Cast(Box::new(Expr::Ident(binding)), BOOL));
+        let cond = Box::new(Spanned(
+            Expr::Cast(Box::new(binding_expr.clone()), BOOL),
+            lhs.span(),
+        ));
 
-        let then = self.anon_scope_from_expr(Expr::Ident(binding));
+        let then = self.anon_scope_from_expr(binding_expr);
         let els = self.anon_scope_from_expr(rhs);
         let stmt = match op {
             ast::BinaryOp::LogicalOr => Expr::If(cond, then, Some(els)),
@@ -946,35 +1067,37 @@ impl AstLowerer {
                     ty: Ty::Unknown,
                     value: Some(lhs),
                 },
-                Node::ImplicitReturn(stmt),
+                Node::ImplicitReturn(Spanned(stmt, span)),
             ],
         });
-        Ok(Expr::Block(block))
+        Ok(Spanned(Expr::Block(block), span))
     }
 
     /// Lowers an atom into an HIR literal expression.
-    pub fn lower_atom(&mut self, ctx: &Ctx, atom: Spanned<Atom>) -> Result<Expr> {
+    pub fn lower_atom(&mut self, atom: Spanned<Atom>) -> Result<Spanned<Expr>> {
         let (atom, span) = atom.into_inner();
-        Ok(match atom {
-            Atom::Ident(ident) => self.lower_ident_expr(ctx, get_ident(ident)),
-            Atom::Int(int, IntLiteralInfo { unsigned, .. }) => Expr::Literal(if unsigned {
-                Literal::UInt(
-                    int.parse()
-                        .map_err(|_| Error::IntegerLiteralOverflow(span))?,
-                )
-            } else {
-                Literal::Int(
-                    int.parse()
-                        .map_err(|_| Error::IntegerLiteralOverflow(span))?,
-                )
-            }),
-            Atom::Float(f) => Expr::Literal(Literal::Float(
-                f.parse().map_err(|_| Error::FloatLiteralOverflow(span))?,
-            )),
-            Atom::Bool(b) => Expr::Literal(Literal::Bool(b)),
-            Atom::Char(c) => Expr::Literal(Literal::Char(c)),
-            Atom::String(s) => Expr::Literal(Literal::String(s)),
-            Atom::Void => Expr::Literal(Literal::Void),
-        })
+        Ok(Spanned(
+            match atom {
+                Atom::Int(int, IntLiteralInfo { unsigned, .. }) => Expr::Literal(if unsigned {
+                    Literal::UInt(
+                        int.parse()
+                            .map_err(|_| Error::IntegerLiteralOverflow(span))?,
+                    )
+                } else {
+                    Literal::Int(
+                        int.parse()
+                            .map_err(|_| Error::IntegerLiteralOverflow(span))?,
+                    )
+                }),
+                Atom::Float(f) => Expr::Literal(Literal::Float(
+                    f.parse().map_err(|_| Error::FloatLiteralOverflow(span))?,
+                )),
+                Atom::Bool(b) => Expr::Literal(Literal::Bool(b)),
+                Atom::Char(c) => Expr::Literal(Literal::Char(c)),
+                Atom::String(s) => Expr::Literal(Literal::String(s)),
+                Atom::Void => Expr::Literal(Literal::Void),
+            },
+            span,
+        ))
     }
 }

@@ -4,6 +4,7 @@ use grammar::span::Provider;
 use hir::lower::AstLowerer;
 use hir::Expr::Ident;
 use hir::{Hir, ItemId, ModuleId};
+use hir::infer::TypeLowerer;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let interval = std::time::Duration::from_millis(500);
@@ -47,6 +48,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             start.elapsed(),
                             lowerer.hir
                         );
+
+                        let mut ty_lowerer = TypeLowerer::new(lowerer.hir);
+                        for node in ty_lowerer.hir.scopes.clone().into_values() {
+                            for mut child in node.children {
+                                match ty_lowerer.lower_node(&mut child) {
+                                    Ok(()) => (),
+                                    Err(error) => error.write(&cache, &mut std::io::stdout())?,
+                                }
+                            }
+                        }
                     }
                     Err(error) => {
                         error.write(&cache, &mut std::io::stdout())?;

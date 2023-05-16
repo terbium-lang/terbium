@@ -1,4 +1,4 @@
-use crate::{Ident, ModuleId};
+use crate::{Ident, ModuleId, Ty};
 use ariadne::{ColorGenerator, Label, Report, ReportKind};
 use common::{
     pluralize,
@@ -54,6 +54,24 @@ pub enum Error {
     /// Invalid assignment target. Operator-assigns desugar to convert the assignment target to a
     /// valid expression, hence many forms of patterns are disallowed.
     InvalidAssignmentTarget(Span, &'static str),
+    /// Cannot solve cyclic type constraint.
+    CyclicTypeConstraint {
+        /// The span of the type constraint.
+        span: Span,
+        /// The right-hand side of the type constraint that was cyclic.
+        rhs: Ty,
+    },
+    /// Type mismatch.
+    TypeMismatch {
+        /// The expected type with an optional span.
+        expected: (Ty, Option<Span>),
+        /// The actual type.
+        actual: Spanned<Ty>,
+    },
+    /// Explicit generic type arguments are not allowed in this context.
+    ExplicitTypeArgumentsNotAllowed(Span),
+    /// Unresolved identifier.
+    UnresolvedIdentifier(Spanned<String>),
 }
 
 impl Display for Error {
@@ -104,6 +122,23 @@ impl Display for Error {
             Self::InvalidAssignmentTarget(_, subject) => {
                 write!(f, "cannot use {subject} as an assignment target")
             }
+            Self::CyclicTypeConstraint { rhs, .. } => {
+                write!(f, "cannot solve cyclic type constraint `_ = {rhs}`",)
+            }
+            Self::TypeMismatch {
+                expected, actual, ..
+            } => {
+                write!(f, "type mismatch, expected `{expected}`, found `{actual}`")
+            }
+            Self::ExplicitTypeArgumentsNotAllowed(_) => {
+                write!(
+                    f,
+                    "explicit generic type arguments are not allowed in this context"
+                )
+            }
+            Self::UnresolvedIdentifier(name) => {
+                write!(f, "unresolved identifier `{name}`")
+            }
         }
     }
 }
@@ -123,6 +158,12 @@ impl Error {
             Self::CircularTypeReference { .. } => "encountered circular type reference",
             Self::GetterLessVisibleThanSetter { .. } => "getter is less visible than setter",
             Self::InvalidAssignmentTarget(..) => "invalid assignment target",
+            Self::CyclicTypeConstraint { .. } => "cannot solve cyclic type constraint",
+            Self::TypeMismatch { .. } => "type mismatch",
+            Self::ExplicitTypeArgumentsNotAllowed(..) => {
+                "explicit generic type arguments are not allowed in this context"
+            }
+            Self::UnresolvedIdentifier(..) => "unresolved identifier",
         }
     }
 
@@ -133,7 +174,8 @@ impl Error {
             Self::IntegerLiteralOverflow(span)
             | Self::FloatLiteralOverflow(span)
             | Self::TypeNotFound(span, ..)
-            | Self::InvalidAssignmentTarget(span, _) => *span,
+            | Self::InvalidAssignmentTarget(span, _)
+            | Self::ExplicitTypeArgumentsNotAllowed(span) => *span,
             Self::ModuleNotFound(name) => name.span(),
             Self::IncorrectTypeArgumentCount { span, ty, .. } => span.merge(ty.span()),
             Self::CircularTypeReference {
@@ -142,6 +184,9 @@ impl Error {
                 circular_at,
             } => src.span().merge(dest.span()).merge(*circular_at),
             Self::GetterLessVisibleThanSetter(vis) => vis.span(),
+            Self::CyclicTypeConstraint { span, .. } => *span,
+            Self::TypeMismatch { span, .. } => *span,
+            Self::UnresolvedIdentifier(name) => name.span(),
         }
     }
 
@@ -157,6 +202,10 @@ impl Error {
             Self::CircularTypeReference { .. } => 107,
             Self::GetterLessVisibleThanSetter(_) => 108,
             Self::InvalidAssignmentTarget(..) => 109,
+            Self::CyclicTypeConstraint { .. } => 110,
+            Self::TypeMismatch { .. } => 111,
+            Self::ExplicitTypeArgumentsNotAllowed(_) => 112,
+            Self::UnresolvedIdentifier(..) => 113,
         }
     }
 
@@ -284,6 +333,41 @@ impl Error {
                         .with_color(primary)
                     )
                     .with_help("assign to an identifier, field, or index instead")
+            }
+            Self::CyclicTypeConstraint { span, rhs } => {
+                report
+                    .with_label(Label::new(span)
+                        .with_message(
+                            format!("type `_` cannot be constrained to `{rhs}` because it would cause a cyclic type constraint"),
+                        )
+                        .with_color(primary)
+                    )
+                    .with_help("try explicitly specifying types to remove ambiguity")
+                    .with_note(format!("tried solving the constraint `_ = {rhs}`"))
+            }
+            Self::TypeMismatch { span, expected, actual } => {
+                report
+                    .with_label(Label::new(span)
+                        .with_message(format!("expected {expected}, but found {actual} here"))
+                        .with_color(primary)
+                    )
+                    .with_help("try changing the value to match the expected type")
+            }
+            Self::ExplicitTypeArgumentsNotAllowed(span) => {
+                report
+                    .with_label(Label::new(span)
+                        .with_message("explicit type arguments are not allowed here")
+                        .with_color(primary)
+                    )
+                    .with_help("remove the explicit type arguments")
+            }
+            Self::UnresolvedIdentifier(Spanned(name, span)) => {
+                report
+                    .with_label(Label::new(span)
+                        .with_message(format!("could not find `{name}` in this scope"))
+                        .with_color(primary)
+                    )
+                    .with_help("check the spelling of the identifier")
             }
         };
 

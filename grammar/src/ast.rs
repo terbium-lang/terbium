@@ -274,7 +274,7 @@ pub enum TypeExpr {
     /// A tuple type, e.g. `(Type, Type)`.
     Tuple(Vec<Spanned<TypeExpr>>),
     /// An array type, e.g. `[Type]`, `[Type; 5]`, or `[Type; CONSTANT]`.
-    Array(Box<Spanned<TypeExpr>>, Option<Spanned<Atom>>),
+    Array(Box<Spanned<TypeExpr>>, Option<Spanned<TypeConst>>),
     /// A function type, e.g. `(Type, Type) -> Type`.
     Func {
         /// Positional parameters.
@@ -363,6 +363,32 @@ impl Display for TypeExpr {
     }
 }
 
+#[inline]
+fn fmt_int_literal(f: &mut Formatter, s: &str, info: &IntLiteralInfo) -> fmt::Result {
+    write!(
+        f,
+        "{}{s}{}",
+        info.radix.prefix(),
+        if info.unsigned { "u" } else { "" },
+    )
+}
+
+/// A type constant.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TypeConst {
+    Int(String, IntLiteralInfo),
+    Ident(String),
+}
+
+impl Display for TypeConst {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Int(s, info) => fmt_int_literal(f, s, info),
+            Self::Ident(ident) => write!(f, "{ident}"),
+        }
+    }
+}
+
 /// An atom, which is an expression that cannot be further decomposed into other expressions.
 ///
 /// For example, the literal integer 1 is an atom, but the binary operation 1 + 1 is not, since
@@ -381,20 +407,13 @@ pub enum Atom {
     Bool(bool),
     /// The `void` keyword, which represents the absence of a value.
     Void,
-    /// A non-keyword identifier.
-    Ident(String),
 }
 
 impl Display for Atom {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Int(s, info) => write!(
-                f,
-                "{}{s}{}",
-                info.radix.prefix(),
-                if info.unsigned { "u" } else { "" },
-            ),
-            Self::Float(s) | Self::Ident(s) => write!(f, "{s}"),
+            Self::Int(s, info) => fmt_int_literal(f, s, info),
+            Self::Float(s) => write!(f, "{s}"),
             Self::String(s) => write!(f, "{s:?}"),
             Self::Char(c) => write!(f, "c{c:?}"),
             Self::Bool(b) => write!(f, "{b}"),
@@ -874,11 +893,15 @@ pub struct While {
     pub else_body: Option<Spanned<Vec<Spanned<Node>>>>,
 }
 
+pub type GenericTyApp = Spanned<Vec<Spanned<TypeExpr>>>;
+
 /// An expression that can be evaluated to a value.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Expr {
     /// An atom represented as an expression.
     Atom(Atom),
+    /// An identifier, with an optional type application.
+    Ident(Spanned<String>, Option<GenericTyApp>),
     /// A tuple of expressions.
     Tuple(Vec<Spanned<Self>>),
     /// An array of expressions.
@@ -1050,6 +1073,21 @@ impl Display for Expr {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Atom(a) => write!(f, "{a}"),
+            Self::Ident(i, app) => {
+                write!(f, "{i}")?;
+                if let Some(app) = app {
+                    write!(
+                        f,
+                        "<{}>",
+                        app.value()
+                            .iter()
+                            .map(ToString::to_string)
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )?;
+                }
+                Ok(())
+            }
             Self::Tuple(items) | Self::Array(items) => {
                 if matches!(self, Self::Tuple(_)) && items.len() == 1 {
                     return write!(f, "({},)", items[0]);
@@ -1377,6 +1415,8 @@ pub enum Node {
         vis: ItemVisibility,
         /// The name of the function.
         name: Spanned<String>,
+        /// The type parameters of the function.
+        ty_params: Vec<TyParam>,
         /// The positional parameters of the function.
         params: Vec<Spanned<FuncParam>>,
         /// The keyword parameters of the function.
@@ -1453,12 +1493,22 @@ impl Display for Node {
             Self::Func {
                 vis,
                 name,
+                ty_params,
                 params,
                 kw_params,
                 ret,
                 body,
             } => {
-                write!(f, "{vis} func {name}(")?;
+                write!(f, "{vis} func {name}")?;
+                if !ty_params.is_empty() {
+                    let params = ty_params
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    write!(f, "<{params}>")?;
+                }
+                write!(f, "(")?;
 
                 let params = params
                     .iter()

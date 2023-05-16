@@ -1,4 +1,6 @@
-use crate::ast::{StructDef, StructField, TyParam, TypeApplication, TypePath, TypePathSeg, While};
+use crate::ast::{
+    StructDef, StructField, TyParam, TypeApplication, TypeConst, TypePath, TypePathSeg, While,
+};
 use crate::{
     ast::{
         expr_as_block, AssignmentOperator, AssignmentTarget, Atom, BinaryOp, Delimiter, Expr,
@@ -324,8 +326,8 @@ pub fn type_expr_parser<'a>() -> RecursiveParser<'a, Spanned<TypeExpr>> {
             .then_ignore(just(TokenInfo::Semicolon).pad_ws())
             .then(
                 select! {
-                    TokenInfo::IntLiteral(value, info) => Atom::Int(value, info),
-                    TokenInfo::Ident(name, _) => Atom::Ident(name),
+                    TokenInfo::IntLiteral(value, info) => TypeConst::Int(value, info),
+                    TokenInfo::Ident(name, _) => TypeConst::Ident(name),
                 }
                 .map_with_span(Spanned)
                 .or_not(),
@@ -375,7 +377,16 @@ pub fn pat_parser<'a>() -> RecursiveParser<'a, Spanned<Pattern>> {
             .labelled("identifier")
             .boxed();
 
-        ident
+        let tuple = pat
+            .clone()
+            .separated_by(just(TokenInfo::Comma).pad_ws())
+            .allow_trailing()
+            .delimited(Delimiter::Paren)
+            .map(|pats| Pattern::Tuple(Vec::new(), pats))
+            .map_with_span(Spanned)
+            .boxed();
+
+        choice((ident, tuple))
     })
 }
 
@@ -384,6 +395,7 @@ type ParamList = Vec<Spanned<FuncParam>>;
 #[derive(Clone)]
 struct FuncHeader {
     name: Spanned<String>,
+    ty_params: Vec<TyParam>,
     params: ParamList,
     kw_params: ParamList,
     ret: Option<Spanned<TypeExpr>>,
@@ -544,9 +556,25 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
                 Spanned(FuncParam { pat, ty, default }, span)
             });
 
+        let type_params = ident
+            .clone()
+            .then(
+                just(TokenInfo::Colon)
+                    .pad_ws()
+                    .ignore_then(ty.clone())
+                    .or_not(),
+            )
+            .map(|(name, bound)| TyParam { name, bound })
+            .separated_by(just(TokenInfo::Comma).pad_ws())
+            .allow_trailing()
+            .delimited(Delimiter::Angle)
+            .pad_ws()
+            .or_not();
+
         // Function header starting from "func", i.e. `func f()`
         let func_header = kw!("func")
             .ignore_then(ident.clone())
+            .then(type_params.clone())
             .then(
                 just(TokenInfo::Asterisk)
                     .map_with_span(|_, span| FuncParamOrSep::Sep(span))
@@ -561,10 +589,11 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
                     .ignore_then(ty.clone())
                     .or_not(),
             )
-            .try_map(|((name, params), ty), span| {
+            .try_map(|(((name, ty_params), params), ty), span| {
                 let (params, kw_params) = split_func_params(span, params)?;
                 Ok(FuncHeader {
                     name,
+                    ty_params: ty_params.unwrap_or_else(Vec::new),
                     params,
                     kw_params,
                     ret: ty,
@@ -593,6 +622,7 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
                         vis,
                         FuncHeader {
                             name,
+                            ty_params,
                             params,
                             kw_params,
                             ret,
@@ -605,6 +635,7 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
                         Node::Func {
                             vis,
                             name,
+                            ty_params,
                             params,
                             kw_params,
                             body,
@@ -679,21 +710,6 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
             .pad_ws()
             .labelled("return")
             .boxed();
-
-        let type_params = ident
-            .clone()
-            .then(
-                just(TokenInfo::Colon)
-                    .pad_ws()
-                    .ignore_then(ty.clone())
-                    .or_not(),
-            )
-            .map(|(name, bound)| TyParam { name, bound })
-            .separated_by(just(TokenInfo::Comma).pad_ws())
-            .allow_trailing()
-            .delimited(Delimiter::Angle)
-            .pad_ws()
-            .or_not();
 
         let struct_field = field_vis
             .then(ident.clone())
@@ -900,23 +916,17 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
             )
         }
 
-        // An identifier
-        let ident = select! {
-            TokenInfo::Ident(name, _) => Expr::Atom(match name.as_str() {
-                "true" => Atom::Bool(true),
-                "false" => Atom::Bool(false),
-                "void" => Atom::Void,
-                _ => Atom::Ident(name),
-            })
-        }
-        .map_with_span(Spanned);
-
         // Parses and consumes the next atom. An atom is the most basic unit of an expression that
         // cannot be broken down into other expressions any further.
         //
         // For example, 1 is an atom, as is "hello" - but 1 + 1 is not, since that can be further
         // broken down into two expressions.
         let atom = filter_map(|span, token| {
+            macro_rules! err {
+                () => {{
+                    return Err(Error::expected_input_found(span, None, Some(token)));
+                }};
+            }
             Ok(Spanned(
                 Expr::Atom(match token {
                     TokenInfo::IntLiteral(val, info) => Atom::Int(val, info),
@@ -929,13 +939,32 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
                         let content = resolve_string(content, StringLiteralFlags(0), inner_span)?;
                         Atom::Char(content.chars().next().unwrap())
                     }
-                    _ => return Err(Error::expected_input_found(span, None, Some(token))),
+                    TokenInfo::Ident(ref name, _) => match name.as_str() {
+                        "true" => Atom::Bool(true),
+                        "false" => Atom::Bool(false),
+                        "void" => Atom::Void,
+                        _ => err!(),
+                    },
+                    _ => err!(),
                 }),
                 span,
             ))
         })
-        .or(ident)
         .labelled("atom");
+
+        // An identifier, e.g. `foo`, which may optionally have a type application.
+        let ident = select!(|span| TokenInfo::Ident(name, _) => Spanned(name, span))
+            .then(
+                // Type application, e.g. `foo<int>`
+                ty.clone()
+                    .separated_by(just(TokenInfo::Comma).pad_ws())
+                    .allow_trailing()
+                    .delimited(Delimiter::Angle)
+                    .map_with_span(Spanned)
+                    .or_not(),
+            )
+            .map_with_span(|(name, ty), span| Spanned(Expr::Ident(name, ty), span))
+            .labelled("identifier");
 
         // Intermediate parser to consume comma-separated sequences, e.g. 1, 2, 3
         let comma_separated = expr
@@ -956,6 +985,7 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
                 .map_with_span(|exprs, span| Spanned(Expr::Array(exprs), span))
                 .labelled("array"),
             atom,
+            ident,
         ))
         .labelled("unambiguous expression")
         .pad_ws()
@@ -1077,12 +1107,7 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
         // Type cast, e.g. `a to b`
         let cast = unary
             .clone()
-            .then(
-                kw!("to")
-                    .pad_ws()
-                    .ignore_then(ty.clone())
-                    .repeated(),
-            )
+            .then(kw!("to").pad_ws().ignore_then(ty.clone()).repeated())
             .foldl(|target, ty| {
                 let span = target.span().merge(ty.span());
 

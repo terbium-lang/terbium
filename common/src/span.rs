@@ -91,6 +91,15 @@ impl Span {
         )
     }
 
+    /// Merges this span with another, or leaves the span unchanged if the other span is `None`.
+    #[must_use]
+    pub const fn merge_opt(self, other: Option<Self>) -> Self {
+        match other {
+            Some(other) => self.merge(other),
+            None => self,
+        }
+    }
+
     /// Merges an iterator of spans.
     ///
     /// # Panics
@@ -218,6 +227,17 @@ impl<T> Spanned<T> {
     #[must_use]
     pub const fn as_inner(&self) -> (&T, Span) {
         (&self.0, self.1)
+    }
+}
+
+impl<T, E> Spanned<Result<T, E>> {
+    /// Converts from `Spanned<Result<T, E>>` to `Result<Spanned<T>, E>`,
+    /// mapping the span if the inner value is `Ok` and propagating the error otherwise.
+    ///
+    /// # Errors
+    /// If the inner value is `Err`, the error is propagated.
+    pub fn transpose(self) -> Result<Spanned<T>, E> {
+        self.0.map(|v| Spanned(v, self.1))
     }
 }
 
