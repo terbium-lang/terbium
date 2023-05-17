@@ -140,7 +140,7 @@ impl DiagnosticWriter {
 
         let mut prev = usize::MAX;
         for (line_num, line) in cached.lines {
-            // If we're skipping lines, `:` could act as a "verticle ellipsis" to show that we are
+            // If we're skipping lines, `:` could act as a "vertical ellipsis" to show that we are
             // in fact skipping lines.
             if line_num != prev + 1 {
                 writeln!(w, "{blanks}{}", self.color(':').fg(MARGIN_COLOR))?;
