@@ -67,6 +67,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "diagnostics"
+version = "0.1.0"
+dependencies = [
+ "common",
+ "yansi",
+]
+
+[[package]]
 name = "getrandom"
 version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -209,6 +217,7 @@ name = "terbium"
 version = "0.0.1"
 dependencies = [
  "common",
+ "diagnostics",
  "grammar",
  "hir",
 ]

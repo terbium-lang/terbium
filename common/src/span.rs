@@ -81,6 +81,12 @@ impl Span {
         self.end - self.start
     }
 
+    /// Converts this span into a range.
+    #[must_use]
+    pub fn range(&self) -> Range<usize> {
+        self.start..self.end
+    }
+
     /// Merges this span with another.
     #[must_use]
     pub const fn merge(self, other: Self) -> Self {
