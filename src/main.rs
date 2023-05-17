@@ -1,10 +1,10 @@
 use common::span::{ProviderCache, Src};
 use grammar::parser::Parser;
 use grammar::span::Provider;
+use hir::infer::TypeLowerer;
 use hir::lower::AstLowerer;
 use hir::Expr::Ident;
 use hir::{Hir, ItemId, ModuleId};
-use hir::infer::TypeLowerer;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let interval = std::time::Duration::from_millis(500);

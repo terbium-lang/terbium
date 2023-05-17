@@ -1,6 +1,6 @@
+use common::span::{Span, Src};
 use std::mem::replace;
 use std::ops::Range;
-use common::span::{Span, Src};
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Line {
@@ -30,13 +30,13 @@ impl<S: AsRef<str>> From<S> for LineSrc {
         let mut lines: Vec<Line> = s
             .as_ref()
             .split_inclusive([
-                '\r', // Carriage return
-                '\n', // Line feed
-                '\x0B', // Vertical tab
-                '\x0C', // Form feed
+                '\r',       // Carriage return
+                '\n',       // Line feed
+                '\x0B',     // Vertical tab
+                '\x0C',     // Form feed
                 '\u{0085}', // Next line
                 '\u{2028}', // Line separator
-                '\u{2029}' // Paragraph separator
+                '\u{2029}', // Paragraph separator
             ])
             .flat_map(|line| {
                 // Returns last line and set `last_line` to current `line`
@@ -65,17 +65,16 @@ impl<S: AsRef<str>> From<S> for LineSrc {
             lines.push(l);
         }
 
-        Self {
-            lines,
-            len: offset,
-        }
+        Self { lines, len: offset }
     }
 }
 
 // Derived from https://github.com/zesterer/ariadne/blob/main/src/source.rs#L117-L157
 impl LineSrc {
     /// Get the length of the total number of characters in the source.
-    pub fn len(&self) -> usize { self.len }
+    pub fn len(&self) -> usize {
+        self.len
+    }
 
     /// Return an iterator over the characters in the source.
     pub fn chars(&self) -> impl Iterator<Item = char> + '_ {
@@ -83,21 +82,31 @@ impl LineSrc {
     }
 
     /// Get access to a specific, zero-indexed [`Line`].
-    pub fn line(&self, idx: usize) -> Option<&Line> { self.lines.get(idx) }
+    pub fn line(&self, idx: usize) -> Option<&Line> {
+        self.lines.get(idx)
+    }
 
     /// Return an iterator over the [`Line`]s in this source.
-    pub fn lines(&self) -> impl ExactSizeIterator<Item = &Line> + '_ { self.lines.iter() }
+    pub fn lines(&self) -> impl ExactSizeIterator<Item = &Line> + '_ {
+        self.lines.iter()
+    }
 
     /// Get the line that the given offset appears on, and the line/column numbers of the offset.
     ///
     /// Note that the line/column numbers are zero-indexed.
     pub fn get_offset_line(&self, offset: usize) -> Option<(&Line, usize, usize)> {
         if offset <= self.len {
-            let idx = self.lines
+            let idx = self
+                .lines
                 .binary_search_by_key(&offset, |line| line.offset)
                 .unwrap_or_else(|idx| idx.saturating_sub(1));
             let line = &self.lines[idx];
-            assert!(offset >= line.offset, "offset = {}, line.offset = {}", offset, line.offset);
+            assert!(
+                offset >= line.offset,
+                "offset = {}, line.offset = {}",
+                offset,
+                line.offset
+            );
             Some((line, idx, offset - line.offset))
         } else {
             None
@@ -110,7 +119,9 @@ impl LineSrc {
     /// [`Source::line`]).
     pub fn get_line_range(&self, span: Span) -> Range<usize> {
         let start = self.get_offset_line(span.start).map_or(0, |(_, l, _)| l);
-        let end = self.get_offset_line(span.end.saturating_sub(1).max(span.start)).map_or(self.lines.len(), |(_, l, _)| l + 1);
+        let end = self
+            .get_offset_line(span.end.saturating_sub(1).max(span.start))
+            .map_or(self.lines.len(), |(_, l, _)| l + 1);
         start..end
     }
 }

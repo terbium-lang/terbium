@@ -46,7 +46,8 @@ impl Diagnostic {
     }
 
     pub fn with_end(mut self, label: Option<&str>, message: impl ToString) -> Self {
-        self.end.push((label.map(ToString::to_string), message.to_string()));
+        self.end
+            .push((label.map(ToString::to_string), message.to_string()));
         self
     }
 

@@ -1,10 +1,10 @@
+use crate::span::{Line, LineSrc};
+use crate::{Diagnostic, LabelKind, Section, Severity};
+use common::span::{Provider, Span, Src};
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::io::{self, Write};
-use common::span::{Provider, Span, Src};
-use yansi::{Paint, Color};
-use crate::{Diagnostic, LabelKind, Section, Severity};
-use crate::span::{Line, LineSrc};
+use yansi::{Color, Paint};
 
 // constants are named by the position of their corner, for example `L` would be said to be `BOTTOM_LEFT`
 const TOP_LEFT: char = '\u{250c}';
@@ -74,7 +74,8 @@ impl DiagnosticWriter {
     }
 
     pub fn add_provider(&mut self, provider: Provider) {
-        self.cache.insert(provider.src(), LineSrc::from(provider.content()));
+        self.cache
+            .insert(provider.src(), LineSrc::from(provider.content()));
     }
 
     pub fn highlight_span(&self, line: Line, span: Span, color: Color) -> String {
@@ -87,8 +88,16 @@ impl DiagnosticWriter {
 
     pub fn write_severity<W: Write>(&self, mut w: W, severity: Severity) -> io::Result<()> {
         match severity {
-            Severity::Error(code) => write!(w, "{} (E{code:0>3})", self.color("error").fg(ERROR_COLOR).bold()),
-            Severity::Warning(code) => write!(w, "{} (W{code:0>3})", self.color("warning").fg(WARNING_COLOR).bold()),
+            Severity::Error(code) => write!(
+                w,
+                "{} (E{code:0>3})",
+                self.color("error").fg(ERROR_COLOR).bold()
+            ),
+            Severity::Warning(code) => write!(
+                w,
+                "{} (W{code:0>3})",
+                self.color("warning").fg(WARNING_COLOR).bold()
+            ),
             Severity::Info => write!(w, "{}", self.color("info").fg(INFO_COLOR).bold()),
         }
     }
@@ -98,12 +107,6 @@ impl DiagnosticWriter {
             inline: Vec::new(),
             multiline: Vec::new(),
         };
-
-        for label in labels {
-            match label {
-                LabelKind::Label(lbl)
-            }
-        }
 
         labels
     }
@@ -117,10 +120,13 @@ impl DiagnosticWriter {
         let blanks = vec![b' '; max_line_num_len + 1];
         w.write(&blanks)?;
 
-        let start_span = cached.section.span
+        let start_span = cached
+            .section
+            .span
             .unwrap_or_else(|| cached.section.labels.first().unwrap().context_span());
         let (src, start) = (start_span.src, start_span.start);
-        let (_, start_line, start_col) = self.cache
+        let (_, start_line, start_col) = self
+            .cache
             .get(&src)
             .expect("missing source")
             .get_offset_line(start)
@@ -182,35 +188,42 @@ impl DiagnosticWriter {
         self.write_severity(&mut w, diagnostic.severity)?;
         writeln!(w, ": {}", self.color(diagnostic.message).bold())?;
 
-        let sections = diagnostic.sections
+        let sections = diagnostic
+            .sections
             .into_iter()
             .map(|sect| {
                 // Only keep lines that are labelled
-                let lines = sect.span.map(|span| {
-                    // If an explicit span was provided, use that
-                    let source = self.cache.get(&span.src).expect("missing source");
+                let lines = sect
+                    .span
+                    .map(|span| {
+                        // If an explicit span was provided, use that
+                        let source = self.cache.get(&span.src).expect("missing source");
 
-                    source.get_line_range(span).map(|line| {
-                        (line, source.lines[line].clone())
+                        source
+                            .get_line_range(span)
+                            .map(|line| (line, source.lines[line].clone()))
+                            .collect::<Vec<_>>()
                     })
-                    .collect::<Vec<_>>()
-                })
-                .or_else(|| {
-                    // If no span was provided, use the labels
-                    let source = self.cache.get(&sect.labels.first()?.context_span().src).expect("missing source");
-                    Some(sect.labels
-                        .iter()
-                        .flat_map(|label| {
-                            debug_assert!(label.context_span().len() >= label.span().len());
+                    .or_else(|| {
+                        // If no span was provided, use the labels
+                        let source = self
+                            .cache
+                            .get(&sect.labels.first()?.context_span().src)
+                            .expect("missing source");
+                        Some(
+                            sect.labels
+                                .iter()
+                                .flat_map(|label| {
+                                    debug_assert!(label.context_span().len() >= label.span().len());
 
-                            source.get_line_range(label.context_span()).map(|line| {
-                                (line, source.lines[line].clone())
-                            })
-                        })
-                        .collect()
-                    )
-                })
-                .expect("section without labels?");
+                                    source
+                                        .get_line_range(label.context_span())
+                                        .map(|line| (line, source.lines[line].clone()))
+                                })
+                                .collect(),
+                        )
+                    })
+                    .expect("section without labels?");
 
                 CachedSection {
                     lines,
@@ -220,13 +233,15 @@ impl DiagnosticWriter {
             .collect::<Vec<_>>();
 
         // grab the largest section line number
-        let max_line_len = sections.iter()
+        let max_line_len = sections
+            .iter()
             .flat_map(|sect| sect.lines.iter().rev().map(|(line, _)| line))
             .max()
             .copied()
             .map(|value| if value == 0 { 1 } else { value })
             .unwrap_or(1)
-            .ilog10() + 1;
+            .ilog10()
+            + 1;
 
         for section in sections {
             self.write_section(&mut w, section, max_line_len as _)?;
