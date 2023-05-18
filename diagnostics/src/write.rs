@@ -20,7 +20,7 @@ const CROSS: char = '\u{2713}';
 
 const ERROR_COLOR: Color = Color::Red;
 const WARNING_COLOR: Color = Color::Yellow;
-const INFO_COLOR: Color = Color::Fixed(79);
+const INFO_COLOR: Color = Color::Fixed(39);
 const MARGIN_COLOR: Color = Color::Fixed(246);
 const EXTRA_COLOR: Color = Color::Fixed(43);
 
