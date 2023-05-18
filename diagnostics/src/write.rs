@@ -1,5 +1,5 @@
 use crate::span::{Line, LineSrc};
-use crate::{Action, Diagnostic, Label, Section, SectionKind, Severity};
+use crate::{Action, Diagnostic, Fix, Label, Section, SectionKind, Severity};
 use common::span::{Provider, Span, Src};
 use std::{
     collections::HashMap,
@@ -191,6 +191,63 @@ impl DiagnosticWriter {
         computed
     }
 
+    pub fn compute_fix_labels<'a>(
+        &self,
+        fix: &'a Fix,
+        lookup: &mut HashMap<usize, Line>,
+    ) -> ComputedLabels<'a> {
+        let mut computed = ComputedLabels {
+            inline: HashMap::new(),
+            multiline: Vec::new(),
+        };
+
+        let src = self
+            .cache
+            .get(&fix.action.span().src)
+            .expect("missing source");
+        // TODO: multiline fix labels
+        let (line, num, _) = src.get_offset_line(fix.action.span().start).unwrap();
+        let mut line = line.clone();
+
+        let span = match &fix.action {
+            Action::InsertBefore(span, content) => {
+                line.chars.insert_str(span.start - line.offset, content);
+                span.get_span(span.start, span.start + content.len())
+            }
+            Action::InsertAfter(span, content) => {
+                line.chars.insert_str(span.end - line.offset, content);
+                span.get_span(span.end, span.end + content.len())
+            }
+            Action::Replace(span, content) => {
+                line.chars
+                    .replace_range(span.start - line.offset..span.end - line.offset, content);
+                span.get_span(span.start, span.start + content.len())
+            }
+            // we want to show the user the span will be removed, but we don't want to actually
+            // remove it from the source
+            Action::Remove(span) => *span,
+        };
+        lookup.insert(num, line);
+
+        let (color, char) = match fix.action {
+            Action::InsertBefore(..) | Action::InsertAfter(..) => (Color::Green, '+'),
+            Action::Replace(..) => (Color::Yellow, '~'),
+            Action::Remove(_) => (Color::Red, '-'),
+        };
+        computed.inline.insert(
+            num,
+            vec![InlineLabel {
+                context_span: span,
+                span,
+                color,
+                label: &fix.label,
+                char,
+                position: 0,
+            }],
+        );
+        computed
+    }
+
     pub fn write_section<W: Write>(
         &self,
         mut w: W,
@@ -224,9 +281,10 @@ impl DiagnosticWriter {
         writeln!(w, "{blanks}{}", self.color(VERTICAL).fg(MARGIN_COLOR))?;
 
         let mut prev = None;
+        let mut line_lookup = HashMap::new();
         let mut computed = match cached.section {
             SectionKind::Standard(ref sect) => self.compute_section_labels(&sect.labels),
-            SectionKind::Fix(fix) => todo!(),
+            SectionKind::Fix(ref fix) => self.compute_fix_labels(fix, &mut line_lookup),
         };
         for (line_num, line) in cached.lines {
             // If we're skipping lines, `:` could act as a "vertical ellipsis" to show that we are
@@ -244,7 +302,7 @@ impl DiagnosticWriter {
                     .fg(Color::Fixed(250)),
                 self.color(VERTICAL).fg(MARGIN_COLOR),
                 self.highlight_spans(
-                    &line,
+                    line_lookup.get(&line_num).unwrap_or(&line),
                     labels.iter().map(|lbl| (lbl.span, lbl.color)).collect()
                 ),
             )?;
