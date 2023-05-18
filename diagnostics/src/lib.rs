@@ -1,3 +1,4 @@
+#![feature(let_chains)]
 //! Terbium diagnostic reporting.
 
 use common::span::Span;
@@ -22,7 +23,7 @@ pub struct Diagnostic {
     /// The message of the diagnostic.
     pub message: String,
     /// The diagnostic sections.
-    pub sections: Vec<Section>,
+    pub sections: Vec<SectionKind>,
     /// Extra lines at the end of the diagnostic.
     pub end: Vec<(Option<String>, String)>,
     /// If `Some`, the diagnostic will be wrapped to this number of columns.
@@ -41,7 +42,12 @@ impl Diagnostic {
     }
 
     pub fn with_section(mut self, section: Section) -> Self {
-        self.sections.push(section);
+        self.sections.push(SectionKind::Standard(section));
+        self
+    }
+
+    pub fn with_fix(mut self, fix: Fix) -> Self {
+        self.sections.push(SectionKind::Fix(fix));
         self
     }
 
@@ -51,6 +57,14 @@ impl Diagnostic {
         self
     }
 
+    pub fn with_help(self, help: impl ToString) -> Self {
+        self.with_end(Some("help"), help.to_string())
+    }
+
+    pub fn with_note(self, note: impl ToString) -> Self {
+        self.with_end(Some("note"), note.to_string())
+    }
+
     pub fn wrap_to(mut self, cols: usize) -> Self {
         self.wrap = Some(cols);
         self
@@ -58,23 +72,43 @@ impl Diagnostic {
 }
 
 #[derive(Clone, Debug)]
-pub enum LabelKind {
-    Label(Label),
+pub enum SectionKind {
+    Standard(Section),
     Fix(Fix),
 }
 
-impl LabelKind {
-    pub const fn span(&self) -> Span {
+impl SectionKind {
+    pub fn full_span(&self) -> Span {
         match self {
-            Self::Label(l) => l.span,
+            Self::Standard(s) => s.span.unwrap_or_else(|| {
+                Span::from_spans(
+                    s.labels
+                        .iter()
+                        .map(|lbl| lbl.context_span.unwrap_or(lbl.span)),
+                )
+            }),
             Self::Fix(f) => f.action.span(),
         }
     }
 
-    pub fn context_span(&self) -> Span {
+    pub const fn explicit_span(&self) -> Option<Span> {
         match self {
-            Self::Label(l) => l.context_span.unwrap_or(l.span),
-            Self::Fix(f) => f.action.span(),
+            Self::Standard(s) => s.span,
+            Self::Fix(f) => f.span,
+        }
+    }
+
+    pub fn note(&self) -> Option<&str> {
+        match self {
+            Self::Standard(s) => s.note.as_deref(),
+            Self::Fix(f) => f.note.as_deref(),
+        }
+    }
+
+    pub fn inner_context_spans(&self) -> Vec<Span> {
+        match self {
+            Self::Standard(s) => s.labels.iter().map(Label::full_span).collect(),
+            Self::Fix(f) => vec![f.action.span()],
         }
     }
 }
@@ -88,7 +122,7 @@ pub struct Section {
     /// by the labels.
     pub span: Option<Span>,
     /// Labels added to the section.
-    pub labels: Vec<LabelKind>,
+    pub labels: Vec<Label>,
     /// A note added at the end of the section.
     pub note: Option<String>,
 }
@@ -116,12 +150,7 @@ impl Section {
     }
 
     pub fn with_label(mut self, label: Label) -> Self {
-        self.labels.push(LabelKind::Label(label));
-        self
-    }
-
-    pub fn with_fix(mut self, fix: Fix) -> Self {
-        self.labels.push(LabelKind::Fix(fix));
+        self.labels.push(label);
         self
     }
 
@@ -152,6 +181,10 @@ impl Label {
     }
 
     pub fn with_context_span(mut self, span: Span) -> Self {
+        debug_assert!(
+            span.len() >= self.span.len(),
+            "context span cannot span less than the actual span",
+        );
         self.context_span = Some(span);
         self
     }
@@ -159,6 +192,10 @@ impl Label {
     pub fn with_message(mut self, message: impl ToString) -> Self {
         self.message = message.to_string();
         self
+    }
+
+    pub fn full_span(&self) -> Span {
+        self.context_span.unwrap_or(self.span)
     }
 }
 
@@ -168,7 +205,7 @@ pub enum Action {
     /// Replace the content at the span with the given context.
     Replace(Span, String),
     /// Delete the content at the span.
-    Delete(Span),
+    Remove(Span),
     /// Insert the given content before the span.
     InsertBefore(Span, String),
     /// Insert the given content after the span.
@@ -179,7 +216,7 @@ impl Action {
     pub const fn span(&self) -> Span {
         match self {
             Self::Replace(span, _) => *span,
-            Self::Delete(span) => *span,
+            Self::Remove(span) => *span,
             Self::InsertBefore(span, _) => *span,
             Self::InsertAfter(span, _) => *span,
         }
@@ -189,20 +226,33 @@ impl Action {
 /// A fix section.
 #[derive(Clone, Debug)]
 pub struct Fix {
+    /// The full span that should be displayed, if any.
+    pub span: Option<Span>,
     /// The action to take to fix the diagnostic.
     pub action: Action,
     /// The message of the fix, displayed at the beginning of the section.
     pub message: String,
     /// The label message of the fix, displayed within the source code.
     pub label: String,
+    /// A note displayed at the end of the fix.
+    pub note: Option<String>,
 }
 
 impl Fix {
     pub fn new(action: Action) -> Self {
         Self {
+            span: None,
             action,
             message: String::new(),
             label: String::new(),
+            note: None,
+        }
+    }
+
+    pub fn over(span: Span, action: Action) -> Self {
+        Self {
+            span: Some(span),
+            ..Self::new(action)
         }
     }
 
@@ -213,6 +263,11 @@ impl Fix {
 
     pub fn with_label(mut self, label: impl ToString) -> Self {
         self.label = label.to_string();
+        self
+    }
+
+    pub fn with_note(mut self, note: impl ToString) -> Self {
+        self.note = Some(note.to_string());
         self
     }
 }

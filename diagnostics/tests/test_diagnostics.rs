@@ -4,15 +4,18 @@ use diagnostics::{Diagnostic, Label, Section, Severity};
 
 #[test]
 fn test_diagnostics() -> std::io::Result<()> {
-    let provider = Provider::read_from_file("../test.trb")?;
+    let provider = Provider::read_from_file("/Users/jay3332/Projects/Terbium/test.trb")?;
     let span = |start, end| Span::new(provider.src(), start, end);
     let diagnostic = Diagnostic::new(Severity::Error(3), "unknown variable")
         .with_section(
-            Section::over(span(8, 9))
-                .with_label(Label::at(span(8, 9)).with_message("unknown variable `a`"))
+            Section::new()
+                .with_label(Label::at(span(4, 10)).with_message("label 1"))
+                .with_label(Label::at(span(15, 16)).with_message("label 2"))
+                .with_label(Label::at(span(13, 14)).with_message("label 3"))
+                .with_label(Label::at(span(18, 19)).with_message("label 4"))
                 .with_note("sample note"),
         )
-        .with_end(Some("note"), "sample");
+        .with_end(Some("note"), "expected `string`\n   found `int`");
 
     let mut writer = DiagnosticWriter::new();
     writer.add_provider(provider);

@@ -37,7 +37,7 @@ fn test_expr_parser() {
                                 )),
                                 op: Spanned(BinaryOp::Mul, span(7, 8),),
                                 right: Box::new(Spanned(
-                                    Expr::Atom(Atom::Ident("x".to_string())),
+                                    Expr::Ident(Spanned("x".to_string(), span(9, 10)), None),
                                     span(9, 10),
                                 )),
                             },
@@ -50,7 +50,7 @@ fn test_expr_parser() {
                 right: Box::new(Spanned(
                     Expr::Call {
                         func: Box::new(Spanned(
-                            Expr::Atom(Atom::Ident("f".to_string())),
+                            Expr::Ident(Spanned("f".to_string(), span(14, 15)), None),
                             span(14, 15),
                         )),
                         args: vec![
@@ -58,7 +58,7 @@ fn test_expr_parser() {
                                 Expr::UnaryOp {
                                     op: Spanned(UnaryOp::Not, span(16, 17)),
                                     expr: Box::new(Spanned(
-                                        Expr::Atom(Atom::Ident("y".to_string())),
+                                        Expr::Ident(Spanned("y".to_string(), span(17, 18)), None),
                                         span(17, 18),
                                     )),
                                 },

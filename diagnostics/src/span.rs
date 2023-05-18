@@ -1,6 +1,5 @@
-use common::span::{Span, Src};
-use std::mem::replace;
-use std::ops::Range;
+use common::span::Span;
+use std::{mem::replace, ops::Range};
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Line {
