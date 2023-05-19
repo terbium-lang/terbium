@@ -12,7 +12,6 @@ use common::span::{Span, Spanned, Src};
 use grammar::ast::{self, Indent};
 pub use grammar::ast::{ItemVisibility, MemberVisibility};
 use internment::Intern;
-use std::fmt::Pointer;
 use std::{
     collections::HashMap,
     fmt::{self, Debug, Display, Formatter, Write},

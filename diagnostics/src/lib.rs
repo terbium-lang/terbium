@@ -1,5 +1,6 @@
-#![feature(let_chains)]
 //! Terbium diagnostic reporting.
+
+#![feature(let_chains)]
 
 use common::span::Span;
 

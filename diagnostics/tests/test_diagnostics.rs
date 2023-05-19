@@ -6,7 +6,7 @@ use diagnostics::{Action, Diagnostic, Fix, Label, Section, Severity};
 fn test_diagnostics() -> std::io::Result<()> {
     let provider = Provider::read_from_file("/Users/jay3332/Projects/Terbium/test.trb")?;
     let span = |start, end| Span::new(provider.src(), start, end);
-    let diagnostic = Diagnostic::new(Severity::Error(3), "mismatched types")
+    let diagnostic = Diagnostic::new(Severity::Info, "mismatched types")
         .with_section(
             Section::new()
                 .with_label(Label::at(span(4, 10)).with_message("label 1"))
@@ -16,9 +16,9 @@ fn test_diagnostics() -> std::io::Result<()> {
                 .with_note("sample note"),
         )
         .with_fix(
-            Fix::new(Action::Replace(span(4, 10), "new_string".to_string()))
-                .with_message("rename the variable")
-                .with_label("renamed here"),
+            Fix::new(Action::InsertAfter(span(4, 10), "_balls".to_string()))
+                .with_message("add `_balls` to the variable name")
+                .with_label("balls here"),
         )
         .with_end(Some("note"), "expected `string`\n   found `int`");
 

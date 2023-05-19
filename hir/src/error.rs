@@ -126,7 +126,7 @@ impl Display for Error {
                 write!(f, "cannot solve cyclic type constraint `_ = {rhs}`",)
             }
             Self::TypeMismatch {
-                expected, actual, ..
+                expected: (expected, _), actual: Spanned(actual, _)
             } => {
                 write!(f, "type mismatch, expected `{expected}`, found `{actual}`")
             }
@@ -185,7 +185,7 @@ impl Error {
             } => src.span().merge(dest.span()).merge(*circular_at),
             Self::GetterLessVisibleThanSetter(vis) => vis.span(),
             Self::CyclicTypeConstraint { span, .. } => *span,
-            Self::TypeMismatch { span, .. } => *span,
+            Self::TypeMismatch { expected, actual } => actual.span().merge_opt(expected.1),
             Self::UnresolvedIdentifier(name) => name.span(),
         }
     }
@@ -345,12 +345,13 @@ impl Error {
                     .with_help("try explicitly specifying types to remove ambiguity")
                     .with_note(format!("tried solving the constraint `_ = {rhs}`"))
             }
-            Self::TypeMismatch { span, expected, actual } => {
+            Self::TypeMismatch { expected: (expected, _ /* TODO */), actual } => {
                 report
                     .with_label(Label::new(span)
                         .with_message(format!("expected {expected}, but found {actual} here"))
                         .with_color(primary)
                     )
+
                     .with_help("try changing the value to match the expected type")
             }
             Self::ExplicitTypeArgumentsNotAllowed(span) => {
