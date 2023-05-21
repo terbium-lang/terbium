@@ -130,6 +130,12 @@ impl Span {
     pub const fn get_span(&self, start: usize, end: usize) -> Self {
         Self::new(self.src, start, end)
     }
+
+    /// Gets the last index of the span as another span.
+    #[must_use]
+    pub const fn last_span(&self) -> Self {
+        self.get_span(self.end - 1, self.end)
+    }
 }
 
 impl chumsky::Span for Span {

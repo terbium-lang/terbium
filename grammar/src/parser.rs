@@ -436,7 +436,7 @@ fn split_func_params(
             .map(|p| match p {
                 FuncParamOrSep::FuncParam(p) => match p.value().pat.value() {
                     Pattern::Ident { .. } => Ok(p),
-                    _ => Err(Error::keyword_parameter_not_ident(hspan, p.span())),
+                    _ => Err(Error::keyword_parameter_not_ident(hspan, p.0.pat.span())),
                 },
                 FuncParamOrSep::Sep(span) => {
                     Err(Error::multiple_keyword_parameter_separators(hspan, span))

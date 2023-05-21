@@ -332,6 +332,14 @@ pub enum IntWidth {
     Unknown = !0,
 }
 
+impl IntWidth {
+    pub fn naturalize(&mut self) {
+        if *self == Self::Unknown {
+            *self = Self::default();
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum IntSign {
     Signed,
@@ -345,6 +353,14 @@ pub enum FloatWidth {
     Float64 = 64,
     Unknown = !0,
     // Float128 = 128,
+}
+
+impl FloatWidth {
+    pub fn naturalize(&mut self) {
+        if *self == Self::Unknown {
+            *self = Self::default();
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -578,7 +594,7 @@ impl Display for Literal {
             Self::Int(i) => write!(f, "{i}"),
             Self::Float(n) => write!(f, "{n:?}"),
             Self::Bool(b) => write!(f, "{b}"),
-            Self::Char(c) => f.write_char(*c),
+            Self::Char(c) => write!(f, "c{c:?}"),
             Self::String(s) => write!(f, "{s:?}"),
             Self::Void => f.write_str("void"),
         }

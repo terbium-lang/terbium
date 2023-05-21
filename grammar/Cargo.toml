@@ -9,4 +9,5 @@ edition = "2021"
 ariadne = "0.2"
 chumsky = "0.9"
 common = { path = "../common" }
+diagnostics = { path = "../diagnostics" }
 unicode-xid = "0.2.4"

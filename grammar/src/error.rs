@@ -5,6 +5,7 @@ use crate::{
 };
 use ariadne::{ColorGenerator, Label, Report, ReportKind};
 use common::span::{ProviderCache, Src};
+use diagnostics::{Action, Diagnostic, Fix, Section, Severity};
 use std::{
     fmt::{self, Display, Formatter, Result as FmtResult},
     io::Write,
@@ -463,6 +464,47 @@ impl Error {
         }
         report.finish().write(cache, writer)
     }
+
+    /// Generates a v2 diagnostic.
+    pub fn into_diagnostic(self) -> Diagnostic {
+        let context_span = self.info.inner_span().unwrap_or(self.span);
+        let span = match self.info {
+            ErrorInfo::UnexpectedEof => context_span.last_span(),
+            _ => context_span,
+        };
+        let mut diagnostic = Diagnostic::new(Severity::Error(self.info.code()), "invalid syntax")
+            .with_section(
+                Section::new().with_label(
+                    diagnostics::Label::at(span)
+                        .with_context_span(context_span)
+                        .with_message(self.info),
+                ),
+            );
+
+        if let Some(hint) = self.hint {
+            diagnostic = match {
+                match hint.action {
+                    HintAction::InsertBefore(span, content) => {
+                        Some(Action::InsertBefore(span, content))
+                    }
+                    HintAction::InsertAfter(span, content) => {
+                        Some(Action::InsertAfter(span, content))
+                    }
+                    HintAction::Replace(span, content) => Some(Action::Replace(span, content)),
+                    HintAction::Remove(span) => Some(Action::Remove(span)),
+                    HintAction::None => None,
+                }
+            } {
+                Some(action) => diagnostic.with_fix(Fix::new(action).with_message(hint.message)),
+                None => diagnostic.with_help(hint.message),
+            };
+        }
+
+        for note in self.notes {
+            diagnostic = diagnostic.with_note(note);
+        }
+        diagnostic
+    }
 }
 
 #[inline]
@@ -496,7 +538,7 @@ impl<T: Into<TargetKind> + Clone> chumsky::Error<T> for Error {
         };
         let hint = match count {
             _ if found.is_none() && count > 0 => Hint {
-                action: HintAction::InsertAfter(span, expected.hint()),
+                action: HintAction::InsertBefore(span.last_span(), expected.hint()),
                 message: "add required tokens".to_string(),
             },
             0 => Hint {

@@ -1,4 +1,5 @@
 use common::span::{ProviderCache, Src};
+use diagnostics::write::DiagnosticWriter;
 use grammar::parser::Parser;
 use grammar::span::Provider;
 use hir::infer::TypeLowerer;
@@ -27,6 +28,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // writeln!(file)?;
 
         let cache = ProviderCache::from_providers([&provider]);
+        let mut dwriter = DiagnosticWriter::new();
+        dwriter.add_provider(provider.clone());
 
         match nodes {
             Ok(nodes) => {
@@ -54,19 +57,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             for mut child in node.children {
                                 match ty_lowerer.lower_node(&mut child) {
                                     Ok(()) => (),
-                                    Err(error) => error.write(&cache, &mut std::io::stdout())?,
+                                    Err(error) => dwriter.write_diagnostic(
+                                        &mut std::io::stdout(),
+                                        error.into_diagnostic(),
+                                    )?,
                                 }
                             }
                         }
                     }
                     Err(error) => {
-                        error.write(&cache, &mut std::io::stdout())?;
+                        dwriter
+                            .write_diagnostic(&mut std::io::stdout(), error.into_diagnostic())?;
                     }
                 };
             }
             Err(errors) => {
                 for error in errors {
-                    error.write(&cache, &mut std::io::stdout())?;
+                    dwriter.write_diagnostic(&mut std::io::stdout(), error.into_diagnostic())?;
+                    // error.write(&cache, &mut std::io::stdout())?;
                     // writeln!(file, "// {}", error.info)?;
                 }
             }

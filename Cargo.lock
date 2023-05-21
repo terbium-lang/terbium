@@ -89,9 +89,9 @@ dependencies = [
 name = "grammar"
 version = "0.1.0"
 dependencies = [
- "ariadne",
  "chumsky",
  "common",
+ "diagnostics",
  "unicode-xid",
 ]
 
@@ -110,6 +110,7 @@ version = "0.1.0"
 dependencies = [
  "ariadne",
  "common",
+ "diagnostics",
  "grammar",
  "internment",
 ]

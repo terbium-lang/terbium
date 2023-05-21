@@ -127,7 +127,9 @@ impl DiagnosticWriter {
         // "Color" the spans
         for (span, color) in spans {
             for i in span.range() {
-                chars[i - line.offset].1 = Some(color);
+                chars
+                    .get_mut(i - line.offset)
+                    .map(|(_, c)| *c = Some(color));
             }
         }
         self.tidy_chunks(chars)
@@ -478,7 +480,7 @@ impl DiagnosticWriter {
                     header: Some(ref header),
                     ..
                 }) => {
-                    writeln!(w, "\n{header}")?;
+                    writeln!(w, "{header}")?;
                 }
                 SectionKind::Fix(ref fix) => {
                     writeln!(

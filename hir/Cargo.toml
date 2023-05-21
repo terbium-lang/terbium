@@ -8,5 +8,6 @@ edition = "2021"
 [dependencies]
 ariadne = "0.2"
 common = { path = "../common" }
+diagnostics = { path = "../diagnostics" }
 grammar = { path = "../grammar" }
 internment = "0.7"

@@ -173,7 +173,9 @@ impl AstLowerer {
 
         // Do a pass over all structs to resolve parent fields
         while !sty_parents.is_empty() {
-            let mut seen = HashMap::with_capacity(sty_parents.len());
+            let mut seen = HashMap::<_, (Spanned<Ident>, Spanned<TypePath>, ItemId)>::with_capacity(
+                sty_parents.len(),
+            );
             // Grab the next struct item ID to resolve
             let mut key = unsafe {
                 // SAFETY: sty_parents is guaranteed to have elements
@@ -185,13 +187,17 @@ impl AstLowerer {
             // a seen type again, and if so, this is a circular type reference.
             while let Some((sid, (src_span, pid, dest, args))) = sty_parents.remove_entry(&key) {
                 // Has the destination type been seen?
-                if let Some(&circular_at) = seen.get(&pid) {
+                if seen.contains_key(&pid) {
                     // If so, this is a circular type reference
-                    return Err(Error::CircularTypeReference {
-                        src: Spanned(sid.1, src_span),
-                        dest,
-                        circular_at,
-                    });
+                    let mut cycle = Vec::with_capacity(seen.len());
+
+                    let mut cur = pid;
+                    while let Some((src, dest, pid)) = seen.remove(&cur) {
+                        cycle.push((src, dest));
+                        cur = pid;
+                    }
+                    cycle.push((Spanned(sid.1, src_span), dest));
+                    return Err(Error::CircularTypeReference(cycle));
                 }
 
                 let fields = self
@@ -217,7 +223,7 @@ impl AstLowerer {
                 }
 
                 key = pid;
-                seen.insert(sid, src_span);
+                seen.insert(sid, (Spanned(sid.1, src_span), dest, pid));
             }
         }
 
@@ -696,6 +702,12 @@ impl AstLowerer {
                     .map(|e| self.lower_expr(ctx, e))
                     .collect::<Result<Vec<_>>>()?,
             ),
+            E::Array(exprs) => Expr::Array(
+                exprs
+                    .into_iter()
+                    .map(|e| self.lower_expr(ctx, e))
+                    .collect::<Result<Vec<_>>>()?,
+            ),
             E::Block { label, body } => {
                 Expr::Block(self.lower_body(ctx, &label, body.into_value())?)
             }
@@ -1081,17 +1093,15 @@ impl AstLowerer {
                 Atom::Int(int, IntLiteralInfo { unsigned, .. }) => Expr::Literal(if unsigned {
                     Literal::UInt(
                         int.parse()
-                            .map_err(|_| Error::IntegerLiteralOverflow(span))?,
+                            .map_err(|_| Error::IntegerLiteralOverflow(span, int))?,
                     )
                 } else {
                     Literal::Int(
                         int.parse()
-                            .map_err(|_| Error::IntegerLiteralOverflow(span))?,
+                            .map_err(|_| Error::IntegerLiteralOverflow(span, int))?,
                     )
                 }),
-                Atom::Float(f) => Expr::Literal(Literal::Float(
-                    f.parse().map_err(|_| Error::FloatLiteralOverflow(span))?,
-                )),
+                Atom::Float(f) => Expr::Literal(Literal::Float(f.parse().unwrap())),
                 Atom::Bool(b) => Expr::Literal(Literal::Bool(b)),
                 Atom::Char(c) => Expr::Literal(Literal::Char(c)),
                 Atom::String(s) => Expr::Literal(Literal::String(s)),

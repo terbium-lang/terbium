@@ -1,9 +1,9 @@
 use crate::{Ident, ModuleId, Ty};
-use ariadne::{ColorGenerator, Label, Report, ReportKind};
 use common::{
     pluralize,
     span::{ProviderCache, Span, Spanned},
 };
+use diagnostics::{Action, Diagnostic, Fix, Label, Section, Severity};
 use grammar::ast::{self, TypeExpr, TypePath};
 use std::{
     fmt::{Display, Formatter},
@@ -22,9 +22,7 @@ pub enum Error {
     NameConflict(Span, Spanned<String>),
     /// Integer literal will overflow 128 bits. If the integer is not unsigned, making it unsigned
     /// may increase the maximum value before an overflow such as this error occurs.
-    IntegerLiteralOverflow(Span),
-    /// Float literal will overflow 64 bits.
-    FloatLiteralOverflow(Span),
+    IntegerLiteralOverflow(Span, String),
     /// Type with the given path was not found. Represented as (type_span, name_span, module_id)
     TypeNotFound(Span, Spanned<String>, ModuleId),
     /// The module with the given path was not found.
@@ -40,15 +38,8 @@ pub enum Error {
         /// The actual number of type arguments.
         actual: usize,
     },
-    /// Encountered a circular type reference.
-    CircularTypeReference {
-        /// The type reference.
-        src: Spanned<Ident>,
-        /// The type being referenced.
-        dest: Spanned<TypePath>,
-        /// The span where the type being referenced references the source type again.
-        circular_at: Span,
-    },
+    /// Encountered a circular type reference. Each cycle is represented as `(def_src, def_dest)`.
+    CircularTypeReference(Vec<(Spanned<Ident>, Spanned<TypePath>)>),
     /// Visibility for field access is less than the visibility for field mutation.
     GetterLessVisibleThanSetter(Spanned<ast::FieldVisibility>),
     /// Invalid assignment target. Operator-assigns desugar to convert the assignment target to a
@@ -83,11 +74,8 @@ impl Display for Error {
             Self::NameConflict(_, name) => {
                 write!(f, "name conflict for `{name}`")
             }
-            Self::IntegerLiteralOverflow(_) => {
+            Self::IntegerLiteralOverflow(..) => {
                 write!(f, "integer literal will overflow 128 bits")
-            }
-            Self::FloatLiteralOverflow(_) => {
-                write!(f, "float literal will overflow 64 bits")
             }
             Self::TypeNotFound(_, name, module) => {
                 write!(f, "could not find type `{name}` in module `{module}`")
@@ -106,7 +94,9 @@ impl Display for Error {
                     "incorrect number of type arguments for `{ty}`: expected {expected} type arguments, found {actual}",
                 )
             }
-            Self::CircularTypeReference { src, dest, .. } => {
+            Self::CircularTypeReference(cycle) => {
+                let src = &cycle.first().expect("cycle cannot be empty").0;
+                let dest = &cycle.last().unwrap().1;
                 write!(
                     f,
                     "circular type `{src}` references `{dest}`, which references `{src}` again"
@@ -126,7 +116,8 @@ impl Display for Error {
                 write!(f, "cannot solve cyclic type constraint `_ = {rhs}`",)
             }
             Self::TypeMismatch {
-                expected: (expected, _), actual: Spanned(actual, _)
+                expected: (expected, _),
+                actual: Spanned(actual, _),
             } => {
                 write!(f, "type mismatch, expected `{expected}`, found `{actual}`")
             }
@@ -148,10 +139,9 @@ impl std::error::Error for Error {}
 impl Error {
     pub const fn simple_message(&self) -> &'static str {
         match self {
-            Self::CannotExtendFieldsFromType(_) => "cannot extend fields from type",
+            Self::CannotExtendFieldsFromType(_) => "cannot extend fields from this type",
             Self::NameConflict(..) => "item name conflict",
-            Self::IntegerLiteralOverflow(_) => "integer literal will overflow 128 bits",
-            Self::FloatLiteralOverflow(_) => "float literal will overflow 64 bits",
+            Self::IntegerLiteralOverflow(..) => "integer literal will overflow 128 bits",
             Self::TypeNotFound(..) => "could not resolve type",
             Self::ModuleNotFound(..) => "could not resolve module",
             Self::IncorrectTypeArgumentCount { .. } => "incorrect number of type arguments",
@@ -167,35 +157,12 @@ impl Error {
         }
     }
 
-    pub const fn span(&self) -> Span {
-        match self {
-            Self::CannotExtendFieldsFromType(ty) => ty.span(),
-            Self::NameConflict(span, def) => span.merge(def.span()),
-            Self::IntegerLiteralOverflow(span)
-            | Self::FloatLiteralOverflow(span)
-            | Self::TypeNotFound(span, ..)
-            | Self::InvalidAssignmentTarget(span, _)
-            | Self::ExplicitTypeArgumentsNotAllowed(span) => *span,
-            Self::ModuleNotFound(name) => name.span(),
-            Self::IncorrectTypeArgumentCount { span, ty, .. } => span.merge(ty.span()),
-            Self::CircularTypeReference {
-                src,
-                dest,
-                circular_at,
-            } => src.span().merge(dest.span()).merge(*circular_at),
-            Self::GetterLessVisibleThanSetter(vis) => vis.span(),
-            Self::CyclicTypeConstraint { span, .. } => *span,
-            Self::TypeMismatch { expected, actual } => actual.span().merge_opt(expected.1),
-            Self::UnresolvedIdentifier(name) => name.span(),
-        }
-    }
-
     pub const fn error_code(&self) -> usize {
         match self {
             Self::CannotExtendFieldsFromType(_) => 100,
             Self::NameConflict(..) => 101,
-            Self::IntegerLiteralOverflow(_) => 102,
-            Self::FloatLiteralOverflow(_) => 103,
+            Self::IntegerLiteralOverflow(..) => 102,
+            // NOTE: error code 103 is open
             Self::TypeNotFound(..) => 104,
             Self::ModuleNotFound(..) => 105,
             Self::IncorrectTypeArgumentCount { .. } => 106,
@@ -209,169 +176,230 @@ impl Error {
         }
     }
 
-    /// Writes the error as a diagnostic to the given writer.
-    pub fn write(self, cache: &ProviderCache, writer: impl Write) -> std::io::Result<()> {
-        let mut colors = ColorGenerator::new();
-        let primary = colors.next();
-
-        let span = self.span();
-        let mut report = Report::build(ReportKind::Error, span.src, span.start)
-            .with_code(format!("E{:03}", self.error_code()))
-            .with_message(self.simple_message());
-
-        report = match self {
+    /// Converst the error as a diagnostic.
+    pub fn into_diagnostic(self) -> Diagnostic {
+        let mut diagnostic =
+            Diagnostic::new(Severity::Error(self.error_code()), self.simple_message());
+        diagnostic = match self {
             Self::CannotExtendFieldsFromType(ty) => {
-                report
-                    .with_label(
-                        Label::new(ty.span())
-                            .with_message(format!("cannot extend fields from `{ty}`"))
-                            .with_color(primary),
+                diagnostic
+                    .with_section(Section::new()
+                        .with_label(Label::at(ty.span())
+                            .with_message(format!("cannot extend fields from type `{ty}`"))
+                        )
+                        .with_note(format!("`{ty}` is not a concrete struct type"))
                     )
                     .with_help("you can only extend fields from concrete struct types, nothing else")
-            },
-            Self::NameConflict(def_span, src) => {
-                report
-                    .with_label(Label::new(def_span)
-                        .with_message(format!("item with name {src} defined here"))
-                        .with_color(primary)
-                        .with_order(0)
-                    )
-                    .with_label(Label::new(src.span())
-                        .with_message("but it is also defined here")
-                        .with_color(colors.next())
-                        .with_order(1)
-                    )
-                    .with_help("try renaming to something else")
-            },
-            Self::IntegerLiteralOverflow(span) => {
-                report
-                    .with_label(Label::new(span)
-                        .with_message("this integer literal here")
-                        .with_color(primary)
-                    )
-                    .with_help("represent the integer as a string, and then convert to a type that can fit this large of an integer at runtime")
-            },
-            Self::FloatLiteralOverflow(span) => {
-                report
-                    .with_label(Label::new(span)
-                        .with_message("this float literal here")
-                        .with_color(primary)
-                    )
-                    .with_help("represent the float as a string, and then convert to a type that can fit this large of an float at runtime")
-            },
-            Self::TypeNotFound(_, name, module) => {
-                report
-                    .with_label(Label::new(name.span())
-                        .with_message(format!("could not find type `{name}` in {module}"))
-                        .with_color(primary)
-                    )
-                    .with_help("check the spelling of the type") // TODO: maybe you meant...
-            },
-            Self::ModuleNotFound(name) => {
-                report
-                    .with_label(Label::new(name.span())
-                        .with_message(format!("could not find module `{name}`"))
-                        .with_color(primary)
-                    )
-                    .with_message("check the spelling of the module")
-            },
-            Self::IncorrectTypeArgumentCount { span, ty, expected, actual } => {
-                report
-                    .with_label(Label::new(span)
-                        .with_message(format!("provided {actual} type {} to {ty}", pluralize(actual, "argument", "arguments")))
-                        .with_color(primary)
-                        .with_order(0)
-                    )
-                    .with_label(Label::new(ty.span())
-                        .with_message(format!("{ty} expects {expected} type {}", pluralize(actual, "argument", "arguments")))
-                        .with_color(colors.next())
-                        .with_order(1)
-                    )
-                    .with_help(r#"try specifying the required number of type arguments. if you do not want to specify types in full, you can specify the inference type `_` instead"#)
-            },
-            Self::CircularTypeReference { src, dest, circular_at } => {
-                report
-                    .with_label(Label::new(src.span())
-                        .with_message(format!("source type `{src}` defined here"))
-                        .with_color(primary)
-                    )
-                    .with_label(Label::new(dest.span())
-                        .with_message(format!("reference to type `{dest}` found here"))
-                        .with_color(colors.next())
-                    )
-                    .with_label(Label::new(circular_at)
-                        .with_message(format!("the type `{dest}` references `{src}` here, causing a circular reference"))
-                        .with_color(colors.next())
-                    )
-                    .with_help("try adding a level of indirection or removing the circular type completely")
             }
-            Self::GetterLessVisibleThanSetter(Spanned(vis, _)) => {
-                if let Some(get_span) = vis.get.1 {
-                    report.add_label(Label::new(get_span)
-                        .with_message(format!("visibility of getter defined as {} here", vis.get.0))
-                        .with_color(primary)
+            Self::NameConflict(def_span, src) => {
+                diagnostic
+                    .with_section(Section::new()
+                        .with_label(Label::at(def_span)
+                            .with_message(format!("item with name `{src}` defined here"))
+                        )
+                        .with_label(Label::at(src.span())
+                            .with_message(format!("but it is also defined here"))
+                        )
+                    )
+                    .with_fix(
+                        Fix::new(Action::Replace(src.span(), "<new_name>".to_string()))
+                            .with_message("try renaming to something else")
+                    )
+            }
+            Self::IntegerLiteralOverflow(span, attempt) => {
+                let diagnostic  = diagnostic
+                    .with_section(Section::new()
+                        .with_label(Label::at(span).with_message("this integer literal here"))
                     );
-                    report.set_help("try generalizing visibility to both get and set");
+
+                // Can it still be represented as a uint?
+                if attempt.parse::<u128>().is_ok() {
+                    diagnostic.with_fix(
+                        Fix::new(Action::InsertAfter(span, "u".to_string()))
+                            .with_message("making this an unsigned integer will fix the overflow")
+                            .with_label("suffix with `u` to make this an unsigned integer"),
+                    )
                 } else {
-                    report.set_note(format!("visibility of getter is implied to be {}", vis.get.0));
+                    diagnostic.with_fix(
+                        Fix::new(Action::InsertAfter(span, ".0".to_string()))
+                            .with_message("making this a float will fix the overflow at the expense of precision")
+                            .with_label("add `.0` to make this a float"),
+                    )
+                }
+            }
+            Self::TypeNotFound(_, name, module) => {
+                // TODO: maybe you meant...
+                diagnostic
+                    .with_section(Section::new()
+                        .with_label(Label::at(name.span())
+                            .with_message(format!("could not find type `{name}` in {module}"))
+                        )
+                    )
+                    .with_help("check the spelling of the type")
+            }
+            Self::ModuleNotFound(module) => {
+                diagnostic
+                    .with_section(Section::new()
+                        .with_label(Label::at(module.span())
+                            .with_message(format!("could not find module `{module}`"))
+                        )
+                    )
+                    .with_help("check the spelling of the module")
+            }
+            Self::IncorrectTypeArgumentCount { span, ty, expected, actual } => {
+                let expected_args = pluralize(expected, "argument", "arguments");
+                let actual_args = pluralize(actual, "argument", "arguments");
+                diagnostic
+                    .with_section(Section::new()
+                        .with_label(Label::at(span)
+                            .with_message(format!("provided {actual} type {actual_args} to `{ty}`"))
+                        )
+                    )
+                    .with_section(Section::new()
+                        .with_header(format!("`{ty}` is defined here:"))
+                        .with_label(Label::at(ty.span())
+                            .with_message(format!("`{ty}` expects {expected} type {expected_args}, not {actual}"))
+                        )
+                    )
+                    .with_help(format!(
+                        "specify the required number of type arguments. \
+                        if you do not want to specify types in full, you can specify the \
+                        inference type `_` instead"
+                    ))
+            }
+            Self::CircularTypeReference(cycle) => {
+                let last = cycle.len() - 2;
+                let mut cycle = cycle.into_iter();
+
+                let (src, dest) = cycle.next().expect("cycle cannot be empty");
+                let mut diagnostic = diagnostic
+                    .with_section(Section::new()
+                        .with_label(Label::at(src.span())
+                            .with_message(format!("source type `{src}` defined here"))
+                        )
+                        .with_label(Label::at(dest.span())
+                            .with_message(format!("reference to type `{dest}` defined here"))
+                        )
+                    );
+
+                for (i, (src, dest)) in cycle.enumerate() {
+                    diagnostic = diagnostic.with_section(Section::new()
+                        .with_header(if i == 0 {
+                            format!("however, `{src}` also references `{dest}`:")
+                        } else {
+                            format!("...which also references `{dest}`")
+                        })
+                        .with_label(Label::at(dest.span())
+                            .with_context_span(src.span().merge(dest.span()))
+                            .with_message(format!("the type `{src}` references `{dest}` here{}", if i == last {
+                                ", leading to a circular type reference"
+                            } else { "" }))
+                        )
+                        .with_note("circular type references occur when a type references itself, either directly or indirectly")
+                    );
+                }
+
+                diagnostic.with_help("try adding a level of indirection or removing the circular type completely")
+            }
+            Self::GetterLessVisibleThanSetter(Spanned(vis, span)) => {
+                let mut section = Section::new();
+                let mut fix = None;
+                // We can guarantee that this error is only emitted when at least one of the getter
+                // or setter visibility was explicitly provided
+                if let Some(get_span) = vis.get.1 {
+                    section = section.with_label(Label::at(get_span)
+                        .with_message(format!("visibility of getter defined as {} here", vis.get.0))
+                    );
+                    // If *only* the getter was provided, (note that if the setter was also provided,
+                    // this condition is overwritten), we can provide a fix to make the getter public
+                    fix = Some(Fix::new(Action::Replace(span, "public".to_string()))
+                        .with_message("try generalizing the visibility:")
+                        .with_label("make the getter public")
+                    );
+                } else {
+                    section = section.with_note(format!("visibility of getter is implied to be {}", vis.get.0));
                 }
                 if let Some(set_span) = vis.set.1 {
-                    report.add_label(Label::new(set_span)
+                    section = section.with_label(Label::at(set_span)
                         .with_message(format!("visibility of setter defined as {} here", vis.set.0))
-                        .with_color(colors.next())
                     );
-                    report.set_help("try unspecifying the setter visibility");
+                    fix = Some(Fix::new(Action::Remove(set_span))
+                        .with_message("try unspecifying the setter visibility:")
+                        .with_label("removing this will imply `private set`")
+                    );
                 } else {
-                    report.set_note(format!("visibility of setter is implied to be {}", vis.set.0));
+                    section = section.with_note(format!("visibility of setter is implied to be {}", vis.set.0));
                 }
-                report
+                diagnostic = diagnostic.with_section(section);
+                if let Some(fix) = fix {
+                    diagnostic = diagnostic.with_fix(fix);
+                }
+                diagnostic
+                    .with_note("the visibility of the getter must be at least as visible as the setter")
             }
             Self::InvalidAssignmentTarget(span, subject) => {
-                report
-                    .with_label(Label::new(span)
-                        .with_message(format!("cannot use {subject} as an assignment target"))
-                        .with_color(primary)
+                diagnostic
+                    .with_section(Section::new()
+                        .with_label(Label::at(span)
+                            .with_message(format!("cannot use {subject} as an assignment target"))
+                        )
+                        .with_note("you can only assign to identifiers, pointers, fields, or indices")
                     )
-                    .with_help("assign to an identifier, field, or index instead")
             }
             Self::CyclicTypeConstraint { span, rhs } => {
-                report
-                    .with_label(Label::new(span)
-                        .with_message(
-                            format!("type `_` cannot be constrained to `{rhs}` because it would cause a cyclic type constraint"),
+                diagnostic
+                    .with_section(Section::new()
+                        .with_label(Label::at(span)
+                            .with_message(format!("the type in this context cannot be constrained to `{rhs}`"))
                         )
-                        .with_color(primary)
+                        .with_note("such a constraint is not allowed because it causes a cyclic type constraint"),
                     )
                     .with_help("try explicitly specifying types to remove ambiguity")
                     .with_note(format!("tried solving the constraint `_ = {rhs}`"))
             }
-            Self::TypeMismatch { expected: (expected, _ /* TODO */), actual } => {
-                report
-                    .with_label(Label::new(span)
-                        .with_message(format!("expected {expected}, but found {actual} here"))
-                        .with_color(primary)
-                    )
+            Self::TypeMismatch { expected: (expected, span), actual } => {
+                let mut section = Section::new();
+                if let Some(span) = span {
+                    section = section.with_label(Label::at(span)
+                        .with_message(format!("expected type `{expected}` here"))
+                    );
+                }
 
+                diagnostic
+                    .with_section(section
+                        .with_label(Label::at(actual.span())
+                            .with_message(format!("found `{actual}` here"))
+                        )
+                    )
+                    // TODO: only show this fix if a cast can actually be performed
+                    .with_fix(Fix::new(Action::InsertAfter(actual.span(), format!(" to {expected}")))
+                        .with_message("try casting the value to the expected type if possible")
+                    )
                     .with_help("try changing the value to match the expected type")
             }
             Self::ExplicitTypeArgumentsNotAllowed(span) => {
-                report
-                    .with_label(Label::new(span)
-                        .with_message("explicit type arguments are not allowed here")
-                        .with_color(primary)
+                diagnostic
+                    .with_section(Section::new()
+                        .with_label(Label::at(span)
+                            .with_message("explicit type arguments are not allowed in this context")
+                        )
                     )
-                    .with_help("remove the explicit type arguments")
+                    .with_fix(Fix::new(Action::Remove(span))
+                        .with_message("try removing the explicit type arguments")
+                        .with_label("remove these type arguments")
+                    )
             }
             Self::UnresolvedIdentifier(Spanned(name, span)) => {
-                report
-                    .with_label(Label::new(span)
-                        .with_message(format!("could not find `{name}` in this scope"))
-                        .with_color(primary)
+                // TODO: suggest similar identifiers
+                diagnostic
+                    .with_section(Section::new()
+                        .with_label(Label::at(span)
+                            .with_message(format!("cannot find `{name}` in this scope"))
+                        )
                     )
                     .with_help("check the spelling of the identifier")
             }
         };
-
-        report.finish().write(cache, writer)
+        diagnostic
     }
 }

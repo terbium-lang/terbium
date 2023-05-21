@@ -1,18 +1,21 @@
-use std::any::{Any, TypeId};
 use crate::error::Error;
-use crate::{error::Result, Expr, FloatWidth, Hir, Ident, IntSign, IntWidth, ItemId, Literal, ModuleId, Node, Pattern, PrimitiveTy, Ty, TyParam};
+use crate::{
+    error::Result, Expr, FloatWidth, Hir, Ident, IntSign, IntWidth, ItemId, Literal, ModuleId,
+    Node, Pattern, PrimitiveTy, Ty, TyParam,
+};
 use common::span::{Span, Spanned};
+use std::any::{Any, TypeId};
 use std::collections::{HashMap, VecDeque};
 
 #[derive(Clone, Debug)]
-pub enum UnificationType<Ctx> {
+pub enum UnificationType {
     Unknown(usize),
     Primitive(PrimitiveTy),
-    Tuple(Vec<Unification<Ctx>>),
-    Array(Box<Unification<Ctx>>, Option<usize>),
-    Struct(ItemId, Vec<Unification<Ctx>>),
+    Tuple(Vec<Self>),
+    Array(Box<Self>, Option<usize>),
+    Struct(ItemId, Vec<Self>),
     Generic(Ident),
-    Func(Vec<Unification<Ctx>>, Box<Unification<Ctx>>),
+    Func(Vec<Self>, Box<Self>),
     // Constant-like types
     ArrayLen(Option<usize>),
 }
@@ -49,7 +52,9 @@ fn prim_ty_relation(p: PrimitiveTy, q: PrimitiveTy) -> Relation {
         //
         // Integers with the same signedness coerce and are a subtype of other integers with the
         // same signedness and the same or larger bit width.
-        (PrimitiveTy::Int(ps, pw), PrimitiveTy::Int(qs, qw)) => {
+        (PrimitiveTy::Int(ps, mut pw), PrimitiveTy::Int(qs, mut qw)) => {
+            pw.naturalize();
+            qw.naturalize();
             // if the signs are equal...
             if ps == qs {
                 if pw == qw {
@@ -68,7 +73,9 @@ fn prim_ty_relation(p: PrimitiveTy, q: PrimitiveTy) -> Relation {
                 Relation::Super
             }
         }
-        (PrimitiveTy::Float(pw), PrimitiveTy::Float(qw)) => {
+        (PrimitiveTy::Float(mut pw), PrimitiveTy::Float(mut qw)) => {
+            pw.naturalize();
+            qw.naturalize();
             if pw == qw {
                 Relation::Eq
             } else if pw < qw {
@@ -78,14 +85,13 @@ fn prim_ty_relation(p: PrimitiveTy, q: PrimitiveTy) -> Relation {
             }
         }
         (PrimitiveTy::Bool, PrimitiveTy::Bool)
-            | (PrimitiveTy::Char, PrimitiveTy::Char)
-            | (PrimitiveTy::Void, PrimitiveTy::Void)
-            => Relation::Eq,
+        | (PrimitiveTy::Char, PrimitiveTy::Char)
+        | (PrimitiveTy::Void, PrimitiveTy::Void) => Relation::Eq,
         _ => Relation::Unrelated,
     }
 }
 
-impl<Ctx: Clone> UnificationType<Ctx> {
+impl UnificationType {
     /// Example: `u32` is a subtype of `u64` because they coerce.
     pub fn relation_to(&self, other: &Self) -> Relation {
         match (self, other) {
@@ -98,7 +104,7 @@ impl<Ctx: Clone> UnificationType<Ctx> {
                 }
                 let mut relation = Relation::Eq;
                 for (ty, other_ty) in tys.iter().zip(other_tys.iter()) {
-                    relation = relation.merge_covariant(ty.ty().relation_to(other_ty.ty()));
+                    relation = relation.merge_covariant(ty.relation_to(other_ty));
                     if !relation.compatible() {
                         return Relation::Unrelated;
                     }
@@ -110,7 +116,7 @@ impl<Ctx: Clone> UnificationType<Ctx> {
                 if len != olen {
                     return Relation::Unrelated;
                 }
-                ty.ty().relation_to(oty.ty())
+                ty.relation_to(oty)
             }
             // structs define their own variance, so we just check that they are the same struct
             (Self::Struct(id, _), Self::Struct(oid, _)) if id == oid => Relation::Eq,
@@ -121,12 +127,12 @@ impl<Ctx: Clone> UnificationType<Ctx> {
                 }
                 let mut relation = Relation::Eq;
                 for (fty, gty) in ftys.iter().zip(gtys.iter()) {
-                    relation = relation.merge_covariant(fty.ty().relation_to(gty.ty()));
+                    relation = relation.merge_covariant(fty.relation_to(gty));
                     if !relation.compatible() {
                         return Relation::Unrelated;
                     }
                 }
-                relation.merge_covariant(frt.ty().relation_to(grt.ty()))
+                relation.merge_covariant(frt.relation_to(grt))
             }
             _ => Relation::Unrelated,
         }
@@ -145,14 +151,11 @@ impl<Ctx: Clone> UnificationType<Ctx> {
         }
     }
 
-    pub fn into_inner_unifications<'a>(self) -> Box<dyn Iterator<Item = Unification<Ctx>> + 'a>
-    where
-        Ctx: 'a,
-    {
+    pub fn into_inner_unifications<'a>(self) -> Box<dyn Iterator<Item = Self> + 'a> {
         match self {
             Self::Tuple(tys) => Box::new(tys.into_iter()),
             Self::Array(ty, len) => {
-                let len = Unification(UnificationType::ArrayLen(len), ty.1.clone());
+                let len = UnificationType::ArrayLen(len);
                 Box::new([*ty, len].into_iter())
             }
             Self::Struct(_, tys) => Box::new(tys.into_iter()),
@@ -170,7 +173,7 @@ impl<Ctx: Clone> UnificationType<Ctx> {
             Self::Unknown(j) if *j == i => *self = t,
             Self::Tuple(tys) => {
                 for ty in tys {
-                    ty.ty_mut().subst(i, t.clone());
+                    ty.subst(i, t.clone());
                 }
             }
             _ => {}
@@ -180,65 +183,20 @@ impl<Ctx: Clone> UnificationType<Ctx> {
     pub fn has_unknown(&self, i: usize) -> bool {
         match self {
             Self::Unknown(j) => *j == i,
-            Self::Tuple(ts) => ts.iter().any(|ty| ty.ty().has_unknown(i)),
-            Self::Array(ty, _) => ty.ty().has_unknown(i),
-            Self::Struct(_, tys) => tys.iter().any(|ty| ty.ty().has_unknown(i)),
+            Self::Tuple(ts) => ts.iter().any(|ty| ty.has_unknown(i)),
+            Self::Array(ty, _) => ty.has_unknown(i),
+            Self::Struct(_, tys) => tys.iter().any(|ty| ty.has_unknown(i)),
             Self::Func(params, ret) => {
-                params.iter().any(|ty| ty.ty().has_unknown(i)) || ret.ty().has_unknown(i)
+                params.iter().any(|ty| ty.has_unknown(i)) || ret.has_unknown(i)
             }
             _ => false,
         }
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct Unification<Ctx = ()>(pub UnificationType<Ctx>, pub Ctx);
-
-impl<Ctx> Unification<Ctx> {
-    pub fn ty(&self) -> &UnificationType<Ctx> {
-        &self.0
-    }
-
-    pub fn ty_mut(&mut self) -> &mut UnificationType<Ctx> {
-        &mut self.0
-    }
-    
-    pub fn ctx(&self) -> &Ctx {
-        &self.1
-    }
-    
-    pub fn map_ctx<U: Clone>(self, f: impl FnOnce(Ctx) -> U) -> Unification<U> {
-        let ctx = f(self.1);
-        let ctxf = |_| ctx.clone();
-
-        let ty = match self.0 {
-            UnificationType::Unknown(i) => UnificationType::Unknown(i),
-            UnificationType::Primitive(prim) => UnificationType::Primitive(prim),
-            UnificationType::Tuple(tys) => {
-                UnificationType::Tuple(tys.into_iter().map(|ty| ty.map_ctx(ctxf)).collect())
-            }
-            UnificationType::Array(ty, len) => {
-                UnificationType::Array(Box::new(ty.map_ctx(ctxf)), len)
-            }
-            UnificationType::Struct(id, tys) => {
-                UnificationType::Struct(id, tys.into_iter().map(|ty| ty.map_ctx(ctxf)).collect())
-            }
-            UnificationType::Func(params, ret) => {
-                UnificationType::Func(
-                    params.into_iter().map(|ty| ty.map_ctx(ctxf)).collect(),
-                    Box::new(ret.map_ctx(ctxf)),
-                )
-            }
-            UnificationType::Generic(g) => UnificationType::Generic(g),
-            UnificationType::ArrayLen(i) => UnificationType::ArrayLen(i),
-        };
-        Unification(ty, ctx)
-    }
-}
-
-impl Unification {
+impl UnificationType {
     pub fn from_ty(ty: Ty, counter: &mut usize) -> Self {
-        let ty = match ty {
+        match ty {
             Ty::Unknown => {
                 let i = *counter;
                 *counter += 1;
@@ -247,160 +205,111 @@ impl Unification {
             Ty::Primitive(prim) => UnificationType::Primitive(prim),
             Ty::Tuple(tys) => UnificationType::Tuple(
                 tys.into_iter()
-                    .map(|ty| Unification::from_ty(ty, counter))
+                    .map(|ty| Self::from_ty(ty, counter))
                     .collect(),
             ),
-            Ty::Array(ty, len) => UnificationType::Array(
-                Box::new(Unification::from_ty(*ty, counter)),
-                len,
-            ),
+            Ty::Array(ty, len) => {
+                UnificationType::Array(Box::new(Self::from_ty(*ty, counter)), len)
+            }
             Ty::Struct(id, args) => UnificationType::Struct(
                 id,
                 args.into_iter()
-                    .map(|ty| Unification::from_ty(ty, counter))
+                    .map(|ty| Self::from_ty(ty, counter))
                     .collect(),
             ),
             Ty::Generic(id) => UnificationType::Generic(id),
             Ty::Func(params, ret) => UnificationType::Func(
-                params.into_iter().map(|ty| Unification::from_ty(ty, counter)).collect(),
-                Box::new(Unification::from_ty(*ret, counter)),
+                params
+                    .into_iter()
+                    .map(|ty| Self::from_ty(ty, counter))
+                    .collect(),
+                Box::new(Self::from_ty(*ret, counter)),
             ),
-        };
-        Unification(ty, ())
+        }
     }
 }
 
-impl Unification<Spanned<Expr>> {
-    pub fn from_ty_expr(ty: Ty, expr: Spanned<Expr>, counter: &mut usize) -> Self {
-        let ty = match (ty, expr.clone()) {
-            (Ty::Unknown, _) => {
-                let i = *counter;
-                *counter += 1;
-                UnificationType::Unknown(i)
-            }
-            (Ty::Primitive(prim), _) => UnificationType::Primitive(prim),
-            (Ty::Tuple(tys), Spanned(Expr::Tuple(exprs), _)) => {
-                assert_eq!(tys.len(), exprs.len());
-                UnificationType::Tuple(
-                    tys.into_iter()
-                        .zip(exprs.into_iter())
-                        .map(|(ty, expr)| Unification::from_ty_expr(ty, expr, counter))
-                        .collect(),
-                )
-            }
-            (Ty::Array(ty, len), Spanned(Expr::Array(exprs), _)) => {
-                if let Some(len) = len {
-                    assert_eq!(len, exprs.len());
-                }
-                UnificationType::Array(
-                    Box::new(Unification::from_ty_expr(*ty, exprs[0].clone(), counter)),
-                    len,
-                )
-            }
-            _ => todo!(),
-        };
-        Unification(ty, expr)
-    }
-}
-
-impl<Ctx> From<Unification<Ctx>> for Ty {
-    fn from(value: Unification<Ctx>) -> Self {
-        value.0.into()
-    }
-}
-
-impl<Ctx> From<UnificationType<Ctx>> for Ty {
-    fn from(ty: UnificationType<Ctx>) -> Self {
+impl From<UnificationType> for Ty {
+    fn from(ty: UnificationType) -> Self {
         match ty {
             UnificationType::Unknown(_) => Ty::Unknown,
             UnificationType::Primitive(prim) => Ty::Primitive(prim),
             UnificationType::Tuple(tys) => Ty::Tuple(tys.into_iter().map(Ty::from).collect()),
-            UnificationType::Array(ty, len) => Ty::Array(Box::new(Ty::from((*ty).0)), len),
+            UnificationType::Array(ty, len) => Ty::Array(Box::new(Ty::from(*ty)), len),
             UnificationType::Struct(id, args) => {
                 Ty::Struct(id, args.into_iter().map(Ty::from).collect())
             }
             UnificationType::Generic(id) => Ty::Generic(id),
-            UnificationType::Func(params, ret) => {
-                Ty::Func(params.into_iter().map(Ty::from).collect(), Box::new(Ty::from((*ret).0)))
-            }
+            UnificationType::Func(params, ret) => Ty::Func(
+                params.into_iter().map(Ty::from).collect(),
+                Box::new(Ty::from(*ret)),
+            ),
             UnificationType::ArrayLen(_) => unimplemented!("ArrayLen"),
         }
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct Constraint<Ctx = ()>(Unification<Ctx>, Unification<Ctx>);
+pub struct Constraint(pub UnificationType, pub UnificationType);
 
 /// A type unifier.
 #[derive(Debug)]
-pub struct Unifier<Ctx = ()> {
+pub struct Unifier {
     pub span: Span,
-    pub constraints: VecDeque<Constraint<Ctx>>,
-    pub substitutions: Vec<(usize, UnificationType<Ctx>)>,
+    pub constraints: VecDeque<Constraint>,
+    pub substitutions: Vec<(usize, UnificationType)>,
+    pub conflicts: Vec<Constraint>,
 }
 
-impl<Ctx: Clone> Unifier<Ctx> {
-    pub fn substitute(&mut self, a: usize, b: UnificationType<Ctx>) {
+impl Unifier {
+    pub fn substitute(&mut self, a: usize, b: UnificationType) {
         // Add a => b to our substitution
         self.substitutions.push((a, b.clone()));
         // Replace further unifications of a with b
         for Constraint(x, y) in self.constraints.iter_mut() {
-            x.ty_mut().subst(a, b.clone());
-            y.ty_mut().subst(a, b.clone());
+            x.subst(a, b.clone());
+            y.subst(a, b.clone());
         }
     }
 
     /// Unify the constraint a = b.
-    pub fn unify_constraint(&mut self, constraint: Constraint<Ctx>) -> Result<()> where Ctx: 'static {
+    pub fn unify_constraint(&mut self, constraint: Constraint) -> Result<()> {
         match constraint {
             // If both a and b are unknown, replace one of them with the other.
-            Constraint(
-                Unification(UnificationType::Unknown(i), _),
-                Unification(b @ UnificationType::Unknown(_), _),
-            ) => {
+            Constraint(UnificationType::Unknown(i), b @ UnificationType::Unknown(_)) => {
                 self.substitute(i, b);
             }
             // If a is unknown and b is known, replace a with b. Similarly, if b is unknown and a is
             // known, replace b with a.
-            Constraint(Unification(UnificationType::Unknown(i), _), b)
-            | Constraint(b, Unification(UnificationType::Unknown(i), _))
-            => {
+            Constraint(UnificationType::Unknown(i), b)
+            | Constraint(b, UnificationType::Unknown(i)) => {
                 // Do not allow recursive unification (i = a<i>)
-                if b.ty().has_unknown(i) {
+                if b.has_unknown(i) {
                     return Err(Error::CyclicTypeConstraint {
                         span: self.span,
                         rhs: b.into(),
                     });
                 }
-                self.substitute(i, b.0);
+                self.substitute(i, b);
             }
             // If both a and b are known, check if they are the same general type (e.g. A<...> = A<...>)
             // and if so, unify their type arguments.
-            Constraint(a, b) if b.ty().has_same_outer_type(a.ty()) => {
-                for (a, b) in a.0.into_inner_unifications().zip(b.0.into_inner_unifications()) {
+            Constraint(a, b) if b.has_same_outer_type(&a) => {
+                for (a, b) in a.into_inner_unifications().zip(b.into_inner_unifications()) {
                     self.unify_constraint(Constraint(a, b))?;
                 }
             }
             // If both a and b are known but they are not the same general type, this is a type
             // mismatch
-            Constraint(Unification(a, ax), b) => {
-                // SAFETY: wtf lol
-                let span = if ax.type_id() == TypeId::of::<Spanned<Expr>>() {
-                    unsafe { (*(&ax as *const Ctx as *const Spanned<Expr> )).1 }
-                } else {
-                    self.span
-                };
-                return Err(Error::TypeMismatch {
-                    expected: (a.into(), None),
-                    actual: Spanned(b.into(), span),
-                });
+            _ => {
+                self.conflicts.push(constraint);
             }
         }
         Ok(())
     }
 
     /// Unifies all constraints in the unifier.
-    pub fn unify(&mut self) -> Result<()> where Ctx: 'static {
+    pub fn unify(&mut self) -> Result<()> {
         while let Some(constraint) = self.constraints.pop_front() {
             self.unify_constraint(constraint)?;
         }
@@ -489,7 +398,7 @@ impl TypeLowerer {
         // Does a constant with this name exist?
         let item = ItemId(self.scope().module_id, *ident.value());
         if let Some(cnst) = self.hir.consts.get(&item) {
-            return Ok(cnst.ty.clone())
+            return Ok(cnst.ty.clone());
         }
 
         Err(Error::UnresolvedIdentifier(ident.map(|i| i.to_string())))
@@ -519,9 +428,11 @@ impl TypeLowerer {
     pub fn bind_pattern_to_inference_ty(&self, pat: &Pattern) -> Ty {
         match pat {
             Pattern::Ident { .. } => Ty::Unknown,
-            Pattern::Tuple(pats) => {
-                Ty::Tuple(pats.iter().map(|pat| self.bind_pattern_to_inference_ty(pat)).collect())
-            }
+            Pattern::Tuple(pats) => Ty::Tuple(
+                pats.iter()
+                    .map(|pat| self.bind_pattern_to_inference_ty(pat))
+                    .collect(),
+            ),
         }
     }
 
@@ -530,37 +441,44 @@ impl TypeLowerer {
         match node {
             Node::Expr(expr) => {
                 self.lower_expr_ty(expr)?;
-                Ok(())
-            },
-            Node::Let { pat, ty, value: Some(value) } => {
+            }
+            // This is a proof-of-concept implementation of type inference. It is not complete.
+            Node::Let {
+                pat,
+                ty,
+                value: Some(value),
+            } => {
                 let mut counter = 0;
                 let expr_ty = self.lower_expr_ty(value)?;
                 let value = value.clone();
 
-                // constraint: structure of pattern = structure of value
-                let pat_ty = self.bind_pattern_to_inference_ty(pat);
-                let pat_constraint = Constraint(
-                    Unification::from_ty_expr(pat_ty, value.clone(), &mut counter),
-                    Unification::from_ty_expr(expr_ty.clone(), value.clone(), &mut counter),
-                );
-
+                let mut uty = UnificationType::from_ty(ty.clone(), &mut counter);
                 // constraint: type hint = structure of value
-                let ty_constraint = Constraint(
-                    Unification::from_ty_expr(ty.clone(), value.clone(), &mut counter),
-                    Unification::from_ty_expr(expr_ty, value.clone(), &mut counter),
-                );
+                let ty_constraint =
+                    Constraint(uty.clone(), UnificationType::from_ty(expr_ty, &mut counter));
 
                 let mut unifier = Unifier {
                     span: value.span(),
-                    constraints: VecDeque::from([pat_constraint, ty_constraint]),
+                    constraints: VecDeque::from([ty_constraint]),
                     substitutions: Vec::new(),
+                    conflicts: Vec::new(),
                 };
                 unifier.unify()?;
 
-                println!("{unifier:#?}");
-                Ok(()) // TODO
-            },
-            _ => todo!(),
+                for (i, to) in unifier.substitutions {
+                    uty.subst(i, to);
+                }
+                for conflict in unifier.conflicts {
+                    println!(
+                        "conflict: {} != {}",
+                        Ty::from(conflict.0),
+                        Ty::from(conflict.1)
+                    );
+                }
+                *ty = Ty::from(uty);
+            }
+            _ => (), // TODO
         }
+        Ok(())
     }
 }
