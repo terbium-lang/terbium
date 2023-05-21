@@ -6,7 +6,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-ariadne = "0.2"
 common = { path = "../common" }
 diagnostics = { path = "../diagnostics" }
 grammar = { path = "../grammar" }

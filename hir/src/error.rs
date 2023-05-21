@@ -1,7 +1,7 @@
 use crate::{Ident, ModuleId, Ty};
 use common::{
     pluralize,
-    span::{ProviderCache, Span, Spanned},
+    span::{Span, Spanned},
 };
 use diagnostics::{Action, Diagnostic, Fix, Label, Section, Severity};
 use grammar::ast::{self, TypeExpr, TypePath};

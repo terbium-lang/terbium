@@ -108,7 +108,6 @@ dependencies = [
 name = "hir"
 version = "0.1.0"
 dependencies = [
- "ariadne",
  "common",
  "diagnostics",
  "grammar",

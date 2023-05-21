@@ -3,8 +3,7 @@ use crate::{
     span::{Span, Spanned},
     token::{Error as TokenizationError, TokenInfo},
 };
-use ariadne::{ColorGenerator, Label, Report, ReportKind};
-use common::span::{ProviderCache, Src};
+use common::span::Src;
 use diagnostics::{Action, Diagnostic, Fix, Section, Severity};
 use std::{
     fmt::{self, Display, Formatter, Result as FmtResult},
@@ -440,29 +439,6 @@ impl Error {
     pub fn note<S: ToString + ?Sized>(mut self, note: &S) -> Self {
         self.notes.push(note.to_string());
         self
-    }
-
-    /// Writes the error as a diagnostic to the given writer.
-    pub fn write(self, cache: &ProviderCache, writer: impl Write) -> std::io::Result<()> {
-        let mut colors = ColorGenerator::new();
-        let primary = colors.next();
-
-        let mut report = Report::build(ReportKind::Error, self.span.src, self.span.start)
-            .with_code(format!("E{:03}", self.info.code()))
-            .with_message("invalid syntax")
-            .with_label(
-                Label::new(self.info.inner_span().unwrap_or(self.span))
-                    .with_message(self.info)
-                    .with_color(primary),
-            );
-
-        if let Some(hint) = self.hint {
-            report = report.with_help(hint.message); // TODO: this does not write the action
-        }
-        if let Some(note) = self.notes.into_iter().next() {
-            report = report.with_note(note); // TOOD: this only writes the first note
-        }
-        report.finish().write(cache, writer)
     }
 
     /// Generates a v2 diagnostic.
