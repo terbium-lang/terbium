@@ -517,7 +517,7 @@ impl DiagnosticWriter {
                 writeln!(w, "{}{line}", " ".repeat(indent))?;
             }
         }
-        Ok(())
+        writeln!(w)
     }
 }
 

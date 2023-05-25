@@ -185,7 +185,7 @@ impl<T> Spanned<T> {
     pub const fn value(&self) -> &T {
         &self.0
     }
-    
+
     /// Returns the value as a mutable reference.
     #[must_use]
     pub fn value_mut(&mut self) -> &mut T {

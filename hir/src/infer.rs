@@ -1,7 +1,12 @@
-use std::borrow::Cow;
-use crate::{error::{Error, Result}, typed::{self, Constraint, Ty, UnificationTable, InvalidTypeCause, TypedExpr}, Expr, FloatWidth, Hir, Ident, IntSign, IntWidth, ItemId, Literal, ModuleId, Node, Pattern, PrimitiveTy, TyParam, Metadata};
+use crate::{
+    error::{Error, Result},
+    typed::{self, Constraint, InvalidTypeCause, Ty, TypedExpr, UnificationTable},
+    warning::Warning,
+    Expr, FloatWidth, Hir, Ident, IntSign, IntWidth, ItemId, Literal, Metadata, ModuleId, Node,
+    Pattern, PrimitiveTy, TyParam,
+};
 use common::span::{Span, Spanned};
-use std::collections::{HashMap};
+use std::{borrow::Cow, collections::HashMap};
 
 impl UnificationTable {
     pub fn substitute(&mut self, a: usize, b: Ty) {
@@ -57,11 +62,44 @@ impl UnificationTable {
     }
 }
 
+struct Binding {
+    pub def_span: Span,
+    pub ty: Ty,
+    pub mutable: Option<Span>,
+}
+
 #[derive(Clone, Debug)]
 pub struct Local {
     pub def_span: Span,
     pub ty: Ty,
-    pub mutable: bool,
+    pub mutable: Option<Span>,
+    // analysis checks
+    pub used: bool,
+    pub mutated: bool,
+}
+
+impl Local {
+    #[inline]
+    pub const fn new(def_span: Span, ty: Ty, mutable: Option<Span>) -> Self {
+        Self {
+            def_span,
+            ty,
+            mutable,
+            used: false,
+            mutated: false,
+        }
+    }
+
+    #[inline]
+    fn from_binding(binding: Binding) -> Self {
+        Self {
+            def_span: binding.def_span,
+            ty: binding.ty,
+            mutable: binding.mutable,
+            used: false,
+            mutated: false,
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -71,14 +109,14 @@ pub struct Scope {
     locals: HashMap<Ident, Local>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct InferMetadata;
 impl Metadata for InferMetadata {
     type Expr = TypedExpr;
     type Ty = Ty;
 }
 
-/// Lowers types of expressions and performs type inference.
+/// Lowers types of expressions and performs type inference and one pass of typeck.
 #[derive(Debug)]
 pub struct TypeLowerer {
     scopes: Vec<Scope>,
@@ -87,6 +125,10 @@ pub struct TypeLowerer {
     pub hir: Hir,
     /// The HIR that is being generated.
     pub thir: Hir<InferMetadata>,
+    /// Warnings that occurred during type inference.
+    pub warnings: Vec<Warning>,
+    /// Non-fatal errors that occurred during type inference.
+    pub errors: Vec<Error>,
 }
 
 impl TypeLowerer {
@@ -97,6 +139,8 @@ impl TypeLowerer {
             table: UnificationTable::default(),
             hir,
             thir: Hir::default(),
+            warnings: Vec::new(),
+            errors: Vec::new(),
         }
     }
 
@@ -108,6 +152,34 @@ impl TypeLowerer {
     #[inline]
     pub fn scope_mut(&mut self) -> &mut Scope {
         self.scopes.last_mut().expect("no scopes entered?")
+    }
+
+    pub fn err_nonfatal(&mut self, err: impl Into<Error>) {
+        self.errors.push(err.into());
+    }
+
+    pub fn enter_scope(&mut self, module: ModuleId) -> &mut Self {
+        self.scopes.push(Scope {
+            module_id: module,
+            ty_params: Vec::new(),
+            locals: HashMap::new(),
+        });
+        self
+    }
+
+    pub fn exit_scope(&mut self) {
+        let scope = self.scopes.pop().expect("no scopes entered?");
+        for (ident, local) in scope.locals {
+            if !local.used {
+                self.warnings.push(Warning::UnusedVariable(Spanned(
+                    ident.to_string(),
+                    local.def_span,
+                )))
+            }
+            if !local.mutated && let Some(mutable) = local.mutable {
+                self.warnings.push(Warning::UnusedMut(Spanned(ident.to_string(), local.def_span), mutable))
+            }
+        }
     }
 
     pub fn lower_literal(lit: &Literal) -> Ty {
@@ -158,8 +230,9 @@ impl TypeLowerer {
         }
 
         // Search for the local variable
-        for scope in self.scopes.iter().rev() {
-            if let Some(local) = scope.locals.get(ident.value()) {
+        for scope in self.scopes.iter_mut().rev() {
+            if let Some(local) = scope.locals.get_mut(ident.value()) {
+                local.used = true;
                 return Ok(local.ty.clone());
             }
         }
@@ -186,6 +259,26 @@ impl TypeLowerer {
                 Ty::Tuple(tys)
             }
             Expr::Cast(_, ty) => self.lower_hir_ty(ty.clone()),
+            Expr::If(cond, left, right) => {
+                let cond_ty = match self.lower_expr_ty(cond)? {
+                    // If the type is not known, constrain it to bool, this will be checked
+                    // one more time at the typeck stage.
+                    ty @ Ty::Unknown(_) => {
+                        self.table
+                            .constraints
+                            .push_back(Constraint(ty.clone(), Ty::Primitive(PrimitiveTy::Bool)));
+                        ty
+                    }
+                    // If the type is known, check that it is bool
+                    ty @ Ty::Primitive(PrimitiveTy::Bool) => ty,
+                    // Otherwise, error
+                    ty => {
+                        return Err(Error::ConditionNotBool(Spanned(ty.into(), cond.span())));
+                    }
+                };
+                // "Evenness" check will be done again at the typeck stage
+                todo!()
+            }
             // TODO
             _ => self.lower_hir_ty(crate::Ty::Unknown),
         })
@@ -217,20 +310,21 @@ impl TypeLowerer {
         Ok(Spanned(TypedExpr(expr, ty), span))
     }
 
-    pub fn bind_pattern_to_ty(
+    fn bind_pattern_to_ty(
         pat: &Spanned<Pattern>,
         ty: Ty,
         expr: Option<&Spanned<TypedExpr>>,
-        bindings: &mut Vec<(Ident, Local)>,
+        bindings: &mut Vec<(Ident, Binding)>,
     ) -> Result<()> {
         match (pat.value(), ty) {
-            (Pattern::Ident { ident, is_mut }, ty) => {
+            (_, Ty::Unknown(_) | Ty::Invalid(_)) => {}
+            (Pattern::Ident { ident, mut_kw }, ty) => {
                 bindings.push((
                     ident.0,
-                    Local {
+                    Binding {
                         def_span: ident.1,
                         ty,
-                        mutable: *is_mut,
+                        mutable: mut_kw.clone(),
                     },
                 ));
             }
@@ -269,56 +363,71 @@ impl TypeLowerer {
     }
 
     /// Runs type inference through a single node.
-    pub fn lower_node(&mut self, node: Node) -> Result<Node<InferMetadata>> {
+    ///
+    /// Return (node, exit_ty?)
+    pub fn lower_node(&mut self, node: Node) -> Result<(Node<InferMetadata>, Option<Spanned<Ty>>)> {
         let mut bindings = Vec::new();
-        let node = match node {
-            Node::Expr(expr) => Node::Expr(self.lower_expr(expr)?),
+        let res = match node {
+            Node::Expr(expr) => (Node::Expr(self.lower_expr(expr)?), None),
             Node::Let {
                 pat,
                 ty,
+                ty_span,
                 value,
             } => {
                 // Lower the type of the binding
-                if let Some(value) = value {
+                let node = if let Some(value) = value {
                     let mut expr = self.lower_expr(value)?;
-                    let mut lower_ty = self.lower_hir_ty(ty);
+                    let mut lower_ty = self.lower_hir_ty(ty.clone());
 
-                    self.table.constraints.push_back(
-                        Constraint(lower_ty.clone(), expr.value().1.clone()),
-                    );
-                    self.table.unify_all();
+                    self.table
+                        .constraints
+                        .push_back(Constraint(lower_ty.clone(), expr.value().1.clone()));
+                    let conflict = self.table.unify_all();
 
                     lower_ty.apply(&self.table.substitutions);
                     expr.value_mut().1.apply(&self.table.substitutions);
 
-                    Self::bind_pattern_to_ty(
-                        &pat,
-                        lower_ty.clone(),
-                        Some(&expr),
-                        &mut bindings,
-                    )?;
+                    if let Some(conflict) = conflict {
+                        self.err_nonfatal(Error::TypeConflict {
+                            expected: (ty, ty_span),
+                            actual: expr.as_ref().map(|expr| expr.1.clone().into()),
+                            constraint: conflict,
+                        })
+                    }
+
+                    Self::bind_pattern_to_ty(&pat, lower_ty.clone(), Some(&expr), &mut bindings)?;
                     Node::Let {
                         pat,
                         ty: lower_ty,
+                        ty_span,
                         value: Some(expr),
                     }
                 } else {
                     let ty = self.lower_hir_ty(ty);
-                    Self::bind_pattern_to_ty(
-                        &pat,
-                        ty.clone(),
-                        None,
-                        &mut bindings,
-                    )?;
+                    Self::bind_pattern_to_ty(&pat, ty.clone(), None, &mut bindings)?;
 
-                    Node::Let { pat, ty, value: None }
-                }
+                    Node::Let {
+                        pat,
+                        ty,
+                        ty_span,
+                        value: None,
+                    }
+                };
+                (node, None)
+            }
+            Node::ImplicitReturn(expr) => {
+                let expr = self.lower_expr(expr)?;
+                let exit_ty = expr.as_ref().map(|expr| expr.1.clone());
+                (Node::ImplicitReturn(expr), Some(exit_ty))
             }
             _ => todo!(),
         };
         for (ident, binding) in bindings {
-            self.scope_mut().locals.insert(ident, binding);
+            self.scope_mut()
+                .locals
+                .insert(ident, Local::from_binding(binding));
         }
-        Ok(node)
+        Ok(res)
     }
 }

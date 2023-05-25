@@ -1,12 +1,14 @@
-use std::borrow::Cow;
-use crate::{Ident, ModuleId, Ty};
+use crate::{typed::Constraint, Ident, ModuleId, Ty};
 use common::{
     pluralize,
     span::{Span, Spanned},
 };
 use diagnostics::{Action, Diagnostic, Fix, Label, Section, Severity};
 use grammar::ast::{self, TypeExpr, TypePath};
-use std::fmt::{Display, Formatter};
+use std::{
+    borrow::Cow,
+    fmt::{Display, Formatter},
+};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -50,12 +52,14 @@ pub enum Error {
         /// The right-hand side of the type constraint that was cyclic.
         rhs: Ty,
     },
-    /// Type mismatch.
-    TypeMismatch {
+    /// Type conflict when trying to unify types.
+    TypeConflict {
         /// The expected type with an optional span.
         expected: (Ty, Option<Span>),
         /// The actual type.
         actual: Spanned<Ty>,
+        /// The constraint that caused the type conflict.
+        constraint: Constraint,
     },
     /// Explicit generic type arguments are not allowed in this context.
     ExplicitTypeArgumentsNotAllowed(Span),
@@ -72,6 +76,8 @@ pub enum Error {
         /// The span of the value, if applicable.
         value_span: Option<Span>,
     },
+    /// Type of a condition is not `bool`.
+    ConditionNotBool(Spanned<Ty>),
 }
 
 impl Display for Error {
@@ -124,9 +130,10 @@ impl Display for Error {
             Self::CyclicTypeConstraint { rhs, .. } => {
                 write!(f, "cannot solve cyclic type constraint `_ = {rhs}`",)
             }
-            Self::TypeMismatch {
+            Self::TypeConflict {
                 expected: (expected, _),
                 actual: Spanned(actual, _),
+                ..
             } => {
                 write!(f, "type mismatch, expected `{expected}`, found `{actual}`")
             }
@@ -141,6 +148,9 @@ impl Display for Error {
             }
             Self::PatternMismatch { pat, value, .. } => {
                 write!(f, "cannot bind {value} to {pat}")
+            }
+            Self::ConditionNotBool(ty) => {
+                write!(f, "expected condition to be `bool`, got `{ty}` instead")
             }
         }
     }
@@ -161,12 +171,13 @@ impl Error {
             Self::GetterLessVisibleThanSetter { .. } => "getter is less visible than setter",
             Self::InvalidAssignmentTarget(..) => "invalid assignment target",
             Self::CyclicTypeConstraint { .. } => "cannot solve cyclic type constraint",
-            Self::TypeMismatch { .. } => "type mismatch",
+            Self::TypeConflict { .. } => "type conflict",
             Self::ExplicitTypeArgumentsNotAllowed(..) => {
                 "explicit generic type arguments are not allowed in this context"
             }
             Self::UnresolvedIdentifier(..) => "unresolved identifier",
             Self::PatternMismatch { .. } => "pattern mismatch",
+            Self::ConditionNotBool(..) => "condition is not `bool`",
         }
     }
 
@@ -183,10 +194,11 @@ impl Error {
             Self::GetterLessVisibleThanSetter(_) => 108,
             Self::InvalidAssignmentTarget(..) => 109,
             Self::CyclicTypeConstraint { .. } => 110,
-            Self::TypeMismatch { .. } => 111,
+            Self::TypeConflict { .. } => 111,
             Self::ExplicitTypeArgumentsNotAllowed(_) => 112,
             Self::UnresolvedIdentifier(..) => 113,
             Self::PatternMismatch { .. } => 114,
+            Self::ConditionNotBool(_) => 115,
         }
     }
 
@@ -371,7 +383,11 @@ impl Error {
                     .with_help("try explicitly specifying types to remove ambiguity")
                     .with_note(format!("tried solving the constraint `_ = {rhs}`"))
             }
-            Self::TypeMismatch { expected: (expected, span), actual } => {
+            Self::TypeConflict {
+                expected: (expected, span),
+                actual,
+                constraint: Constraint(a, b),
+            } => {
                 let mut section = Section::new();
                 if let Some(span) = span {
                     section = section.with_label(Label::at(span)
@@ -389,6 +405,11 @@ impl Error {
                     .with_fix(Fix::new(Action::InsertAfter(actual.span(), format!(" to {expected}")))
                         .with_message("try casting the value to the expected type if possible")
                     )
+                    .with_note(format!(
+                        "failed solving constraint: {} != {}",
+                        Ty::from(a),
+                        Ty::from(b),
+                    ))
                     .with_help("try changing the value to match the expected type")
             }
             Self::ExplicitTypeArgumentsNotAllowed(span) => {
@@ -418,11 +439,11 @@ impl Error {
                     .with_label(Label::at(pat_span)
                         .with_message(format!("{pat} expected here"))
                     )
-                    .with_note(format!("cannot bind {value} to this pattern"));
+                    .with_note(format!("cannot bind {value} to {pat}"));
 
                 if let Some(value_span) = value_span {
                     section = section.with_label(Label::at(value_span)
-                        .with_message(format!("{value} found here"))
+                        .with_message(format!("tried binding {value} to {pat} here"))
                     );
                 }
 
@@ -433,6 +454,19 @@ impl Error {
                             you can also try binding to an identifier instead:",
                         )
                         .with_note("identifiers can be used to bind values of any type")
+                    )
+            }
+            Self::ConditionNotBool(ty) => {
+                diagnostic
+                    .with_section(Section::new()
+                        .with_label(Label::at(ty.span())
+                            .with_message(format!("expected `bool`, found `{ty}` instead"))
+                        )
+                        .with_note("conditions must be of type `bool`")
+                    )
+                    // TODO: only show this fix if a cast can actually be performed
+                    .with_fix(Fix::new(Action::InsertAfter(ty.span(), " to bool".to_string()))
+                        .with_message("try casting the value to `bool` if possible")
                     )
             }
         };

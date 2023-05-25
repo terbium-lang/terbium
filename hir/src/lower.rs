@@ -5,9 +5,11 @@ use crate::{
     StructField, StructTy, Ty, TyDef, TyParam,
 };
 use common::span::{Span, Spanned};
-use grammar::ast::GenericTyApp;
 use grammar::{
-    ast::{self, AssignmentOperator, AssignmentTarget, Atom, StructDef, TypeExpr, TypePath, While},
+    ast::{
+        self, AssignmentOperator, AssignmentTarget, Atom, GenericTyApp, StructDef, TypeExpr,
+        TypePath, While,
+    },
     token::IntLiteralInfo,
 };
 use internment::Intern;
@@ -29,6 +31,8 @@ pub struct AstLowerer {
     sty_needs_field_resolution: HashMap<ItemId, (Span, ItemId, Spanned<TypePath>, Vec<Ty>)>,
     /// The HIR being constructed.
     pub hir: Hir,
+    /// Non-fatal errors that occurred during lowering.
+    pub errors: Vec<Error>,
 }
 
 /// A cumulative context used when lowering an AST to HIR.
@@ -84,6 +88,7 @@ impl AstLowerer {
             module_nodes: HashMap::from([(ModuleId::root(), root)]),
             sty_needs_field_resolution: HashMap::new(),
             hir: Hir::default(),
+            errors: Vec::new(),
         }
     }
 
@@ -101,6 +106,22 @@ impl AstLowerer {
             label: None,
             children: vec![Node::ImplicitReturn(expr)],
         })
+    }
+
+    #[inline]
+    fn err_nonfatal(&mut self, err: impl Into<Error>) {
+        self.errors.push(err.into());
+    }
+
+    #[inline]
+    fn propagate_nonfatal<T>(&mut self, result: Result<T>) -> Option<T> {
+        match result {
+            Ok(t) => Some(t),
+            Err(err) => {
+                self.err_nonfatal(err);
+                None
+            }
+        }
     }
 
     /// Asserts the item ID is unique.
@@ -161,7 +182,7 @@ impl AstLowerer {
                     if let Some(ty_def) = self.hir.types.get_mut(&item_id) {
                         ty_def.ty_params = sty.ty_params.clone();
                     }
-                    self.assert_item_unique(&item_id, sct_name)?;
+                    self.propagate_nonfatal(self.assert_item_unique(&item_id, sct_name));
                     self.hir.structs.insert(item_id, sty);
                 }
                 _ => (),
@@ -254,7 +275,7 @@ impl AstLowerer {
                     value: self.lower_expr(&ctx, value)?,
                 };
                 let item = ItemId(module, *ident.value());
-                self.assert_item_unique(&item, name)?;
+                self.propagate_nonfatal(self.assert_item_unique(&item, name));
                 self.hir.consts.insert(item, cnst);
             }
         }
@@ -557,7 +578,7 @@ impl AstLowerer {
                     body: self.lower_body(&ctx, &None, body.0)?,
                 };
                 let item = ItemId(module, *ident.value());
-                self.assert_item_unique(&item, name)?;
+                self.propagate_nonfatal(self.assert_item_unique(&item, name));
                 self.hir.funcs.insert(item, func);
             }
         }
@@ -594,11 +615,15 @@ impl AstLowerer {
     pub fn lower_stmt(&mut self, ctx: &Ctx, node: Spanned<ast::Node>) -> Result<Option<Node>> {
         let node = match node.into_value() {
             ast::Node::Expr(expr) => Node::Expr(self.lower_expr(ctx, expr)?),
-            ast::Node::Let { pat, ty, value, .. } => Node::Let {
-                pat: self.lower_pat(pat),
-                ty: self.lower_ty_or_infer(ctx, ty)?,
-                value: value.map(|value| self.lower_expr(ctx, value)).transpose()?,
-            },
+            ast::Node::Let { pat, ty, value, .. } => {
+                let ty_span = ty.as_ref().map(|ty| ty.span());
+                Node::Let {
+                    pat: self.lower_pat(pat),
+                    ty: self.lower_ty_or_infer(ctx, ty)?,
+                    ty_span,
+                    value: value.map(|value| self.lower_expr(ctx, value)).transpose()?,
+                }
+            }
             ast::Node::Break {
                 label, value, cond, ..
             } => {
@@ -629,7 +654,7 @@ impl AstLowerer {
         let pat = match pat {
             ast::Pattern::Ident { ident, mut_kw } => Pattern::Ident {
                 ident: ident.map(get_ident),
-                is_mut: mut_kw.is_some(),
+                mut_kw,
             },
             ast::Pattern::Tuple(_variant, pats) => {
                 Pattern::Tuple(pats.into_iter().map(|pat| self.lower_pat(pat)).collect())
@@ -1075,9 +1100,10 @@ impl AstLowerer {
                 Node::Let {
                     pat: lhs.as_ref().map(|_| Pattern::Ident {
                         ident: binding,
-                        is_mut: false,
+                        mut_kw: None,
                     }),
                     ty: Ty::Unknown,
+                    ty_span: Some(lhs.span()),
                     value: Some(lhs),
                 },
                 Node::ImplicitReturn(Spanned(stmt, span)),
@@ -1102,7 +1128,9 @@ impl AstLowerer {
                             .map_err(|_| Error::IntegerLiteralOverflow(span, int))?,
                     )
                 }),
-                Atom::Float(f) => Expr::Literal(Literal::Float(f.parse::<f64>().unwrap().to_bits())),
+                Atom::Float(f) => {
+                    Expr::Literal(Literal::Float(f.parse::<f64>().unwrap().to_bits()))
+                }
                 Atom::Bool(b) => Expr::Literal(Literal::Bool(b)),
                 Atom::Char(c) => Expr::Literal(Literal::Char(c)),
                 Atom::String(s) => Expr::Literal(Literal::String(s)),

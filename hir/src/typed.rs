@@ -1,4 +1,7 @@
-use crate::{Ident, IntSign, IntWidth, Intrinsic, ItemId, Literal, Op, Pattern, PrimitiveTy, ScopeId, StaticOp, Node};
+use crate::{
+    Ident, IntSign, IntWidth, Intrinsic, ItemId, Literal, Node, Op, Pattern, PrimitiveTy, ScopeId,
+    StaticOp,
+};
 use common::span::Spanned;
 use std::cmp::Ordering;
 use std::collections::VecDeque;

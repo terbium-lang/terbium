@@ -97,7 +97,7 @@ impl ScopeId {
     }
 }
 
-pub trait Metadata: Debug {
+pub trait Metadata: Clone + Debug {
     type Expr: Clone + Debug;
     type Ty: Clone + Debug;
 }
@@ -110,7 +110,7 @@ impl Metadata for LowerMetadata {
 }
 
 /// HIR of a Terbium program.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Hir<M: Metadata = LowerMetadata> {
     /// A mapping of all modules within the program.
     pub modules: HashMap<ModuleId, ScopeId>,
@@ -195,6 +195,7 @@ pub enum Node<M: Metadata = LowerMetadata> {
     Let {
         pat: Spanned<Pattern>,
         ty: M::Ty,
+        ty_span: Option<Span>,
         value: Option<Spanned<M::Expr>>,
     },
     Break(Option<Ident>, Option<Spanned<M::Expr>>),
@@ -274,15 +275,18 @@ impl<Ty: Clone + SubstituteTyParams<Ty>> TyDef<Ty> {
 /// A pattern that can be matched against.
 #[derive(Clone, Debug)]
 pub enum Pattern {
-    Ident { ident: Spanned<Ident>, is_mut: bool },
+    Ident {
+        ident: Spanned<Ident>,
+        mut_kw: Option<Span>,
+    },
     Tuple(Vec<Spanned<Self>>),
 }
 
 impl Display for Pattern {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Ident { ident, is_mut } => {
-                if *is_mut {
+            Self::Ident { ident, mut_kw } => {
+                if mut_kw.is_some() {
                     f.write_str("mut ")?;
                 }
                 write!(f, "{ident}")
@@ -1010,7 +1014,7 @@ where
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self.0 {
             Node::Expr(e) => write!(f, "{};", self.with(e)),
-            Node::Let { pat, ty, value } => {
+            Node::Let { pat, ty, value, .. } => {
                 write!(f, "let {pat}: {ty}")?;
                 if let Some(value) = value {
                     write!(f, " = {};", self.with(value))?;
