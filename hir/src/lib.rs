@@ -6,6 +6,7 @@
 pub mod error;
 pub mod infer;
 pub mod lower;
+pub mod typed;
 pub mod warning;
 
 use common::span::{Span, Spanned, Src};
@@ -14,7 +15,7 @@ pub use grammar::ast::{ItemVisibility, MemberVisibility};
 use internment::Intern;
 use std::{
     collections::HashMap,
-    fmt::{self, Debug, Display, Formatter, Write},
+    fmt::{self, Debug, Display, Formatter},
 };
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -96,23 +97,49 @@ impl ScopeId {
     }
 }
 
+pub trait Metadata: Debug {
+    type Expr: Clone + Debug;
+    type Ty: Clone + Debug;
+}
+
+#[derive(Clone, Debug)]
+pub struct LowerMetadata;
+impl Metadata for LowerMetadata {
+    type Expr = Expr;
+    type Ty = Ty;
+}
+
 /// HIR of a Terbium program.
-#[derive(Debug, Default)]
-pub struct Hir {
+#[derive(Debug)]
+pub struct Hir<M: Metadata = LowerMetadata> {
     /// A mapping of all modules within the program.
     pub modules: HashMap<ModuleId, ScopeId>,
     /// A mapping of all top-level functions in the program.
-    pub funcs: HashMap<ItemId, Func>,
+    pub funcs: HashMap<ItemId, Func<M>>,
     /// A mapping of all aliases in the program.
-    pub aliases: HashMap<ItemId, Alias>,
+    pub aliases: HashMap<ItemId, Alias<M::Expr>>,
     /// A mapping of all constants in the program.
-    pub consts: HashMap<ItemId, Const>,
+    pub consts: HashMap<ItemId, Const<M>>,
     /// A mapping of all raw structs within the program.
-    pub structs: HashMap<ItemId, StructTy>,
+    pub structs: HashMap<ItemId, StructTy<M::Ty>>,
     /// A mapping of all types within the program.
-    pub types: HashMap<ItemId, TyDef>,
+    pub types: HashMap<ItemId, TyDef<M::Ty>>,
     /// A mapping of all lexical scopes within the program.
-    pub scopes: HashMap<ScopeId, Scope>,
+    pub scopes: HashMap<ScopeId, Scope<M>>,
+}
+
+impl<M: Metadata> Default for Hir<M> {
+    fn default() -> Self {
+        Self {
+            modules: HashMap::new(),
+            funcs: HashMap::new(),
+            aliases: HashMap::new(),
+            consts: HashMap::new(),
+            structs: HashMap::new(),
+            types: HashMap::new(),
+            scopes: HashMap::new(),
+        }
+    }
 }
 
 #[inline]
@@ -123,7 +150,15 @@ fn join_by_comma<'a, T: ToString + 'a>(items: impl Iterator<Item = &'a T> + 'a) 
         .join(", ")
 }
 
-impl Display for Hir {
+impl<M: Metadata> Display for Hir<M>
+where
+    for<'a> WithHir<'a, Node<M>, M>: ToString,
+    for<'a> WithHir<'a, Func<M>, M>: ToString,
+    for<'a> WithHir<'a, Const<M>, M>: ToString,
+    for<'a> WithHir<'a, StructTy<M::Ty>, M>: ToString,
+    for<'a> WithHir<'a, Alias<M::Expr>, M>: ToString,
+    for<'a> WithHir<'a, M::Expr, M>: ToString,
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         for (item, func) in &self.funcs {
             writeln!(f, "{item}:")?;
@@ -155,42 +190,42 @@ impl Display for Hir {
 
 /// An HIR node.
 #[derive(Clone, Debug)]
-pub enum Node {
-    Expr(Spanned<Expr>),
+pub enum Node<M: Metadata = LowerMetadata> {
+    Expr(Spanned<M::Expr>),
     Let {
-        pat: Pattern,
-        ty: Ty,
-        value: Option<Spanned<Expr>>,
+        pat: Spanned<Pattern>,
+        ty: M::Ty,
+        value: Option<Spanned<M::Expr>>,
     },
-    Break(Option<Ident>, Option<Spanned<Expr>>),
+    Break(Option<Ident>, Option<Spanned<M::Expr>>),
     Continue(Option<Ident>),
-    Return(Option<Spanned<Expr>>),
-    ImplicitReturn(Spanned<Expr>),
+    Return(Option<Spanned<M::Expr>>),
+    ImplicitReturn(Spanned<M::Expr>),
 }
 
 #[derive(Clone, Debug)]
-pub struct Scope {
+pub struct Scope<M: Metadata = LowerMetadata> {
     pub label: Option<Ident>,
-    pub children: Vec<Node>,
+    pub children: Vec<Node<M>>,
 }
 
 #[derive(Clone, Debug)]
-pub struct Const {
+pub struct Const<M: Metadata = LowerMetadata> {
     pub vis: ItemVisibility,
     pub name: Spanned<Ident>,
-    pub ty: Ty,
-    pub value: Spanned<Expr>,
+    pub ty: M::Ty,
+    pub value: Spanned<M::Expr>,
 }
 
 #[derive(Clone, Debug)]
-pub struct Alias {
+pub struct Alias<Expr> {
     pub vis: ItemVisibility,
     pub name: Spanned<Ident>,
     pub value: Spanned<Expr>,
 }
 
 #[inline]
-fn ty_params_len(params: &[TyParam]) -> usize {
+fn ty_params_len<Ty>(params: &[TyParam<Ty>]) -> usize {
     params.iter().position(|p| p.infer).unwrap_or(params.len())
 }
 
@@ -213,13 +248,13 @@ fn assert_equal_params_length(
 }
 
 #[derive(Clone, Debug)]
-pub struct TyDef {
+pub struct TyDef<T = Ty> {
     pub name: Spanned<Ident>,
-    pub ty: Ty,
-    pub ty_params: Vec<TyParam>,
+    pub ty: T,
+    pub ty_params: Vec<TyParam<T>>,
 }
 
-impl TyDef {
+impl<Ty: Clone + SubstituteTyParams<Ty>> TyDef<Ty> {
     pub fn apply_params(&self, span: Span, params: Vec<Ty>) -> Result<Ty, error::Error> {
         assert_equal_params_length(
             span,
@@ -230,7 +265,7 @@ impl TyDef {
 
         let mut ty = self.ty.clone();
         for (param, arg) in self.ty_params.iter().zip(params) {
-            ty = ty.subst(param, arg);
+            ty = ty.substitute(param, arg);
         }
         Ok(ty)
     }
@@ -240,7 +275,7 @@ impl TyDef {
 #[derive(Clone, Debug)]
 pub enum Pattern {
     Ident { ident: Spanned<Ident>, is_mut: bool },
-    Tuple(Vec<Self>),
+    Tuple(Vec<Spanned<Self>>),
 }
 
 impl Display for Pattern {
@@ -292,31 +327,31 @@ impl FieldVisibility {
 }
 
 #[derive(Clone, Debug)]
-pub struct FuncParam {
-    pub pat: Pattern,
-    pub ty: Ty,
-    pub default: Option<Spanned<Expr>>,
+pub struct FuncParam<M: Metadata = LowerMetadata> {
+    pub pat: Spanned<Pattern>,
+    pub ty: M::Ty,
+    pub default: Option<Spanned<M::Expr>>,
 }
 
 #[derive(Clone, Debug)]
-pub struct FuncHeader {
+pub struct FuncHeader<M: Metadata = LowerMetadata> {
     /// The name of the function.
     pub name: Spanned<Ident>,
     /// The type parameters of the function.
     pub ty_params: Vec<TyParam>,
     /// The parameters of the function.
-    pub params: Vec<FuncParam>,
+    pub params: Vec<FuncParam<M>>,
     /// The return type of the function.
     pub ret_ty: Ty,
 }
 
 /// HIR of a top-level function.
 #[derive(Clone, Debug)]
-pub struct Func {
+pub struct Func<M: Metadata = LowerMetadata> {
     /// The visibility of the item.
     pub vis: ItemVisibility,
     /// The header of the function.
-    pub header: FuncHeader,
+    pub header: FuncHeader<M>,
     /// The body of the function.
     pub body: ScopeId,
 }
@@ -411,8 +446,12 @@ pub enum Ty {
     Func(Vec<Self>, Box<Self>),
 }
 
-impl Ty {
-    fn subst(self, param: &TyParam, ty: Ty) -> Self {
+pub trait SubstituteTyParams<Ty> {
+    fn substitute(self, param: &TyParam<Ty>, ty: Ty) -> Self;
+}
+
+impl SubstituteTyParams<Self> for Ty {
+    fn substitute(self, param: &TyParam, ty: Ty) -> Self {
         if param.infer {
             return Self::Unknown;
         }
@@ -420,23 +459,26 @@ impl Ty {
             Self::Generic(p) if p == param.name => ty,
             Self::Tuple(tys) => Self::Tuple(
                 tys.into_iter()
-                    .map(|t| t.subst(param, ty.clone()))
+                    .map(|t| t.substitute(param, ty.clone()))
                     .collect(),
             ),
             Self::Struct(item, tys) => Self::Struct(
                 item,
                 tys.into_iter()
-                    .map(|t| t.subst(param, ty.clone()))
+                    .map(|t| t.substitute(param, ty.clone()))
                     .collect(),
             ),
             other => other,
         }
     }
+}
 
+impl Ty {
     fn iter_unknown_types<'a>(&'a mut self) -> Box<dyn Iterator<Item = &'a mut Self> + 'a> {
         match self {
             Self::Unknown => Box::new(std::iter::once(self)),
             Self::Tuple(tys) => Box::new(tys.iter_mut().flat_map(|ty| ty.iter_unknown_types())),
+            Self::Array(ty, _) => Box::new(ty.iter_unknown_types()),
             Self::Struct(_, args) => {
                 Box::new(args.iter_mut().flat_map(|ty| ty.iter_unknown_types()))
             }
@@ -477,14 +519,14 @@ impl Display for Ty {
 }
 
 #[derive(Clone, Debug)]
-pub struct TyParam {
+pub struct TyParam<T = Ty> {
     pub name: Ident,
-    pub bound: Option<Box<Ty>>,
+    pub bound: Option<Box<T>>,
     /// Indicates you cannot explicitly specify this type
     pub infer: bool,
 }
 
-impl Display for TyParam {
+impl<Ty: Display> Display for TyParam<Ty> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         if self.infer {
             f.write_str("infer ")?;
@@ -498,22 +540,26 @@ impl Display for TyParam {
 }
 
 #[derive(Clone, Debug)]
-pub struct StructField {
+pub struct StructField<T = Ty> {
     pub vis: FieldVisibility,
     pub name: Ident,
-    pub ty: Ty,
+    pub ty: T,
     pub default: Option<Spanned<Expr>>,
 }
 
 #[derive(Clone, Debug)]
-pub struct StructTy {
+pub struct StructTy<T = Ty> {
     pub vis: ItemVisibility,
     pub name: Spanned<Ident>,
-    pub ty_params: Vec<TyParam>,
-    pub fields: Vec<StructField>,
+    pub ty_params: Vec<TyParam<T>>,
+    pub fields: Vec<StructField<T>>,
 }
 
-impl Display for WithHir<'_, StructField> {
+impl<'a, M: Metadata> Display for WithHir<'a, StructField<M::Ty>, M>
+where
+    WithHir<'a, Expr, M>: Display,
+    M::Ty: Display,
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{} {}: {}", self.0.vis, self.0.name, self.0.ty)?;
         if let Some(default) = &self.0.default {
@@ -523,7 +569,12 @@ impl Display for WithHir<'_, StructField> {
     }
 }
 
-impl Display for WithHir<'_, StructTy> {
+impl<'a, M: Metadata> Display for WithHir<'a, StructTy<M::Ty>, M>
+where
+    WithHir<'a, Expr, M>: Display,
+    WithHir<'a, StructField<M::Ty>, M>: Display,
+    M::Ty: Display,
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{} struct {}", self.0.vis, self.0.name)?;
         if !self.0.ty_params.is_empty() {
@@ -547,7 +598,7 @@ impl Display for WithHir<'_, StructTy> {
     }
 }
 
-impl StructTy {
+impl<Ty: Clone + SubstituteTyParams<Ty>> StructTy<Ty> {
     pub fn into_adhoc_struct_ty_with_applied_ty_params(
         self,
         span: Option<Span>,
@@ -566,7 +617,7 @@ impl StructTy {
                 let mut fields = self.fields;
                 for (param, arg) in self.ty_params.iter().zip(params) {
                     for field in &mut fields {
-                        field.ty = field.ty.clone().subst(param, arg.clone());
+                        field.ty = field.ty.clone().substitute(param, arg.clone());
                     }
                 }
                 fields
@@ -576,11 +627,11 @@ impl StructTy {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Literal {
     UInt(u128),
     Int(i128),
-    Float(f64),
+    Float(u64 /* raw bits */),
     Bool(bool),
     Char(char),
     String(String),
@@ -592,7 +643,7 @@ impl Display for Literal {
         match self {
             Self::UInt(u) => write!(f, "{u}u"),
             Self::Int(i) => write!(f, "{i}"),
-            Self::Float(n) => write!(f, "{n:?}"),
+            Self::Float(n) => write!(f, "{:?}", f64::from_bits(*n)),
             Self::Bool(b) => write!(f, "{b}"),
             Self::Char(c) => write!(f, "c{c:?}"),
             Self::String(s) => write!(f, "{s:?}"),
@@ -798,18 +849,19 @@ pub enum Expr {
     Block(ScopeId),
     If(Box<Spanned<Self>>, ScopeId, Option<ScopeId>),
     Loop(ScopeId),
-    Assign(Pattern, Box<Spanned<Self>>),
+    Assign(Spanned<Pattern>, Box<Spanned<Self>>),
     AssignPtr(Box<Spanned<Self>>, Box<Spanned<Self>>),
 }
 
-struct WithHir<'a, T>(&'a T, &'a Hir);
+struct WithHir<'a, T, M: Metadata = LowerMetadata>(&'a T, &'a Hir<M>);
 
-impl<'a, T> WithHir<'a, T> {
-    pub fn with<U>(&self, new: &'a U) -> WithHir<'a, U> {
+impl<'a, T, M: Metadata> WithHir<'a, T, M> {
+    pub fn with<U>(&self, new: &'a U) -> WithHir<'a, U, M> {
         WithHir(new, self.1)
     }
 
-    pub fn get_scope(&self, sid: ScopeId) -> &Scope {
+    #[inline]
+    pub fn get_scope(&self, sid: ScopeId) -> &'a Scope<M> {
         self.1
             .scopes
             .get(&sid)
@@ -821,7 +873,10 @@ impl<'a, T> WithHir<'a, T> {
         f: &mut Formatter,
         sid: ScopeId,
         header: impl FnOnce(&mut Formatter) -> fmt::Result,
-    ) -> fmt::Result {
+    ) -> fmt::Result
+    where
+        WithHir<'a, Node<M>, M>: ToString,
+    {
         let scope = self.get_scope(sid);
         if let Some(label) = scope.label {
             write!(f, ":{label} ")?;
@@ -830,7 +885,10 @@ impl<'a, T> WithHir<'a, T> {
         self.write_block(f, &scope.children)
     }
 
-    pub fn write_block(&self, f: &mut Formatter, children: &[Node]) -> fmt::Result {
+    pub fn write_block(&self, f: &mut Formatter, children: &'a [Node<M>]) -> fmt::Result
+    where
+        WithHir<'a, Node<M>, M>: ToString,
+    {
         f.write_str("{\n")?;
         for line in children {
             self.with(line).write_indent(f)?;
@@ -839,9 +897,9 @@ impl<'a, T> WithHir<'a, T> {
     }
 }
 
-impl<'a, T> Display for WithHir<'a, Spanned<T>>
+impl<'a, T, M: Metadata> Display for WithHir<'a, Spanned<T>, M>
 where
-    WithHir<'a, T>: Display,
+    WithHir<'a, T, M>: Display,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         self.with(self.0.value()).fmt(f)
@@ -944,7 +1002,11 @@ impl Display for WithHir<'_, Expr> {
     }
 }
 
-impl Display for WithHir<'_, Node> {
+impl<'a, M: Metadata> Display for WithHir<'a, Node<M>, M>
+where
+    WithHir<'a, M::Expr, M>: Display,
+    M::Ty: Display,
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self.0 {
             Node::Expr(e) => write!(f, "{};", self.with(e)),
@@ -986,7 +1048,10 @@ impl Display for WithHir<'_, Node> {
     }
 }
 
-impl Display for WithHir<'_, Const> {
+impl<'a, M: Metadata> Display for WithHir<'a, Const, M>
+where
+    WithHir<'a, Expr, M>: Display,
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -999,7 +1064,10 @@ impl Display for WithHir<'_, Const> {
     }
 }
 
-impl Display for WithHir<'_, Alias> {
+impl<'a, M: Metadata> Display for WithHir<'a, Alias<M::Expr>, M>
+where
+    WithHir<'a, M::Expr, M>: Display,
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -1011,7 +1079,11 @@ impl Display for WithHir<'_, Alias> {
     }
 }
 
-impl Display for WithHir<'_, FuncParam> {
+impl<'a, M: Metadata> Display for WithHir<'a, FuncParam<M>, M>
+where
+    WithHir<'a, M::Expr, M>: Display,
+    M::Ty: Display,
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}: {}", self.0.pat, self.0.ty)?;
         if let Some(default) = &self.0.default {
@@ -1021,7 +1093,11 @@ impl Display for WithHir<'_, FuncParam> {
     }
 }
 
-impl Display for WithHir<'_, FuncHeader> {
+impl<'a, M: Metadata> Display for WithHir<'a, FuncHeader<M>, M>
+where
+    WithHir<'a, M::Expr, M>: Display,
+    M::Ty: Display,
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let ty_params = if self.0.ty_params.is_empty() {
             String::new()
@@ -1052,7 +1128,12 @@ impl Display for WithHir<'_, FuncHeader> {
     }
 }
 
-impl Display for WithHir<'_, Func> {
+impl<'a, M: Metadata> Display for WithHir<'a, Func<M>, M>
+where
+    WithHir<'a, FuncHeader<M>, M>: Display,
+    WithHir<'a, M::Expr, M>: Display,
+    M::Ty: Display,
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{} func {} ", self.0.vis, self.with(&self.0.header))?;
         self.write_block(f, &self.get_scope(self.0.body).children)

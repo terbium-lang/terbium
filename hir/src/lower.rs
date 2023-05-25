@@ -539,7 +539,7 @@ impl AstLowerer {
                         .into_iter()
                         .map(|param| {
                             Ok(FuncParam {
-                                pat: self.lower_pat(param.0.pat.0),
+                                pat: self.lower_pat(param.0.pat),
                                 ty: self.lower_ty(&ctx, param.0.ty.0)?,
                                 default: param
                                     .0
@@ -595,7 +595,7 @@ impl AstLowerer {
         let node = match node.into_value() {
             ast::Node::Expr(expr) => Node::Expr(self.lower_expr(ctx, expr)?),
             ast::Node::Let { pat, ty, value, .. } => Node::Let {
-                pat: self.lower_pat(pat.into_value()),
+                pat: self.lower_pat(pat),
                 ty: self.lower_ty_or_infer(ctx, ty)?,
                 value: value.map(|value| self.lower_expr(ctx, value)).transpose()?,
             },
@@ -625,19 +625,18 @@ impl AstLowerer {
     }
 
     /// Lowers a pattern into an HIR pattern.
-    pub fn lower_pat(&mut self, pat: ast::Pattern) -> Pattern {
-        match pat {
+    pub fn lower_pat(&mut self, Spanned(pat, span): Spanned<ast::Pattern>) -> Spanned<Pattern> {
+        let pat = match pat {
             ast::Pattern::Ident { ident, mut_kw } => Pattern::Ident {
                 ident: ident.map(get_ident),
                 is_mut: mut_kw.is_some(),
             },
-            ast::Pattern::Tuple(_variant, pats) => Pattern::Tuple(
-                pats.into_iter()
-                    .map(|pat| self.lower_pat(pat.into_value()))
-                    .collect(),
-            ),
+            ast::Pattern::Tuple(_variant, pats) => {
+                Pattern::Tuple(pats.into_iter().map(|pat| self.lower_pat(pat)).collect())
+            }
             _ => todo!(),
-        }
+        };
+        Spanned(pat, span)
     }
 
     #[inline]
@@ -823,7 +822,9 @@ impl AstLowerer {
         let (lhs, span) = lhs.into_inner();
 
         Ok(match lhs {
-            AssignmentTarget::Pattern(pat) => Expr::Assign(self.lower_pat(pat), Box::new(rhs)),
+            AssignmentTarget::Pattern(pat) => {
+                Expr::Assign(self.lower_pat(Spanned(pat, span)), Box::new(rhs))
+            }
             AssignmentTarget::Attr { subject, attr } => Expr::SetAttr(
                 Box::new(self.lower_expr(ctx, *subject)?),
                 attr.map(get_ident),
@@ -1072,10 +1073,10 @@ impl AstLowerer {
             children: vec![
                 // Store the LHS in a temporary binding
                 Node::Let {
-                    pat: Pattern::Ident {
+                    pat: lhs.as_ref().map(|_| Pattern::Ident {
                         ident: binding,
                         is_mut: false,
-                    },
+                    }),
                     ty: Ty::Unknown,
                     value: Some(lhs),
                 },
@@ -1101,7 +1102,7 @@ impl AstLowerer {
                             .map_err(|_| Error::IntegerLiteralOverflow(span, int))?,
                     )
                 }),
-                Atom::Float(f) => Expr::Literal(Literal::Float(f.parse().unwrap())),
+                Atom::Float(f) => Expr::Literal(Literal::Float(f.parse::<f64>().unwrap().to_bits())),
                 Atom::Bool(b) => Expr::Literal(Literal::Bool(b)),
                 Atom::Char(c) => Expr::Literal(Literal::Char(c)),
                 Atom::String(s) => Expr::Literal(Literal::String(s)),

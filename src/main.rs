@@ -55,8 +55,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let mut ty_lowerer = TypeLowerer::new(lowerer.hir);
                         for node in ty_lowerer.hir.scopes.clone().into_values() {
                             for mut child in node.children {
-                                match ty_lowerer.lower_node(&mut child) {
-                                    Ok(()) => (),
+                                match ty_lowerer.lower_node(child) {
+                                    Ok(child) => println!("{child:?}"),
                                     Err(error) => dwriter.write_diagnostic(
                                         &mut std::io::stdout(),
                                         error.into_diagnostic(),

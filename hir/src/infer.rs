@@ -1,294 +1,32 @@
-use crate::error::Error;
-use crate::{
-    error::Result, Expr, FloatWidth, Hir, Ident, IntSign, IntWidth, ItemId, Literal, ModuleId,
-    Node, Pattern, PrimitiveTy, Ty, TyParam,
-};
+use std::borrow::Cow;
+use crate::{error::{Error, Result}, typed::{self, Constraint, Ty, UnificationTable, InvalidTypeCause, TypedExpr}, Expr, FloatWidth, Hir, Ident, IntSign, IntWidth, ItemId, Literal, ModuleId, Node, Pattern, PrimitiveTy, TyParam, Metadata};
 use common::span::{Span, Spanned};
-use std::any::{Any, TypeId};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap};
 
-#[derive(Clone, Debug)]
-pub enum UnificationType {
-    Unknown(usize),
-    Primitive(PrimitiveTy),
-    Tuple(Vec<Self>),
-    Array(Box<Self>, Option<usize>),
-    Struct(ItemId, Vec<Self>),
-    Generic(Ident),
-    Func(Vec<Self>, Box<Self>),
-    // Constant-like types
-    ArrayLen(Option<usize>),
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum Relation {
-    Eq,
-    Sub,
-    Super,
-    Unrelated,
-}
-
-impl Relation {
-    pub const fn compatible(&self) -> bool {
-        matches!(self, Self::Eq | Self::Sub)
-    }
-
-    pub const fn merge_covariant(&self, other: Self) -> Self {
-        match (self, other) {
-            (Self::Eq, Self::Eq) => Self::Eq,
-            (Self::Eq, Self::Sub) | (Self::Sub, Self::Eq) | (Self::Sub, Self::Sub) => Self::Sub,
-            _ => Self::Unrelated,
-        }
-    }
-}
-
-/// Compute the relation between two primitive types.
-#[inline]
-fn prim_ty_relation(p: PrimitiveTy, q: PrimitiveTy) -> Relation {
-    match (p, q) {
-        // Unsigned integers coerce and are a subtype of signed integers with a larger bit width.
-        // For example, uint32 is a subtype of int64, but not int32 since uint32 could represent
-        // larger values than int32.
-        //
-        // Integers with the same signedness coerce and are a subtype of other integers with the
-        // same signedness and the same or larger bit width.
-        (PrimitiveTy::Int(ps, mut pw), PrimitiveTy::Int(qs, mut qw)) => {
-            pw.naturalize();
-            qw.naturalize();
-            // if the signs are equal...
-            if ps == qs {
-                if pw == qw {
-                    // ...and the widths are equal, they are equal
-                    Relation::Eq
-                } else if pw < qw {
-                    // ...and the width of the first is less than the width of the second, it is a subtype
-                    Relation::Sub
-                } else {
-                    // ...otherwise it is a supertype
-                    Relation::Super
-                }
-            } else if ps == IntSign::Unsigned && pw < qw {
-                Relation::Sub
-            } else {
-                Relation::Super
-            }
-        }
-        (PrimitiveTy::Float(mut pw), PrimitiveTy::Float(mut qw)) => {
-            pw.naturalize();
-            qw.naturalize();
-            if pw == qw {
-                Relation::Eq
-            } else if pw < qw {
-                Relation::Sub
-            } else {
-                Relation::Super
-            }
-        }
-        (PrimitiveTy::Bool, PrimitiveTy::Bool)
-        | (PrimitiveTy::Char, PrimitiveTy::Char)
-        | (PrimitiveTy::Void, PrimitiveTy::Void) => Relation::Eq,
-        _ => Relation::Unrelated,
-    }
-}
-
-impl UnificationType {
-    /// Example: `u32` is a subtype of `u64` because they coerce.
-    pub fn relation_to(&self, other: &Self) -> Relation {
-        match (self, other) {
-            (Self::Unknown(i), Self::Unknown(j)) if i == j => Relation::Eq,
-            (Self::Primitive(p), Self::Primitive(q)) => prim_ty_relation(*p, *q),
-            // tuples are covariant
-            (Self::Tuple(tys), Self::Tuple(other_tys)) => {
-                if tys.len() != other_tys.len() {
-                    return Relation::Unrelated;
-                }
-                let mut relation = Relation::Eq;
-                for (ty, other_ty) in tys.iter().zip(other_tys.iter()) {
-                    relation = relation.merge_covariant(ty.relation_to(other_ty));
-                    if !relation.compatible() {
-                        return Relation::Unrelated;
-                    }
-                }
-                relation
-            }
-            // arrays are covariant
-            (Self::Array(ty, len), Self::Array(oty, olen)) => {
-                if len != olen {
-                    return Relation::Unrelated;
-                }
-                ty.relation_to(oty)
-            }
-            // structs define their own variance, so we just check that they are the same struct
-            (Self::Struct(id, _), Self::Struct(oid, _)) if id == oid => Relation::Eq,
-            (Self::Generic(a), Self::Generic(b)) if a == b => Relation::Eq,
-            (Self::Func(ftys, frt), Self::Func(gtys, grt)) => {
-                if ftys.len() != gtys.len() {
-                    return Relation::Unrelated;
-                }
-                let mut relation = Relation::Eq;
-                for (fty, gty) in ftys.iter().zip(gtys.iter()) {
-                    relation = relation.merge_covariant(fty.relation_to(gty));
-                    if !relation.compatible() {
-                        return Relation::Unrelated;
-                    }
-                }
-                relation.merge_covariant(frt.relation_to(grt))
-            }
-            _ => Relation::Unrelated,
-        }
-    }
-
-    pub fn has_same_outer_type(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Unknown(i), Self::Unknown(j)) => i == j,
-            (Self::Primitive(p), Self::Primitive(q)) => prim_ty_relation(*p, *q).compatible(),
-            (Self::Tuple(tys), Self::Tuple(other_tys)) => tys.len() == other_tys.len(),
-            (Self::Array(_, alen), Self::Array(_, blen)) => alen == blen,
-            (Self::Struct(id, _), Self::Struct(oid, _)) => id == oid,
-            (Self::Func(..), Self::Func(..)) => true,
-            (Self::ArrayLen(i), Self::ArrayLen(j)) => i == j,
-            _ => false,
-        }
-    }
-
-    pub fn into_inner_unifications<'a>(self) -> Box<dyn Iterator<Item = Self> + 'a> {
-        match self {
-            Self::Tuple(tys) => Box::new(tys.into_iter()),
-            Self::Array(ty, len) => {
-                let len = UnificationType::ArrayLen(len);
-                Box::new([*ty, len].into_iter())
-            }
-            Self::Struct(_, tys) => Box::new(tys.into_iter()),
-            Self::Func(params, ret) => Box::new(params.into_iter().chain(std::iter::once(*ret))),
-            _ => Box::new(std::iter::empty()),
-        }
-    }
-
-    pub const fn known(&self) -> bool {
-        !matches!(self, Self::Unknown(_))
-    }
-
-    pub fn subst(&mut self, i: usize, t: Self) {
-        match self {
-            Self::Unknown(j) if *j == i => *self = t,
-            Self::Tuple(tys) => {
-                for ty in tys {
-                    ty.subst(i, t.clone());
-                }
-            }
-            _ => {}
-        }
-    }
-
-    pub fn has_unknown(&self, i: usize) -> bool {
-        match self {
-            Self::Unknown(j) => *j == i,
-            Self::Tuple(ts) => ts.iter().any(|ty| ty.has_unknown(i)),
-            Self::Array(ty, _) => ty.has_unknown(i),
-            Self::Struct(_, tys) => tys.iter().any(|ty| ty.has_unknown(i)),
-            Self::Func(params, ret) => {
-                params.iter().any(|ty| ty.has_unknown(i)) || ret.has_unknown(i)
-            }
-            _ => false,
-        }
-    }
-}
-
-impl UnificationType {
-    pub fn from_ty(ty: Ty, counter: &mut usize) -> Self {
-        match ty {
-            Ty::Unknown => {
-                let i = *counter;
-                *counter += 1;
-                UnificationType::Unknown(i)
-            }
-            Ty::Primitive(prim) => UnificationType::Primitive(prim),
-            Ty::Tuple(tys) => UnificationType::Tuple(
-                tys.into_iter()
-                    .map(|ty| Self::from_ty(ty, counter))
-                    .collect(),
-            ),
-            Ty::Array(ty, len) => {
-                UnificationType::Array(Box::new(Self::from_ty(*ty, counter)), len)
-            }
-            Ty::Struct(id, args) => UnificationType::Struct(
-                id,
-                args.into_iter()
-                    .map(|ty| Self::from_ty(ty, counter))
-                    .collect(),
-            ),
-            Ty::Generic(id) => UnificationType::Generic(id),
-            Ty::Func(params, ret) => UnificationType::Func(
-                params
-                    .into_iter()
-                    .map(|ty| Self::from_ty(ty, counter))
-                    .collect(),
-                Box::new(Self::from_ty(*ret, counter)),
-            ),
-        }
-    }
-}
-
-impl From<UnificationType> for Ty {
-    fn from(ty: UnificationType) -> Self {
-        match ty {
-            UnificationType::Unknown(_) => Ty::Unknown,
-            UnificationType::Primitive(prim) => Ty::Primitive(prim),
-            UnificationType::Tuple(tys) => Ty::Tuple(tys.into_iter().map(Ty::from).collect()),
-            UnificationType::Array(ty, len) => Ty::Array(Box::new(Ty::from(*ty)), len),
-            UnificationType::Struct(id, args) => {
-                Ty::Struct(id, args.into_iter().map(Ty::from).collect())
-            }
-            UnificationType::Generic(id) => Ty::Generic(id),
-            UnificationType::Func(params, ret) => Ty::Func(
-                params.into_iter().map(Ty::from).collect(),
-                Box::new(Ty::from(*ret)),
-            ),
-            UnificationType::ArrayLen(_) => unimplemented!("ArrayLen"),
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Constraint(pub UnificationType, pub UnificationType);
-
-/// A type unifier.
-#[derive(Debug)]
-pub struct Unifier {
-    pub span: Span,
-    pub constraints: VecDeque<Constraint>,
-    pub substitutions: Vec<(usize, UnificationType)>,
-    pub conflicts: Vec<Constraint>,
-}
-
-impl Unifier {
-    pub fn substitute(&mut self, a: usize, b: UnificationType) {
+impl UnificationTable {
+    pub fn substitute(&mut self, a: usize, b: Ty) {
         // Add a => b to our substitution
-        self.substitutions.push((a, b.clone()));
+        self.substitutions[a] = b.clone();
         // Replace further unifications of a with b
         for Constraint(x, y) in self.constraints.iter_mut() {
-            x.subst(a, b.clone());
-            y.subst(a, b.clone());
+            x.substitute(a, b.clone());
+            y.substitute(a, b.clone());
         }
     }
 
-    /// Unify the constraint a = b.
-    pub fn unify_constraint(&mut self, constraint: Constraint) -> Result<()> {
+    /// Unify the constraint a = b. Return failed constraint on conflict.
+    pub fn unify_constraint(&mut self, constraint: Constraint) -> Option<Constraint> {
         match constraint {
             // If both a and b are unknown, replace one of them with the other.
-            Constraint(UnificationType::Unknown(i), b @ UnificationType::Unknown(_)) => {
+            Constraint(Ty::Unknown(i), b @ Ty::Unknown(_)) => {
                 self.substitute(i, b);
             }
             // If a is unknown and b is known, replace a with b. Similarly, if b is unknown and a is
             // known, replace b with a.
-            Constraint(UnificationType::Unknown(i), b)
-            | Constraint(b, UnificationType::Unknown(i)) => {
+            Constraint(Ty::Unknown(i), mut b) | Constraint(mut b, Ty::Unknown(i)) => {
                 // Do not allow recursive unification (i = a<i>)
                 if b.has_unknown(i) {
-                    return Err(Error::CyclicTypeConstraint {
-                        span: self.span,
-                        rhs: b.into(),
-                    });
+                    b = Ty::Invalid(InvalidTypeCause::CyclicTypeReference);
                 }
                 self.substitute(i, b);
             }
@@ -296,40 +34,59 @@ impl Unifier {
             // and if so, unify their type arguments.
             Constraint(a, b) if b.has_same_outer_type(&a) => {
                 for (a, b) in a.into_inner_unifications().zip(b.into_inner_unifications()) {
-                    self.unify_constraint(Constraint(a, b))?;
+                    if let c @ Some(_) = self.unify_constraint(Constraint(a, b)) {
+                        return c;
+                    }
                 }
             }
             // If both a and b are known but they are not the same general type, this is a type
             // mismatch
-            _ => {
-                self.conflicts.push(constraint);
-            }
+            _ => return Some(constraint),
         }
-        Ok(())
+        None
     }
 
-    /// Unifies all constraints in the unifier.
-    pub fn unify(&mut self) -> Result<()> {
+    /// Unifies all constraints in the unifier. Return erroneous constraint if unification fails.
+    pub fn unify_all(&mut self) -> Option<Constraint> {
         while let Some(constraint) = self.constraints.pop_front() {
-            self.unify_constraint(constraint)?;
+            if let constraint @ Some(_) = self.unify_constraint(constraint) {
+                return constraint;
+            }
         }
-        Ok(())
+        None
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct Local {
+    pub def_span: Span,
+    pub ty: Ty,
+    pub mutable: bool,
 }
 
 #[derive(Clone, Debug)]
 pub struct Scope {
     module_id: ModuleId,
     ty_params: Vec<TyParam>,
-    locals: HashMap<Ident, Ty>,
+    locals: HashMap<Ident, Local>,
+}
+
+#[derive(Debug)]
+pub struct InferMetadata;
+impl Metadata for InferMetadata {
+    type Expr = TypedExpr;
+    type Ty = Ty;
 }
 
 /// Lowers types of expressions and performs type inference.
 #[derive(Debug)]
 pub struct TypeLowerer {
     scopes: Vec<Scope>,
+    table: UnificationTable,
     /// The HIR that is being lowered.
     pub hir: Hir,
+    /// The HIR that is being generated.
+    pub thir: Hir<InferMetadata>,
 }
 
 impl TypeLowerer {
@@ -337,13 +94,20 @@ impl TypeLowerer {
     pub fn new(hir: Hir) -> Self {
         Self {
             scopes: Vec::new(),
+            table: UnificationTable::default(),
             hir,
+            thir: Hir::default(),
         }
     }
 
     #[inline]
     pub fn scope(&self) -> &Scope {
         self.scopes.last().expect("no scopes entered?")
+    }
+
+    #[inline]
+    pub fn scope_mut(&mut self) -> &mut Scope {
+        self.scopes.last_mut().expect("no scopes entered?")
     }
 
     pub fn lower_literal(lit: &Literal) -> Ty {
@@ -378,10 +142,15 @@ impl TypeLowerer {
     }
 
     #[inline]
-    fn resolve_ident_ty(
-        &self,
+    fn lower_hir_ty(&mut self, ty: crate::Ty) -> Ty {
+        Ty::from_ty(ty, &mut self.table)
+    }
+
+    #[inline]
+    fn lower_ident_ty(
+        &mut self,
         ident: &Spanned<Ident>,
-        args: &Option<Spanned<Vec<Ty>>>,
+        args: &Option<Spanned<Vec<crate::Ty>>>,
     ) -> Result<Ty> {
         if let Some(args) = args {
             // TODO: function pointers, first-class types
@@ -390,15 +159,15 @@ impl TypeLowerer {
 
         // Search for the local variable
         for scope in self.scopes.iter().rev() {
-            if let Some(ty) = scope.locals.get(ident.value()) {
-                return Ok(ty.clone());
+            if let Some(local) = scope.locals.get(ident.value()) {
+                return Ok(local.ty.clone());
             }
         }
 
         // Does a constant with this name exist?
         let item = ItemId(self.scope().module_id, *ident.value());
         if let Some(cnst) = self.hir.consts.get(&item) {
-            return Ok(cnst.ty.clone());
+            return Ok(self.lower_hir_ty(cnst.ty.clone()));
         }
 
         Err(Error::UnresolvedIdentifier(ident.map(|i| i.to_string())))
@@ -408,7 +177,7 @@ impl TypeLowerer {
     pub fn lower_expr_ty(&mut self, expr: &Spanned<Expr>) -> Result<Ty> {
         Ok(match expr.value() {
             Expr::Literal(lit) => Self::lower_literal(lit),
-            Expr::Ident(ident, args) => self.resolve_ident_ty(ident, args)?,
+            Expr::Ident(ident, args) => self.lower_ident_ty(ident, args)?,
             Expr::Tuple(exprs) => {
                 let mut tys = Vec::with_capacity(exprs.len());
                 for expr in exprs {
@@ -416,69 +185,140 @@ impl TypeLowerer {
                 }
                 Ty::Tuple(tys)
             }
-            Expr::Cast(_, ty) => ty.clone(),
+            Expr::Cast(_, ty) => self.lower_hir_ty(ty.clone()),
             // TODO
-            _ => Ty::Unknown,
+            _ => self.lower_hir_ty(crate::Ty::Unknown),
         })
     }
 
-    /// Expands a pattern binding to a type of unknowns, for example:
-    /// * `(a, b)` becomes `(_, _)`
-    /// * `(a, (b, c))` becomes `(_, (_, _))`
-    pub fn bind_pattern_to_inference_ty(&self, pat: &Pattern) -> Ty {
-        match pat {
-            Pattern::Ident { .. } => Ty::Unknown,
-            Pattern::Tuple(pats) => Ty::Tuple(
-                pats.iter()
-                    .map(|pat| self.bind_pattern_to_inference_ty(pat))
-                    .collect(),
+    pub fn lower_expr(&mut self, expr: Spanned<Expr>) -> Result<Spanned<TypedExpr>> {
+        let ty = self.lower_expr_ty(&expr)?;
+        let Spanned(expr, span) = expr;
+
+        let expr = match expr {
+            Expr::Literal(lit) => typed::Expr::Literal(lit),
+            Expr::Ident(ident, args) => typed::Expr::Ident(
+                ident,
+                args.map(|args| {
+                    args.map(|args| args.into_iter().map(|ty| self.lower_hir_ty(ty)).collect())
+                }),
             ),
+            Expr::Tuple(exprs) => typed::Expr::Tuple(
+                exprs
+                    .into_iter()
+                    .map(|expr| self.lower_expr(expr))
+                    .collect::<Result<Vec<_>>>()?,
+            ),
+            Expr::Cast(expr, ty) => {
+                typed::Expr::Cast(Box::new(self.lower_expr(*expr)?), self.lower_hir_ty(ty))
+            }
+            _ => unimplemented!(),
+        };
+        Ok(Spanned(TypedExpr(expr, ty), span))
+    }
+
+    pub fn bind_pattern_to_ty(
+        pat: &Spanned<Pattern>,
+        ty: Ty,
+        expr: Option<&Spanned<TypedExpr>>,
+        bindings: &mut Vec<(Ident, Local)>,
+    ) -> Result<()> {
+        match (pat.value(), ty) {
+            (Pattern::Ident { ident, is_mut }, ty) => {
+                bindings.push((
+                    ident.0,
+                    Local {
+                        def_span: ident.1,
+                        ty,
+                        mutable: *is_mut,
+                    },
+                ));
+            }
+            (Pattern::Tuple(pats), Ty::Tuple(tys)) => {
+                if pats.len() != tys.len() {
+                    return Err(Error::PatternMismatch {
+                        pat: Cow::Owned(format!("tuple of length {}", pats.len())),
+                        pat_span: pat.span(),
+                        value: format!("tuple of length {}", tys.len()),
+                        value_span: expr.map(|expr| expr.span()),
+                    });
+                }
+                // Can we destructure the tuple further?
+                if let Some(Spanned(TypedExpr(typed::Expr::Tuple(ref exprs), _), _)) = expr {
+                    debug_assert_eq!(pats.len(), exprs.len());
+                    for ((pat, ty), expr) in pats.iter().zip(tys).zip(exprs) {
+                        Self::bind_pattern_to_ty(pat, ty, Some(expr), bindings)?;
+                    }
+                } else {
+                    for (pat, ty) in pats.iter().zip(tys) {
+                        Self::bind_pattern_to_ty(pat, ty, expr, bindings)?;
+                    }
+                }
+            }
+            // TODO: tuple structs/enum variants?
+            (Pattern::Tuple(_), ty) => {
+                return Err(Error::PatternMismatch {
+                    pat: Cow::Borrowed("tuple"),
+                    pat_span: pat.span(),
+                    value: format!("value of type `{}`", crate::Ty::from(ty)),
+                    value_span: expr.map(|expr| expr.span()),
+                })
+            }
         }
+        Ok(())
     }
 
     /// Runs type inference through a single node.
-    pub fn lower_node(&mut self, node: &mut Node) -> Result<()> {
-        match node {
-            Node::Expr(expr) => {
-                self.lower_expr_ty(expr)?;
-            }
-            // This is a proof-of-concept implementation of type inference. It is not complete.
+    pub fn lower_node(&mut self, node: Node) -> Result<Node<InferMetadata>> {
+        let mut bindings = Vec::new();
+        let node = match node {
+            Node::Expr(expr) => Node::Expr(self.lower_expr(expr)?),
             Node::Let {
                 pat,
                 ty,
-                value: Some(value),
+                value,
             } => {
-                let mut counter = 0;
-                let expr_ty = self.lower_expr_ty(value)?;
-                let value = value.clone();
+                // Lower the type of the binding
+                if let Some(value) = value {
+                    let mut expr = self.lower_expr(value)?;
+                    let mut lower_ty = self.lower_hir_ty(ty);
 
-                let mut uty = UnificationType::from_ty(ty.clone(), &mut counter);
-                // constraint: type hint = structure of value
-                let ty_constraint =
-                    Constraint(uty.clone(), UnificationType::from_ty(expr_ty, &mut counter));
-
-                let mut unifier = Unifier {
-                    span: value.span(),
-                    constraints: VecDeque::from([ty_constraint]),
-                    substitutions: Vec::new(),
-                    conflicts: Vec::new(),
-                };
-                unifier.unify()?;
-
-                for (i, to) in unifier.substitutions {
-                    uty.subst(i, to);
-                }
-                for conflict in unifier.conflicts {
-                    println!(
-                        "conflict: {} != {}",
-                        Ty::from(conflict.0),
-                        Ty::from(conflict.1)
+                    self.table.constraints.push_back(
+                        Constraint(lower_ty.clone(), expr.value().1.clone()),
                     );
+                    self.table.unify_all();
+
+                    lower_ty.apply(&self.table.substitutions);
+                    expr.value_mut().1.apply(&self.table.substitutions);
+
+                    Self::bind_pattern_to_ty(
+                        &pat,
+                        lower_ty.clone(),
+                        Some(&expr),
+                        &mut bindings,
+                    )?;
+                    Node::Let {
+                        pat,
+                        ty: lower_ty,
+                        value: Some(expr),
+                    }
+                } else {
+                    let ty = self.lower_hir_ty(ty);
+                    Self::bind_pattern_to_ty(
+                        &pat,
+                        ty.clone(),
+                        None,
+                        &mut bindings,
+                    )?;
+
+                    Node::Let { pat, ty, value: None }
                 }
-                *ty = Ty::from(uty);
             }
-            _ => (), // TODO
+            _ => todo!(),
+        };
+        for (ident, binding) in bindings {
+            self.scope_mut().locals.insert(ident, binding);
         }
-        Ok(())
+        Ok(node)
     }
 }

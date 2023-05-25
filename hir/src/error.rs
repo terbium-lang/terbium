@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use crate::{Ident, ModuleId, Ty};
 use common::{
     pluralize,
@@ -5,10 +6,7 @@ use common::{
 };
 use diagnostics::{Action, Diagnostic, Fix, Label, Section, Severity};
 use grammar::ast::{self, TypeExpr, TypePath};
-use std::{
-    fmt::{Display, Formatter},
-    io::Write,
-};
+use std::fmt::{Display, Formatter};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -63,6 +61,17 @@ pub enum Error {
     ExplicitTypeArgumentsNotAllowed(Span),
     /// Unresolved identifier.
     UnresolvedIdentifier(Spanned<String>),
+    /// Cannot bind pattern to the given value.
+    PatternMismatch {
+        /// The description of the pattern attempted to be bound to.
+        pat: Cow<'static, str>,
+        /// The span of the pattern.
+        pat_span: Span,
+        /// The description of the value attempted to be bound.
+        value: String,
+        /// The span of the value, if applicable.
+        value_span: Option<Span>,
+    },
 }
 
 impl Display for Error {
@@ -130,6 +139,9 @@ impl Display for Error {
             Self::UnresolvedIdentifier(name) => {
                 write!(f, "unresolved identifier `{name}`")
             }
+            Self::PatternMismatch { pat, value, .. } => {
+                write!(f, "cannot bind {value} to {pat}")
+            }
         }
     }
 }
@@ -154,6 +166,7 @@ impl Error {
                 "explicit generic type arguments are not allowed in this context"
             }
             Self::UnresolvedIdentifier(..) => "unresolved identifier",
+            Self::PatternMismatch { .. } => "pattern mismatch",
         }
     }
 
@@ -173,6 +186,7 @@ impl Error {
             Self::TypeMismatch { .. } => 111,
             Self::ExplicitTypeArgumentsNotAllowed(_) => 112,
             Self::UnresolvedIdentifier(..) => 113,
+            Self::PatternMismatch { .. } => 114,
         }
     }
 
@@ -381,7 +395,7 @@ impl Error {
                 diagnostic
                     .with_section(Section::new()
                         .with_label(Label::at(span)
-                            .with_message("explicit type arguments are not allowed in this context")
+                            .with_message("cannot use explicit type arguments here")
                         )
                     )
                     .with_fix(Fix::new(Action::Remove(span))
@@ -398,6 +412,28 @@ impl Error {
                         )
                     )
                     .with_help("check the spelling of the identifier")
+            }
+            Self::PatternMismatch { pat, pat_span, value, value_span } => {
+                let mut section = Section::new()
+                    .with_label(Label::at(pat_span)
+                        .with_message(format!("{pat} expected here"))
+                    )
+                    .with_note(format!("cannot bind {value} to this pattern"));
+
+                if let Some(value_span) = value_span {
+                    section = section.with_label(Label::at(value_span)
+                        .with_message(format!("{value} found here"))
+                    );
+                }
+
+                diagnostic.with_section(section)
+                    .with_fix(Fix::new(Action::Replace(pat_span, "value".to_string()))
+                        .with_message(
+                            "try changing the pattern to match the type. \
+                            you can also try binding to an identifier instead:",
+                        )
+                        .with_note("identifiers can be used to bind values of any type")
+                    )
             }
         };
         diagnostic
