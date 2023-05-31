@@ -229,29 +229,43 @@ impl TypeLowerer {
         Ty::from_ty(ty, &mut self.table)
     }
 
-    #[inline]
-    fn lower_ident_ty(
+    fn lower_local(&mut self, ident: &Spanned<Ident>) -> Result<&mut Local> {
+        for scope in self.scopes.iter_mut().rev() {
+            if let Some(local) = scope.locals.get_mut(ident.value()) {
+                local.used = true;
+                return Ok(local);
+            }
+        }
+        Err(Error::UnresolvedIdentifier(ident.map(|i| i.to_string())))
+    }
+
+    fn lower_ident_binding(
         &mut self,
         ident: &Spanned<Ident>,
         args: &Option<Spanned<Vec<crate::Ty>>>,
-    ) -> Result<Ty> {
+    ) -> Result<Binding> {
         if let Some(args) = args {
             // TODO: function pointers, first-class types
             return Err(Error::ExplicitTypeArgumentsNotAllowed(args.span()));
         }
 
         // Search for the local variable
-        for scope in self.scopes.iter_mut().rev() {
-            if let Some(local) = scope.locals.get_mut(ident.value()) {
-                local.used = true;
-                return Ok(local.ty.clone());
-            }
+        if let Ok(local) = self.lower_local(ident) {
+            return Ok(Binding {
+                def_span: local.def_span,
+                ty: local.ty.clone(),
+                mutable: local.mutable,
+            });
         }
 
         // Does a constant with this name exist?
         let item = ItemId(self.scope().module_id, *ident.value());
         if let Some(cnst) = self.hir.consts.get(&item) {
-            return Ok(self.lower_hir_ty(cnst.ty.clone()));
+            return Ok(Binding {
+                def_span: cnst.name.span(),
+                ty: self.lower_hir_ty(cnst.ty.clone()),
+                mutable: None,
+            });
         }
 
         Err(Error::UnresolvedIdentifier(ident.map(|i| i.to_string())))
@@ -273,22 +287,52 @@ impl TypeLowerer {
         })
     }
 
-    /// Lowers the type of an expression.
-    pub fn lower_expr_ty(&mut self, expr: &Spanned<Expr>) -> Result<Ty> {
-        Ok(match expr.value() {
-            Expr::Literal(lit) => Self::lower_literal(lit),
-            Expr::Ident(ident, args) => self.lower_ident_ty(ident, args)?,
-            Expr::Tuple(exprs) => {
-                let mut tys = Vec::with_capacity(exprs.len());
-                for expr in exprs {
-                    tys.push(self.lower_expr_ty(expr)?);
-                }
-                Ty::Tuple(tys)
+    /// Lowers an expression.
+    pub fn lower_expr(&mut self, expr: Spanned<Expr>) -> Result<Spanned<TypedExpr>> {
+        let Spanned(expr, span) = expr;
+
+        let expr = match expr {
+            Expr::Literal(lit) => {
+                let ty = Self::lower_literal(&lit);
+                TypedExpr(typed::Expr::Literal(lit), ty)
             }
-            Expr::Cast(_, ty) => self.lower_hir_ty(ty.clone()),
-            Expr::Block(scope_id) => self.lower_exit_in_context(*scope_id)?,
+            Expr::Ident(ident, args) => {
+                let ty = self.lower_ident_binding(&ident, &args)?.ty;
+                TypedExpr(
+                    typed::Expr::Ident(
+                        ident,
+                        args.map(|args| {
+                            args.map(|args| {
+                                args.into_iter().map(|ty| self.lower_hir_ty(ty)).collect()
+                            })
+                        }),
+                    ),
+                    ty,
+                )
+            }
+            Expr::Tuple(exprs) => {
+                let exprs = exprs
+                    .into_iter()
+                    .map(|expr| self.lower_expr(expr))
+                    .collect::<Result<Vec<_>>>()?;
+                let tys = exprs.iter().map(|expr| expr.value().1.clone()).collect();
+
+                TypedExpr(typed::Expr::Tuple(exprs), Ty::Tuple(tys))
+            }
+            Expr::Cast(expr, ty) => TypedExpr(
+                typed::Expr::Cast(
+                    Box::new(self.lower_expr(*expr)?),
+                    self.lower_hir_ty(ty.clone()),
+                ),
+                self.lower_hir_ty(ty),
+            ),
+            Expr::Block(scope_id) => TypedExpr(
+                typed::Expr::Block(scope_id),
+                self.lower_exit_in_context(scope_id)?,
+            ),
             Expr::If(cond, left, right) => {
-                match self.lower_expr_ty(cond)? {
+                let cond = self.lower_expr(*cond)?;
+                match cond.value().1.clone() {
                     // If the type is not known, constrain it to bool, this will be checked
                     // one more time at the typeck stage.
                     ty @ Ty::Unknown(_) => {
@@ -304,8 +348,8 @@ impl TypeLowerer {
                     }
                 };
                 // "Evenness" check will be done at the typeck stage
-                let left_ty = self.lower_exit_in_context(*left)?;
-                match right
+                let left_ty = self.lower_exit_in_context(left)?;
+                let ty = match right
                     .map(|right| self.lower_exit_in_context(right))
                     .transpose()?
                 {
@@ -324,42 +368,50 @@ impl TypeLowerer {
                         }
                     }
                     None => Ty::Primitive(PrimitiveTy::Void),
+                };
+                TypedExpr(typed::Expr::If(Box::new(cond), left, right), ty)
+            }
+            Expr::Assign(target, value) => {
+                let lowered = self.lower_expr(*value)?;
+                let ty = lowered.value().1.clone();
+
+                let mut bindings = Vec::new();
+                Self::bind_pattern_to_ty(&target, ty.clone(), Some(&lowered), &mut bindings)?;
+                for (ident, binding) in bindings {
+                    let target = {
+                        let target = self.lower_local(&Spanned(ident, binding.def_span))?;
+                        target.mutated = true;
+                        Binding {
+                            def_span: target.def_span,
+                            ty: target.ty.clone(),
+                            mutable: target.mutable,
+                        }
+                    };
+                    if target.mutable.is_none() {
+                        self.err_nonfatal(Error::ReassignmentToImmutable(
+                            binding.def_span,
+                            Spanned(ident, target.def_span),
+                        ));
+                    }
+                    self.table
+                        .constraints
+                        .push_back(Constraint(binding.ty.clone(), target.ty.clone()));
+
+                    // Unify and update
+                    if let Some(conflict) = self.table.unify_all() {
+                        self.err_nonfatal(Error::TypeConflict {
+                            constraint: conflict,
+                            expected: (target.ty.into(), None),
+                            actual: lowered.as_ref().map(|expr| expr.1.clone().into()),
+                        });
+                    }
                 }
-            }
-            // TODO
-            _ => self.lower_hir_ty(crate::Ty::Unknown),
-        })
-    }
 
-    /// Lowers an expression.
-    pub fn lower_expr(&mut self, expr: Spanned<Expr>) -> Result<Spanned<TypedExpr>> {
-        let ty = self.lower_expr_ty(&expr)?;
-        let Spanned(expr, span) = expr;
-
-        let expr = match expr {
-            Expr::Literal(lit) => typed::Expr::Literal(lit),
-            Expr::Ident(ident, args) => typed::Expr::Ident(
-                ident,
-                args.map(|args| {
-                    args.map(|args| args.into_iter().map(|ty| self.lower_hir_ty(ty)).collect())
-                }),
-            ),
-            Expr::Tuple(exprs) => typed::Expr::Tuple(
-                exprs
-                    .into_iter()
-                    .map(|expr| self.lower_expr(expr))
-                    .collect::<Result<Vec<_>>>()?,
-            ),
-            Expr::Cast(expr, ty) => {
-                typed::Expr::Cast(Box::new(self.lower_expr(*expr)?), self.lower_hir_ty(ty))
-            }
-            Expr::Block(scope_id) => typed::Expr::Block(scope_id),
-            Expr::If(cond, left, right) => {
-                typed::Expr::If(Box::new(self.lower_expr(*cond)?), left, right)
+                TypedExpr(typed::Expr::Assign(target, Box::new(lowered)), ty)
             }
             _ => unimplemented!(),
         };
-        Ok(Spanned(TypedExpr(expr, ty), span))
+        Ok(Spanned(expr, span))
     }
 
     fn bind_pattern_to_ty(

@@ -170,6 +170,10 @@ pub struct Label {
     pub context_span: Option<Span>,
     /// The message of the label.
     pub message: String,
+    /// The character used to underline the label. Defaults to `^`.
+    pub underline: char,
+    /// The character used to underline the context. Defaults to `-`.
+    pub context_underline: char,
 }
 
 impl Label {
@@ -178,6 +182,8 @@ impl Label {
             span,
             context_span: None,
             message: String::new(),
+            underline: '^',
+            context_underline: '-',
         }
     }
 
@@ -192,6 +198,16 @@ impl Label {
 
     pub fn with_message(mut self, message: impl ToString) -> Self {
         self.message = message.to_string();
+        self
+    }
+
+    pub fn with_underline(mut self, underline: char) -> Self {
+        self.underline = underline;
+        self
+    }
+
+    pub fn with_context_underline(mut self, underline: char) -> Self {
+        self.context_underline = underline;
         self
     }
 

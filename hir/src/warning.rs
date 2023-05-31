@@ -126,7 +126,8 @@ impl Warning {
                     section = section.with_label(
                         Label::at(break_span)
                             .with_message("block exits here")
-                            .with_context_span(break_span),
+                            .with_context_span(break_span)
+                            .with_underline('-'),
                     );
                 }
                 diagnostic.with_section(

@@ -182,7 +182,8 @@ impl DiagnosticWriter {
                         span: label.span,
                         color,
                         label: &label.message,
-                        char: '^',
+                        char: label.underline,
+                        context_char: label.context_underline,
                         position,
                     });
             }
@@ -242,6 +243,7 @@ impl DiagnosticWriter {
                 color,
                 label: &fix.label,
                 char,
+                context_char: '^',
                 position: 0,
             }],
         );
@@ -317,7 +319,7 @@ impl DiagnosticWriter {
                         if label.span.range().contains(&idx) {
                             label.char
                         } else {
-                            '-'
+                            label.context_char
                         }
                     })
                     .collect::<String>();
@@ -541,6 +543,7 @@ pub struct InlineLabel<'a> {
     pub color: Color,
     pub label: &'a str,
     pub char: char,
+    pub context_char: char,
     pub position: usize,
 }
 

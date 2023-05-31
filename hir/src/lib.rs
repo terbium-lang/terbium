@@ -15,6 +15,8 @@
 #![feature(let_chains)]
 #![feature(is_some_and)]
 
+extern crate core;
+
 pub mod error;
 pub mod infer;
 pub mod lower;

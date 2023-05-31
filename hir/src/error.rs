@@ -78,6 +78,8 @@ pub enum Error {
     },
     /// Type of a condition is not `bool`.
     ConditionNotBool(Spanned<Ty>),
+    /// Cannot reassign to an immutable variable. Represented as (reass_span, def)
+    ReassignmentToImmutable(Span, Spanned<Ident>),
 }
 
 impl Display for Error {
@@ -152,6 +154,9 @@ impl Display for Error {
             Self::ConditionNotBool(ty) => {
                 write!(f, "expected condition to be `bool`, got `{ty}` instead")
             }
+            Self::ReassignmentToImmutable(_, def) => {
+                write!(f, "cannot reassign to immutable variable `{def}`")
+            }
         }
     }
 }
@@ -179,6 +184,7 @@ impl Error {
             Self::UnresolvedIdentifier(..) => "unresolved identifier",
             Self::PatternMismatch { .. } => "pattern mismatch",
             Self::ConditionNotBool(..) => "condition is not `bool`",
+            Self::ReassignmentToImmutable(..) => "cannot reassign to immutable variable",
         }
     }
 
@@ -201,6 +207,7 @@ impl Error {
             Self::UnresolvedIdentifier(..) => 113,
             Self::PatternMismatch { .. } => 114,
             Self::ConditionNotBool(_) => 115,
+            Self::ReassignmentToImmutable(..) => 116,
         }
     }
 
@@ -391,17 +398,19 @@ impl Error {
                 constraint: Constraint(a, b),
             } => {
                 let mut section = Section::new();
+                let mut message = format!("found `{actual}` here");
                 if let Some(span) = span {
                     section = section.with_label(Label::at(span)
                         .with_message(format!("expected type `{expected}` here"))
                     );
+                } else {
+                    message.push_str(&*format!(", but expected `{expected}`"))
                 }
 
                 diagnostic
                     .with_section(section
-                        .with_label(Label::at(actual.span())
-                            .with_message(format!("found `{actual}` here"))
-                        )
+                        .with_label(Label::at(actual.span()).with_message(message))
+                        .with_note(format!("type `{actual}` is not compatible with `{expected}`"))
                     )
                     // TODO: only show this fix if a cast can actually be performed
                     .with_fix(Fix::new(Action::InsertAfter(actual.span(), format!(" to {expected}")))
@@ -469,6 +478,23 @@ impl Error {
                     // TODO: only show this fix if a cast can actually be performed
                     .with_fix(Fix::new(Action::InsertAfter(ty.span(), " to bool".to_string()))
                         .with_message("try casting the value to `bool` if possible")
+                    )
+            }
+            Self::ReassignmentToImmutable(reass_span, def) => {
+                diagnostic
+                    .with_section(Section::new()
+                        .with_label(Label::at(reass_span)
+                            .with_message(format!("cannot reassign to immutable variable `{def}`"))
+                        )
+                    )
+                    .with_section(Section::new()
+                        .with_header(format!("`{def}` was defined as immutable here:"))
+                        .with_label(Label::at(def.span())
+                            .with_message(format!("`{def}` defined as immutable here"))
+                        )
+                    )
+                    .with_fix(Fix::new(Action::InsertBefore(def.span(), "mut ".to_string()))
+                        .with_message("add `mut` to make the binding mutable")
                     )
             }
         };
