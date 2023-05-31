@@ -1,7 +1,19 @@
 //! High-level intermediate representation. This IR is used for type analysis, validating code
 //! correctness, and desugaring.
+//!
+//! # Strategy
+//! A total of three "sub"-lowerings are performed:
+//! * A first lowering from the AST to the HIR, which desugars the AST and performs some basic
+//!   validation and module/path resolution. This lowering is performed by the [`AstLowerer`].
+//! * The second lowering is from the initially lowered HIR to a typed HIR. During this lowering,
+//!   fundamental type inference and type checking is performed. This lowering is performed by
+//!  [`TypeLowerer`].
+//! * The third and final lowering is a simple pass over the typed HIR, which performs any remaining
+//!   type checking and desugaring with the knowledge of the types of all expressions. This lowering
+//!   is performed by [`TypeChecker`].
 
 #![feature(let_chains)]
+#![feature(is_some_and)]
 
 pub mod error;
 pub mod infer;
@@ -152,7 +164,7 @@ fn join_by_comma<'a, T: ToString + 'a>(items: impl Iterator<Item = &'a T> + 'a) 
 
 impl<M: Metadata> Display for Hir<M>
 where
-    for<'a> WithHir<'a, Node<M>, M>: ToString,
+    for<'a> WithHir<'a, Spanned<Node<M>>, M>: ToString,
     for<'a> WithHir<'a, Func<M>, M>: ToString,
     for<'a> WithHir<'a, Const<M>, M>: ToString,
     for<'a> WithHir<'a, StructTy<M::Ty>, M>: ToString,
@@ -206,8 +218,9 @@ pub enum Node<M: Metadata = LowerMetadata> {
 
 #[derive(Clone, Debug)]
 pub struct Scope<M: Metadata = LowerMetadata> {
-    pub label: Option<Ident>,
-    pub children: Vec<Node<M>>,
+    pub module_id: ModuleId,
+    pub label: Option<Spanned<Ident>>,
+    pub children: Vec<Spanned<Node<M>>>,
 }
 
 #[derive(Clone, Debug)]
@@ -879,7 +892,9 @@ impl<'a, T, M: Metadata> WithHir<'a, T, M> {
         header: impl FnOnce(&mut Formatter) -> fmt::Result,
     ) -> fmt::Result
     where
-        WithHir<'a, Node<M>, M>: ToString,
+        WithHir<'a, M::Expr, M>: Display,
+        WithHir<'a, Spanned<Node<M>>, M>: ToString,
+        M::Ty: Display,
     {
         let scope = self.get_scope(sid);
         if let Some(label) = scope.label {
@@ -889,9 +904,9 @@ impl<'a, T, M: Metadata> WithHir<'a, T, M> {
         self.write_block(f, &scope.children)
     }
 
-    pub fn write_block(&self, f: &mut Formatter, children: &'a [Node<M>]) -> fmt::Result
+    pub fn write_block(&self, f: &mut Formatter, children: &'a [Spanned<Node<M>>]) -> fmt::Result
     where
-        WithHir<'a, Node<M>, M>: ToString,
+        WithHir<'a, Spanned<Node<M>>, M>: ToString,
     {
         f.write_str("{\n")?;
         for line in children {

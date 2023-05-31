@@ -1,3 +1,4 @@
+use crate::infer::ExitAction;
 use crate::{
     Ident, IntSign, IntWidth, Intrinsic, ItemId, Literal, Node, Op, Pattern, PrimitiveTy, ScopeId,
     StaticOp,
@@ -109,6 +110,7 @@ pub enum InvalidTypeCause {
 pub enum Ty {
     Invalid(InvalidTypeCause),
     Unknown(usize),
+    Exit(Box<ExitAction>),
     Primitive(PrimitiveTy),
     Generic(Ident),
     Tuple(Vec<Self>),
@@ -123,6 +125,7 @@ impl Ty {
     pub fn relation_to(&self, other: &Self) -> Relation {
         match (self, other) {
             (Self::Unknown(i), Self::Unknown(j)) if i == j => Relation::Eq,
+            (Self::Exit(_), _) | (_, Self::Exit(_)) => Relation::Eq,
             (Self::Primitive(p), Self::Primitive(q)) => prim_ty_relation(*p, *q),
             // tuples are covariant
             (Self::Tuple(tys), Self::Tuple(other_tys)) => {
@@ -172,7 +175,7 @@ impl Ty {
             (Self::Tuple(tys), Self::Tuple(other_tys)) => tys.len() == other_tys.len(),
             (Self::Array(_, alen), Self::Array(_, blen)) => alen == blen,
             (Self::Struct(id, _), Self::Struct(oid, _)) => id == oid,
-            (Self::Func(..), Self::Func(..)) => true,
+            (Self::Func(..), Self::Func(..)) | (Self::Exit(_), _) | (_, Self::Exit(_)) => true,
             _ => false,
         }
     }
@@ -301,7 +304,7 @@ impl Ty {
 impl From<Ty> for crate::Ty {
     fn from(ty: Ty) -> Self {
         match ty {
-            Ty::Invalid(_) | Ty::Unknown(_) => Self::Unknown,
+            Ty::Invalid(_) | Ty::Unknown(_) | Ty::Exit(_) => Self::Unknown,
             Ty::Primitive(prim) => Self::Primitive(prim),
             Ty::Tuple(tys) => Self::Tuple(tys.into_iter().map(Self::from).collect()),
             Ty::Array(ty, len) => Self::Array(

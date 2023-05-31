@@ -8,6 +8,10 @@ use hir::Expr::Ident;
 use hir::{Hir, ItemId, ModuleId};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    std::panic::set_hook(Box::new(|info| {
+        eprintln!("{}", info);
+    }));
+
     let interval = std::time::Duration::from_millis(500);
     let mut previous = std::fs::metadata("test.trb")?.modified()?;
 
@@ -53,17 +57,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         );
 
                         let mut ty_lowerer = TypeLowerer::new(lowerer.hir.clone());
-                        ty_lowerer.enter_scope(ModuleId::from(Src::None));
-                        for node in lowerer.hir.scopes.values() {
-                            for child in &node.children {
-                                match ty_lowerer.lower_node(child.clone()) {
-                                    Ok(child) => println!("{child:?}"),
-                                    Err(error) => dwriter.write_diagnostic(
-                                        &mut std::io::stdout(),
-                                        error.into_diagnostic(),
-                                    )?,
-                                }
+                        match ty_lowerer.lower_module(ModuleId::from(Src::None)) {
+                            Ok(_) => {
+                                println!("=== [ HIR ({:?} to type) ] ===\n\ntodo", start.elapsed(),);
                             }
+                            Err(error) => {
+                                dwriter.write_diagnostic(
+                                    &mut std::io::stdout(),
+                                    error.into_diagnostic(),
+                                )?;
+                            }
+                        }
+
+                        for warning in ty_lowerer.warnings {
+                            dwriter.write_diagnostic(
+                                &mut std::io::stdout(),
+                                warning.into_diagnostic(),
+                            )?;
                         }
                         for error in ty_lowerer.errors {
                             dwriter.write_diagnostic(

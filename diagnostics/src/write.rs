@@ -142,11 +142,9 @@ impl DiagnosticWriter {
                 "{} (E{code:0>3})",
                 self.color("error").fg(ERROR_COLOR).bold()
             ),
-            Severity::Warning(code) => write!(
-                w,
-                "{} (W{code:0>3})",
-                self.color("warning").fg(WARNING_COLOR).bold()
-            ),
+            Severity::Warning(_) => {
+                write!(w, "{}", self.color("warning").fg(WARNING_COLOR).bold(),)
+            }
             Severity::Info => write!(w, "{}", self.color("info").fg(INFO_COLOR).bold()),
         }
     }
@@ -415,8 +413,23 @@ impl DiagnosticWriter {
         }
     }
 
-    pub fn write_diagnostic<W: Write>(&self, mut w: W, diagnostic: Diagnostic) -> io::Result<()> {
+    pub fn write_diagnostic<W: Write>(
+        &self,
+        mut w: W,
+        mut diagnostic: Diagnostic,
+    ) -> io::Result<()> {
         // header
+        if let Severity::Warning(code) = diagnostic.severity {
+            diagnostic.end.push((
+                None,
+                format!(
+                    "you can suppress this warning by adding {}",
+                    self.color(format!("@suppress({code})"))
+                        .fg(EXTRA_COLOR)
+                        .bold()
+                ),
+            ));
+        }
         self.write_severity(&mut w, diagnostic.severity)?;
         writeln!(w, ": {}", self.color(diagnostic.message).bold())?;
 

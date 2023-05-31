@@ -101,10 +101,12 @@ impl AstLowerer {
     }
 
     #[inline]
-    fn anon_scope_from_expr(&mut self, expr: Spanned<Expr>) -> ScopeId {
+    fn anon_scope_from_expr(&mut self, module: ModuleId, expr: Spanned<Expr>) -> ScopeId {
+        let span = expr.span();
         self.register_scope(Scope {
+            module_id: module,
             label: None,
-            children: vec![Node::ImplicitReturn(expr)],
+            children: vec![Spanned(Node::ImplicitReturn(expr), span)],
         })
     }
 
@@ -150,6 +152,7 @@ impl AstLowerer {
         let nodes = std::mem::replace(self.module_nodes.get_mut(&module).unwrap(), Vec::new());
         let children = self.lower_ast_nodes(&ctx, nodes)?;
         let scope_id = self.register_scope(Scope {
+            module_id: module,
             label: None,
             children,
         });
@@ -592,13 +595,14 @@ impl AstLowerer {
         &mut self,
         ctx: &Ctx,
         cond: Option<Spanned<ast::Expr>>,
-        base: Node,
+        base: Spanned<Node>,
     ) -> Result<Node> {
         Ok(if let Some(cond @ Spanned(_, span)) = cond {
             Node::Expr(Spanned(
                 Expr::If(
                     Box::new(self.lower_expr(ctx, cond)?),
                     self.register_scope(Scope {
+                        module_id: ctx.module,
                         label: None,
                         children: vec![base],
                     }),
@@ -607,13 +611,18 @@ impl AstLowerer {
                 span,
             ))
         } else {
-            base
+            base.into_value()
         })
     }
 
     /// Lowers a statement into an HIR node.
-    pub fn lower_stmt(&mut self, ctx: &Ctx, node: Spanned<ast::Node>) -> Result<Option<Node>> {
-        let node = match node.into_value() {
+    pub fn lower_stmt(
+        &mut self,
+        ctx: &Ctx,
+        node: Spanned<ast::Node>,
+    ) -> Result<Option<Spanned<Node>>> {
+        let Spanned(node, span) = node;
+        let node = match node {
             ast::Node::Expr(expr) => Node::Expr(self.lower_expr(ctx, expr)?),
             ast::Node::Let { pat, ty, value, .. } => {
                 let ty_span = ty.as_ref().map(|ty| ty.span());
@@ -631,22 +640,25 @@ impl AstLowerer {
                     label.map(|label| get_ident(label.into_value())),
                     value.map(|value| self.lower_expr(ctx, value)).transpose()?,
                 );
-                self.desugar_conditional_ctrl(ctx, cond, base)?
+                self.desugar_conditional_ctrl(ctx, cond, Spanned(base, span))?
             }
             ast::Node::Continue { label, cond, .. } => self.desugar_conditional_ctrl(
                 ctx,
                 cond,
-                Node::Continue(label.map(|label| get_ident(label.into_value()))),
+                Spanned(
+                    Node::Continue(label.map(|label| get_ident(label.into_value()))),
+                    span,
+                ),
             )?,
             ast::Node::Return { value, cond, .. } => {
                 let base =
                     Node::Return(value.map(|value| self.lower_expr(ctx, value)).transpose()?);
-                self.desugar_conditional_ctrl(ctx, cond, base)?
+                self.desugar_conditional_ctrl(ctx, cond, Spanned(base, span))?
             }
             ast::Node::ImplicitReturn(expr) => Node::ImplicitReturn(self.lower_expr(ctx, expr)?),
             _ => return Ok(None),
         };
-        Ok(Some(node))
+        Ok(Some(Spanned(node, span)))
     }
 
     /// Lowers a pattern into an HIR pattern.
@@ -669,7 +681,7 @@ impl AstLowerer {
         &mut self,
         ctx: &Ctx,
         nodes: Vec<Spanned<ast::Node>>,
-    ) -> Result<Vec<Node>> {
+    ) -> Result<Vec<Spanned<Node>>> {
         nodes
             .into_iter()
             .filter_map(|node| self.lower_stmt(ctx, node).transpose())
@@ -685,7 +697,8 @@ impl AstLowerer {
         let children = self.lower_ast_nodes(ctx, nodes)?;
 
         Ok(self.register_scope(Scope {
-            label: label.as_ref().map(|l| get_ident_from_ref(l.value())),
+            module_id: ctx.module,
+            label: label.as_ref().map(|l| l.as_ref().map(get_ident_from_ref)),
             children,
         }))
     }
@@ -963,6 +976,7 @@ impl AstLowerer {
 
         let children = self.lower_ast_nodes(ctx, stmt.body.into_value())?;
         let then = self.register_scope(Scope {
+            module_id: ctx.module,
             label: None,
             children,
         });
@@ -972,29 +986,42 @@ impl AstLowerer {
                 let (body, span) = body.into_inner();
                 let children = self.lower_ast_nodes(ctx, body)?;
                 let block = self.register_scope(Scope {
+                    module_id: ctx.module,
                     label: None,
                     children,
                 });
                 Ok(self.register_scope(Scope {
+                    module_id: ctx.module,
                     label: None,
-                    children: vec![Node::Break(label, Some(Spanned(Expr::Block(block), span)))],
+                    children: vec![Spanned(
+                        Node::Break(label, Some(Spanned(Expr::Block(block), span))),
+                        span,
+                    )],
                 }))
             })
             .transpose()?
             // this is the `else { break; }` portion
             .unwrap_or_else(|| {
                 self.register_scope(Scope {
+                    module_id: ctx.module,
                     label: None,
-                    children: vec![Node::Break(label, None)],
+                    children: vec![Spanned(Node::Break(label, None), body_span)],
                 })
             });
 
         let scope_id = self.register_scope(Scope {
-            label: stmt.label.as_ref().map(|l| get_ident_from_ref(l.value())),
-            children: vec![Node::Expr(Spanned(
-                Expr::If(Box::new(cond), then, Some(else_body)),
+            module_id: ctx.module,
+            label: stmt
+                .label
+                .as_ref()
+                .map(|l| l.as_ref().map(get_ident_from_ref)),
+            children: vec![Spanned(
+                Node::Expr(Spanned(
+                    Expr::If(Box::new(cond), then, Some(else_body)),
+                    body_span,
+                )),
                 body_span,
-            ))],
+            )],
         });
         Ok(Expr::Loop(scope_id))
     }
@@ -1085,19 +1112,21 @@ impl AstLowerer {
             lhs.span(),
         ));
 
-        let then = self.anon_scope_from_expr(binding_expr);
-        let els = self.anon_scope_from_expr(rhs);
+        let then = self.anon_scope_from_expr(ctx.module, binding_expr);
+        let els = self.anon_scope_from_expr(ctx.module, rhs);
         let stmt = match op {
             ast::BinaryOp::LogicalOr => Expr::If(cond, then, Some(els)),
             ast::BinaryOp::LogicalAnd => Expr::If(cond, then, Some(els)),
             _ => unimplemented!("logical op is not implemented for this operator"),
         };
 
+        let spanned = |node| Spanned(node, span);
         let block = self.register_scope(Scope {
+            module_id: ctx.module,
             label: None,
             children: vec![
                 // Store the LHS in a temporary binding
-                Node::Let {
+                spanned(Node::Let {
                     pat: lhs.as_ref().map(|_| Pattern::Ident {
                         ident: binding,
                         mut_kw: None,
@@ -1105,8 +1134,8 @@ impl AstLowerer {
                     ty: Ty::Unknown,
                     ty_span: Some(lhs.span()),
                     value: Some(lhs),
-                },
-                Node::ImplicitReturn(Spanned(stmt, span)),
+                }),
+                spanned(Node::ImplicitReturn(Spanned(stmt, span))),
             ],
         });
         Ok(Spanned(Expr::Block(block), span))

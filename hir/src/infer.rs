@@ -1,9 +1,10 @@
+use crate::typed::Relation;
 use crate::{
     error::{Error, Result},
     typed::{self, Constraint, InvalidTypeCause, Ty, TypedExpr, UnificationTable},
     warning::Warning,
     Expr, FloatWidth, Hir, Ident, IntSign, IntWidth, ItemId, Literal, Metadata, ModuleId, Node,
-    Pattern, PrimitiveTy, TyParam,
+    Pattern, PrimitiveTy, ScopeId, TyParam,
 };
 use common::span::{Span, Spanned};
 use std::{borrow::Cow, collections::HashMap};
@@ -52,6 +53,7 @@ impl UnificationTable {
     }
 
     /// Unifies all constraints in the unifier. Return erroneous constraint if unification fails.
+    #[must_use = "unification returns Some(conflict) if there is a conflict"]
     pub fn unify_all(&mut self) -> Option<Constraint> {
         while let Some(constraint) = self.constraints.pop_front() {
             if let constraint @ Some(_) = self.unify_constraint(constraint) {
@@ -105,8 +107,10 @@ impl Local {
 #[derive(Clone, Debug)]
 pub struct Scope {
     module_id: ModuleId,
+    kind: ScopeKind,
     ty_params: Vec<TyParam>,
     locals: HashMap<Ident, Local>,
+    label: Option<Spanned<Ident>>,
 }
 
 #[derive(Clone, Debug)]
@@ -158,11 +162,18 @@ impl TypeLowerer {
         self.errors.push(err.into());
     }
 
-    pub fn enter_scope(&mut self, module: ModuleId) -> &mut Self {
+    pub fn enter_scope(
+        &mut self,
+        module: ModuleId,
+        kind: ScopeKind,
+        label: Option<Spanned<Ident>>,
+    ) -> &mut Self {
         self.scopes.push(Scope {
             module_id: module,
+            kind,
             ty_params: Vec::new(),
             locals: HashMap::new(),
+            label,
         });
         self
     }
@@ -170,7 +181,7 @@ impl TypeLowerer {
     pub fn exit_scope(&mut self) {
         let scope = self.scopes.pop().expect("no scopes entered?");
         for (ident, local) in scope.locals {
-            if !local.used {
+            if ident.to_string().chars().next() != Some('_') && !local.used {
                 self.warnings.push(Warning::UnusedVariable(Spanned(
                     ident.to_string(),
                     local.def_span,
@@ -246,6 +257,22 @@ impl TypeLowerer {
         Err(Error::UnresolvedIdentifier(ident.map(|i| i.to_string())))
     }
 
+    #[inline]
+    fn lower_exit_in_context(&mut self, scope_id: ScopeId) -> Result<Ty> {
+        let label = self.hir.scopes.get(&scope_id).unwrap().label.clone();
+        Ok(match self.lower_scope(scope_id, ScopeKind::Block)? {
+            // Does it exit *just* itself? If so, return the type of the expression
+            ExitAction::FromBlock(None, ty, _) => ty,
+            ExitAction::FromBlock(Some(lbl), ty, _)
+                if label.is_some_and(|label| label.0 == lbl) =>
+            {
+                ty
+            }
+            // Otherwise, return an exit type
+            action => Ty::Exit(Box::new(action)),
+        })
+    }
+
     /// Lowers the type of an expression.
     pub fn lower_expr_ty(&mut self, expr: &Spanned<Expr>) -> Result<Ty> {
         Ok(match expr.value() {
@@ -259,31 +286,52 @@ impl TypeLowerer {
                 Ty::Tuple(tys)
             }
             Expr::Cast(_, ty) => self.lower_hir_ty(ty.clone()),
+            Expr::Block(scope_id) => self.lower_exit_in_context(*scope_id)?,
             Expr::If(cond, left, right) => {
-                let cond_ty = match self.lower_expr_ty(cond)? {
+                match self.lower_expr_ty(cond)? {
                     // If the type is not known, constrain it to bool, this will be checked
                     // one more time at the typeck stage.
                     ty @ Ty::Unknown(_) => {
                         self.table
                             .constraints
-                            .push_back(Constraint(ty.clone(), Ty::Primitive(PrimitiveTy::Bool)));
-                        ty
+                            .push_back(Constraint(ty, Ty::Primitive(PrimitiveTy::Bool)));
                     }
                     // If the type is known, check that it is bool
-                    ty @ Ty::Primitive(PrimitiveTy::Bool) => ty,
+                    Ty::Primitive(PrimitiveTy::Bool) => (),
                     // Otherwise, error
                     ty => {
                         return Err(Error::ConditionNotBool(Spanned(ty.into(), cond.span())));
                     }
                 };
-                // "Evenness" check will be done again at the typeck stage
-                todo!()
+                // "Evenness" check will be done at the typeck stage
+                let left_ty = self.lower_exit_in_context(*left)?;
+                match right
+                    .map(|right| self.lower_exit_in_context(right))
+                    .transpose()?
+                {
+                    Some(right_ty) => {
+                        if !left_ty.known()
+                            || matches!(
+                                left_ty.relation_to(&right_ty),
+                                (Relation::Eq | Relation::Super)
+                            )
+                        {
+                            left_ty
+                        } else {
+                            // Again, if left_ty != right_ty, check at the typeck stage.
+                            // The types may still be incompatible, but we don't know that yet.
+                            right_ty
+                        }
+                    }
+                    None => Ty::Primitive(PrimitiveTy::Void),
+                }
             }
             // TODO
             _ => self.lower_hir_ty(crate::Ty::Unknown),
         })
     }
 
+    /// Lowers an expression.
     pub fn lower_expr(&mut self, expr: Spanned<Expr>) -> Result<Spanned<TypedExpr>> {
         let ty = self.lower_expr_ty(&expr)?;
         let Spanned(expr, span) = expr;
@@ -304,6 +352,10 @@ impl TypeLowerer {
             ),
             Expr::Cast(expr, ty) => {
                 typed::Expr::Cast(Box::new(self.lower_expr(*expr)?), self.lower_hir_ty(ty))
+            }
+            Expr::Block(scope_id) => typed::Expr::Block(scope_id),
+            Expr::If(cond, left, right) => {
+                typed::Expr::If(Box::new(self.lower_expr(*cond)?), left, right)
             }
             _ => unimplemented!(),
         };
@@ -332,6 +384,7 @@ impl TypeLowerer {
                 if pats.len() != tys.len() {
                     return Err(Error::PatternMismatch {
                         pat: Cow::Owned(format!("tuple of length {}", pats.len())),
+
                         pat_span: pat.span(),
                         value: format!("tuple of length {}", tys.len()),
                         value_span: expr.map(|expr| expr.span()),
@@ -365,16 +418,28 @@ impl TypeLowerer {
     /// Runs type inference through a single node.
     ///
     /// Return (node, exit_ty?)
-    pub fn lower_node(&mut self, node: Node) -> Result<(Node<InferMetadata>, Option<Spanned<Ty>>)> {
-        let mut bindings = Vec::new();
-        let res = match node {
-            Node::Expr(expr) => (Node::Expr(self.lower_expr(expr)?), None),
+    pub fn lower_node(
+        &mut self,
+        node: Spanned<Node>,
+    ) -> Result<(Spanned<Node<InferMetadata>>, Option<ExitAction>)> {
+        let Spanned(node, span) = node;
+
+        let mut action = None;
+        let node = match node {
+            Node::Expr(expr) => {
+                let expr = self.lower_expr(expr)?;
+                if let Ty::Exit(exit_action) = &expr.value().1 {
+                    action = Some(exit_action.as_ref().clone());
+                }
+                Node::Expr(expr)
+            }
             Node::Let {
                 pat,
                 ty,
                 ty_span,
                 value,
             } => {
+                let mut bindings = Vec::new();
                 // Lower the type of the binding
                 let node = if let Some(value) = value {
                     let mut expr = self.lower_expr(value)?;
@@ -414,20 +479,141 @@ impl TypeLowerer {
                         value: None,
                     }
                 };
-                (node, None)
+                for (ident, binding) in bindings {
+                    self.scope_mut()
+                        .locals
+                        .insert(ident, Local::from_binding(binding));
+                }
+                node
             }
             Node::ImplicitReturn(expr) => {
                 let expr = self.lower_expr(expr)?;
                 let exit_ty = expr.as_ref().map(|expr| expr.1.clone());
-                (Node::ImplicitReturn(expr), Some(exit_ty))
+                action = Some(ExitAction::FromBlock(
+                    None,
+                    exit_ty.into_value(),
+                    Some(span),
+                ));
+                Node::ImplicitReturn(expr)
+            }
+            Node::Continue(label) => {
+                action = Some(ExitAction::ContinueLoop(label, span));
+                Node::Continue(label)
+            }
+            Node::Break(label, value) => {
+                let value = value.map(|value| self.lower_expr(value)).transpose()?;
+                let exit_ty = value
+                    .as_ref()
+                    .map(|value| value.value().1.clone())
+                    .unwrap_or(Ty::Primitive(PrimitiveTy::Void));
+
+                action = Some(match label {
+                    Some(label) => ExitAction::FromBlock(Some(label), exit_ty, Some(span)),
+                    None => ExitAction::FromNearestLoop(exit_ty, span),
+                });
+                Node::Break(label, value)
+            }
+            Node::Return(value) => {
+                let value = value.map(|value| self.lower_expr(value)).transpose()?;
+                let exit_ty = value
+                    .as_ref()
+                    .map(|value| value.value().1.clone())
+                    .unwrap_or(Ty::Primitive(PrimitiveTy::Void));
+                action = Some(ExitAction::FromFunc(exit_ty, span));
+
+                Node::Return(value)
             }
             _ => todo!(),
         };
-        for (ident, binding) in bindings {
-            self.scope_mut()
-                .locals
-                .insert(ident, Local::from_binding(binding));
+        Ok((Spanned(node, span), action))
+    }
+
+    /// Runs type inference over a scope.
+    /// *Moves* the scope into the new typed HIR and returns a tuple
+    /// (ScopeId, exit type of the scope).
+    ///
+    /// The exit type of the scope is how the scope itself exits, not how it exits its outer scope.
+    /// `FromBlock(None, ..)` means the scope exits from itself.
+    pub fn lower_scope(&mut self, scope_id: ScopeId, kind: ScopeKind) -> Result<ExitAction> {
+        let mut scope = self.hir.scopes.remove(&scope_id).expect("scope not found");
+        let label = std::mem::replace(&mut scope.label, None);
+        self.enter_scope(scope.module_id, kind, label);
+
+        let mut exit_action = ExitAction::FromBlock(None, Ty::Primitive(PrimitiveTy::Void), None);
+        let mut lowered = Vec::with_capacity(scope.children.len());
+        let mut children = scope.children.drain(..);
+
+        while let Some(node) = children.next() {
+            let (node, et) = self.lower_node(node)?;
+            lowered.push(node);
+
+            if let Some(et) = et {
+                exit_action = et;
+                break;
+            }
         }
-        Ok(res)
+        self.thir.scopes.insert(
+            scope_id,
+            crate::Scope {
+                module_id: scope.module_id,
+                label: scope.label,
+                children: lowered,
+            },
+        );
+        // If there are any remaining nodes, they are unreachable
+        if let Some(first) = children.next() {
+            self.warnings.push(Warning::UnreachableCode(
+                exit_action.span(),
+                first
+                    .span()
+                    .merge_opt(children.last().map(|last| last.span())),
+            ));
+        }
+        self.exit_scope();
+        Ok(exit_action)
+    }
+
+    /// Lowers a module into a typed HIR module.
+    pub fn lower_module(&mut self, module_id: ModuleId) -> Result<()> {
+        let scope_id = *self.hir.modules.get(&module_id).unwrap();
+
+        // TODO: exit action can be non-standard in things like REPLs
+        match self.lower_scope(scope_id, ScopeKind::Block)? {
+            _ => (), // TODO: check exit type is void
+        }
+
+        self.thir.modules.insert(module_id, scope_id);
+        Ok(())
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum ScopeKind {
+    Block,
+    Loop,
+    Func,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ExitAction {
+    /// return or implicit return from nearest function
+    FromFunc(Ty, Span),
+    /// break with label or return from block
+    FromBlock(Option<Ident>, Ty, Option<Span>),
+    /// continue
+    ContinueLoop(Option<Ident>, Span),
+    /// break w/o label
+    FromNearestLoop(Ty, Span),
+}
+
+impl ExitAction {
+    pub const fn span(&self) -> Option<Span> {
+        match self {
+            Self::FromFunc(_, span)
+            | Self::FromBlock(_, _, Some(span))
+            | Self::ContinueLoop(_, span)
+            | Self::FromNearestLoop(_, span) => Some(*span),
+            Self::FromBlock(_, _, None) => None,
+        }
     }
 }

@@ -11,7 +11,7 @@ pub mod write;
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
 pub enum Severity {
     Error(usize),
-    Warning(usize),
+    Warning(&'static str),
     #[default]
     Info,
 }

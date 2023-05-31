@@ -159,6 +159,7 @@ impl Display for Error {
 impl std::error::Error for Error {}
 
 impl Error {
+    /// A simple message describing the error.
     pub const fn simple_message(&self) -> &'static str {
         match self {
             Self::CannotExtendFieldsFromType(_) => "cannot extend fields from this type",
@@ -181,6 +182,7 @@ impl Error {
         }
     }
 
+    /// The error code used to identify this error in the error index.
     pub const fn error_code(&self) -> usize {
         match self {
             Self::CannotExtendFieldsFromType(_) => 100,
@@ -202,7 +204,7 @@ impl Error {
         }
     }
 
-    /// Converst the error as a diagnostic.
+    /// Converts the error into a diagnostic.
     pub fn into_diagnostic(self) -> Diagnostic {
         let mut diagnostic =
             Diagnostic::new(Severity::Error(self.error_code()), self.simple_message());
