@@ -14,16 +14,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ariadne"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "367fd0ad87307588d087544707bc5fbf4805ded96c7db922b70d368fa1cb5702"
-dependencies = [
- "unicode-width",
- "yansi",
-]
-
-[[package]]
 name = "autocfg"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -61,7 +51,6 @@ dependencies = [
 name = "common"
 version = "0.1.0"
 dependencies = [
- "ariadne",
  "chumsky",
  "internment",
 ]
@@ -221,12 +210,6 @@ dependencies = [
  "grammar",
  "hir",
 ]
-
-[[package]]
-name = "unicode-width"
-version = "0.1.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c0edd1e5b14653f783770bce4a4dabb4a5108a5370a5f5d8cfe8710c361f6c8b"
 
 [[package]]
 name = "unicode-xid"

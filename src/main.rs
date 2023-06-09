@@ -1,4 +1,4 @@
-use common::span::{ProviderCache, Src};
+use common::span::{Src};
 use diagnostics::write::DiagnosticWriter;
 use grammar::parser::Parser;
 use grammar::span::Provider;
@@ -31,7 +31,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("parse: {:?}", start.elapsed());
         // writeln!(file)?;
 
-        let cache = ProviderCache::from_providers([&provider]);
         let mut dwriter = DiagnosticWriter::new();
         dwriter.add_provider(provider.clone());
 
@@ -59,7 +58,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let mut ty_lowerer = TypeLowerer::new(lowerer.hir.clone());
                         match ty_lowerer.lower_module(ModuleId::from(Src::None)) {
                             Ok(_) => {
-                                println!("=== [ HIR ({:?} to type) ] ===\n\ntodo", start.elapsed(),);
+                                println!("=== [ HIR ({:?} to type) ] ===\n\n{:#?}", start.elapsed(), ty_lowerer.thir);
                             }
                             Err(error) => {
                                 dwriter.write_diagnostic(

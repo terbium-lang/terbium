@@ -212,8 +212,8 @@ pub enum Node<M: Metadata = LowerMetadata> {
         ty_span: Option<Span>,
         value: Option<Spanned<M::Expr>>,
     },
-    Break(Option<Ident>, Option<Spanned<M::Expr>>),
-    Continue(Option<Ident>),
+    Break(Option<Spanned<Ident>>, Option<Spanned<M::Expr>>),
+    Continue(Option<Spanned<Ident>>),
     Return(Option<Spanned<M::Expr>>),
     ImplicitReturn(Spanned<M::Expr>),
 }

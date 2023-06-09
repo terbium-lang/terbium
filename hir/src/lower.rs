@@ -637,7 +637,7 @@ impl AstLowerer {
                 label, value, cond, ..
             } => {
                 let base = Node::Break(
-                    label.map(|label| get_ident(label.into_value())),
+                    label.map(|label| label.map(get_ident)),
                     value.map(|value| self.lower_expr(ctx, value)).transpose()?,
                 );
                 self.desugar_conditional_ctrl(ctx, cond, Spanned(base, span))?
@@ -646,7 +646,7 @@ impl AstLowerer {
                 ctx,
                 cond,
                 Spanned(
-                    Node::Continue(label.map(|label| get_ident(label.into_value()))),
+                    Node::Continue(label.map(|label| label.map(get_ident))),
                     span,
                 ),
             )?,
@@ -967,7 +967,7 @@ impl AstLowerer {
     /// For example, `while COND { STMT; }` desugars to `loop { if COND { STMT; } else { break; } }`
     /// Note that `while COND { STMT; } else { STMT; }` desugars to `loop { ... else { break { STMT; } } }`
     pub fn lower_while_loop(&mut self, ctx: &Ctx, stmt: While) -> Result<Expr> {
-        let label = stmt.label.as_ref().map(|l| get_ident_from_ref(l.value()));
+        let label = stmt.label.as_ref().map(|s| s.as_ref().map(get_ident_from_ref));
         let cond = self.lower_expr(ctx, *stmt.cond)?;
         let body_span = stmt
             .body

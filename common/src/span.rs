@@ -1,7 +1,6 @@
 use internment::Intern;
 use std::{
     borrow::Cow,
-    collections::HashMap,
     fmt::{self, Debug, Display, Formatter},
     ops::Range,
     path::{Path, PathBuf},
@@ -89,7 +88,7 @@ impl Span {
 
     /// Merges this span with another.
     #[must_use]
-    pub const fn merge(self, other: Self) -> Self {
+    pub fn merge(self, other: Self) -> Self {
         Self::new(
             self.src,
             self.start.min(other.start),
@@ -99,7 +98,7 @@ impl Span {
 
     /// Merges this span with another, or leaves the span unchanged if the other span is `None`.
     #[must_use]
-    pub const fn merge_opt(self, other: Option<Self>) -> Self {
+    pub fn merge_opt(self, other: Option<Self>) -> Self {
         match other {
             Some(other) => self.merge(other),
             None => self,
@@ -155,22 +154,6 @@ impl chumsky::Span for Span {
     }
 
     fn end(&self) -> Self::Offset {
-        self.end
-    }
-}
-
-impl ariadne::Span for Span {
-    type SourceId = Src;
-
-    fn source(&self) -> &Self::SourceId {
-        &self.src
-    }
-
-    fn start(&self) -> usize {
-        self.start
-    }
-
-    fn end(&self) -> usize {
         self.end
     }
 }
@@ -372,66 +355,3 @@ macro_rules! include_provider {
 }
 
 pub use include_provider;
-
-/// A store for source providers.
-#[derive(Default)]
-pub struct ProviderCache<'a>(HashMap<Src, (&'a str, ariadne::Source)>);
-
-impl<'a> ProviderCache<'a> {
-    /// Creates an empty provider cache.
-    #[must_use]
-    pub fn new() -> Self {
-        Self(HashMap::new())
-    }
-
-    /// Creates a provider cache with the given providers.
-    pub fn from_providers(providers: impl IntoIterator<Item = &'a Provider<'a>>) -> Self {
-        Self(
-            providers
-                .into_iter()
-                .map(|provider| {
-                    (
-                        provider.src(),
-                        (
-                            provider.content(),
-                            ariadne::Source::from(provider.content()),
-                        ),
-                    )
-                })
-                .collect(),
-        )
-    }
-
-    /// Adds a provider to the cache.
-    pub fn add_provider(&mut self, provider: &'a Provider<'a>) {
-        self.0.insert(
-            provider.src(),
-            (
-                provider.content(),
-                ariadne::Source::from(provider.content()),
-            ),
-        );
-    }
-
-    /// Gets a provider from the cache.
-    #[must_use]
-    pub fn get_provider(&self, src: Src) -> Option<Provider<'a>> {
-        self.0
-            .get(&src)
-            .map(|(content, _)| Provider(src, Cow::Borrowed(*content)))
-    }
-}
-
-impl ariadne::Cache<Src> for &ProviderCache<'_> {
-    fn fetch(&mut self, id: &Src) -> Result<&ariadne::Source, Box<dyn Debug + '_>> {
-        self.0
-            .get(id)
-            .map(|(_, src)| src)
-            .ok_or_else(|| Box::new(format!("no source found for {id}")) as _)
-    }
-
-    fn display<'a>(&self, id: &'a Src) -> Option<Box<dyn Display + 'a>> {
-        self.get_provider(*id)
-            .map(|provider| Box::new(provider.src().to_string()) as _)
-    }
-}

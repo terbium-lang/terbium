@@ -31,7 +31,7 @@ impl StringLiteralFlags {
     }
 }
 
-impl const std::ops::BitOr for StringLiteralFlags {
+impl std::ops::BitOr for StringLiteralFlags {
     type Output = Self;
 
     fn bitor(self, other: Self) -> Self {

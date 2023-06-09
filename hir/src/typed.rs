@@ -253,6 +253,21 @@ impl Ty {
         }
     }
 
+    pub fn has_any_unknown(&self) -> bool {
+        match self {
+            Self::Unknown(_) => true,
+            Self::Tuple(tys) => tys.iter().any(|ty| ty.has_any_unknown()),
+            Self::Array(ty, len) => {
+                ty.has_any_unknown() || len.as_ref().map_or(false, |len| len.has_any_unknown())
+            }
+            Self::Struct(_, tys) => tys.iter().any(|ty| ty.has_any_unknown()),
+            Self::Func(params, ret) => {
+                params.iter().any(|ty| ty.has_any_unknown()) || ret.has_any_unknown()
+            }
+            _ => false,
+        }
+    }
+
     pub fn has_unknown(&self, i: usize) -> bool {
         match self {
             Self::Unknown(j) => *j == i,

@@ -80,6 +80,14 @@ pub enum Error {
     ConditionNotBool(Spanned<Ty>),
     /// Cannot reassign to an immutable variable. Represented as (reass_span, def)
     ReassignmentToImmutable(Span, Spanned<Ident>),
+    /// Could not infer the type of a variable.
+    CouldNotInferType(Spanned<Ident>),
+    /// There is no loop to break or continue from.
+    InvalidBreak(Span, Option<Spanned<Ident>>),
+    /// There is no function to return from.
+    InvalidReturn(Span),
+    /// Block label not found.
+    LabelNotFound(Spanned<Ident>),
 }
 
 impl Display for Error {
@@ -157,6 +165,18 @@ impl Display for Error {
             Self::ReassignmentToImmutable(_, def) => {
                 write!(f, "cannot reassign to immutable variable `{def}`")
             }
+            Self::CouldNotInferType(def) => {
+                write!(f, "could not infer type for `{def}`")
+            }
+            Self::InvalidBreak(..) => {
+                write!(f, "cannot break from this context")
+            }
+            Self::InvalidReturn(_) => {
+                write!(f, "cannot return from this context")
+            }
+            Self::LabelNotFound(name) => {
+                write!(f, "cannot find label `{name}`")
+            }
         }
     }
 }
@@ -185,6 +205,10 @@ impl Error {
             Self::PatternMismatch { .. } => "pattern mismatch",
             Self::ConditionNotBool(..) => "condition is not `bool`",
             Self::ReassignmentToImmutable(..) => "cannot reassign to immutable variable",
+            Self::CouldNotInferType(..) => "could not infer type",
+            Self::InvalidBreak(..) => "cannot break from this context",
+            Self::InvalidReturn(_) => "cannot return from this context",
+            Self::LabelNotFound(_) => "cannot find label",
         }
     }
 
@@ -208,6 +232,10 @@ impl Error {
             Self::PatternMismatch { .. } => 114,
             Self::ConditionNotBool(_) => 115,
             Self::ReassignmentToImmutable(..) => 116,
+            Self::CouldNotInferType(_) => 117,
+            Self::InvalidBreak(..) => 118,
+            Self::InvalidReturn(_) => 119,
+            Self::LabelNotFound(_) => 120,
         }
     }
 
@@ -496,6 +524,48 @@ impl Error {
                     .with_fix(Fix::new(Action::InsertBefore(def.span(), "mut ".to_string()))
                         .with_message("add `mut` to make the binding mutable")
                     )
+            }
+            Self::CouldNotInferType(def) => {
+                diagnostic
+                    .with_section(Section::new()
+                        .with_label(Label::at(def.span())
+                            .with_message(format!("cannot infer type for variable `{def}`"))
+                        )
+                        .with_note("all types must be known at compile-time")
+                    )
+                    .with_help("try specifying the type explicitly")
+            }
+            Self::InvalidBreak(span, label) => {
+                let label = if let Some(label) = label {
+                    Label::at(label.span())
+                        .with_context_span(span)
+                        .with_message(format!("cannot continue from block `{label}` because it is not a loop"))
+                } else {
+                    Label::at(span).with_message("cannot break or continue here")
+                };
+                diagnostic
+                    .with_section(Section::new()
+                        .with_label(label)
+                        .with_note("you may only break or continue from loops")
+                    )
+            }
+            Self::InvalidReturn(span) => {
+                diagnostic
+                    .with_section(Section::new()
+                        .with_label(Label::at(span)
+                            .with_message("cannot return here")
+                        )
+                        .with_note("you may only return from functions")
+                    )
+            }
+            Self::LabelNotFound(Spanned(label, span)) => {
+                diagnostic
+                    .with_section(Section::new()
+                        .with_label(Label::at(span)
+                            .with_message(format!("cannot find block label `{label}` from this scope"))
+                        )
+                    )
+                    .with_help("check the spelling of the label")
             }
         };
         diagnostic
