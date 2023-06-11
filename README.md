@@ -49,6 +49,9 @@ func main() {
 ### Optional values
 
 ```swift
+// Optional values are of type T? and can be either .some(value) or .none
+// Any `value` of type T can coerce into T? by .some(value).
+
 func maybe_five() -> int? = .none;
 
 func main() {
