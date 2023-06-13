@@ -135,6 +135,12 @@ impl Span {
     pub const fn last_span(&self) -> Self {
         self.get_span(self.end - 1, self.end)
     }
+
+    /// Gets the span representing [0, 1).
+    #[must_use]
+    pub const fn begin(src: Src) -> Self {
+        Self::new(src, 0, 1)
+    }
 }
 
 impl chumsky::Span for Span {
@@ -252,6 +258,20 @@ impl<T: Debug> Debug for Spanned<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         self.0.fmt(f)?;
         write!(f, " @ {}", self.1)
+    }
+}
+
+pub trait SpannedExt {
+    type Item;
+
+    fn spanned(self, span: Span) -> Spanned<Self::Item>;
+}
+
+impl<T> SpannedExt for T {
+    type Item = Self;
+
+    fn spanned(self, span: Span) -> Spanned<Self::Item> {
+        Spanned(self, span)
     }
 }
 

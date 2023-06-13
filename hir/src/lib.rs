@@ -13,7 +13,6 @@
 //!   is performed by [`TypeChecker`].
 
 #![feature(let_chains)]
-#![feature(is_some_and)]
 
 extern crate core;
 
@@ -193,7 +192,7 @@ where
         for (module, scope) in &self.modules {
             writeln!(f, "module {} {{", module)?;
             let scope = self.scopes.get(scope).unwrap();
-            for node in &scope.children {
+            for node in scope.children.value() {
                 WithHir(node, self).write_indent(f)?;
             }
             write!(f, "}}")?;
@@ -222,7 +221,7 @@ pub enum Node<M: Metadata = LowerMetadata> {
 pub struct Scope<M: Metadata = LowerMetadata> {
     pub module_id: ModuleId,
     pub label: Option<Spanned<Ident>>,
-    pub children: Vec<Spanned<Node<M>>>,
+    pub children: Spanned<Vec<Spanned<Node<M>>>>,
 }
 
 #[derive(Clone, Debug)]
@@ -903,7 +902,7 @@ impl<'a, T, M: Metadata> WithHir<'a, T, M> {
             write!(f, ":{label} ")?;
         }
         header(f)?;
-        self.write_block(f, &scope.children)
+        self.write_block(f, scope.children.value())
     }
 
     pub fn write_block(&self, f: &mut Formatter, children: &'a [Spanned<Node<M>>]) -> fmt::Result
@@ -1003,12 +1002,12 @@ impl Display for WithHir<'_, Expr> {
                     write!(f, ":{label} ")?;
                 }
                 write!(f, "if {} ", self.with(&**cond))?;
-                self.write_block(f, &then.children)?;
+                self.write_block(f, then.children.value())?;
 
                 if let Some(els) = els {
                     let els = self.get_scope(*els);
                     write!(f, " else ")?;
-                    self.write_block(f, &els.children)?;
+                    self.write_block(f, els.children.value())?;
                 }
                 Ok(())
             }
@@ -1157,6 +1156,6 @@ where
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{} func {} ", self.0.vis, self.with(&self.0.header))?;
-        self.write_block(f, &self.get_scope(self.0.body).children)
+        self.write_block(f, self.get_scope(self.0.body).children.value())
     }
 }

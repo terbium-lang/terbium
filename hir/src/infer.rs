@@ -6,7 +6,7 @@ use crate::{
     Expr, FloatWidth, Hir, Ident, IntSign, IntWidth, ItemId, Literal, Metadata, ModuleId, Node,
     Pattern, PrimitiveTy, ScopeId, TyParam,
 };
-use common::span::{Span, Spanned};
+use common::span::{Span, Spanned, SpannedExt};
 use std::{borrow::Cow, collections::HashMap};
 
 impl UnificationTable {
@@ -106,11 +106,14 @@ impl Local {
 
 #[derive(Clone, Debug)]
 pub struct Scope {
+    id: ScopeId,
     module_id: ModuleId,
     kind: ScopeKind,
     ty_params: Vec<TyParam>,
     locals: HashMap<Ident, Local>,
     label: Option<Spanned<Ident>>,
+    resolution: Ty,
+    exited: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -125,6 +128,10 @@ impl Metadata for InferMetadata {
 pub struct TypeLowerer {
     scopes: Vec<Scope>,
     table: UnificationTable,
+    // raw pointers are used here because:
+    // 1. it can be guaranteed that the pointers are valid for the lifetime of the type lowerer
+    // 2. it's faster
+    raw_resolution_lookup: HashMap<ScopeId, *mut Ty>,
     /// The HIR that is being lowered.
     pub hir: Hir,
     /// The HIR that is being generated.
@@ -141,6 +148,7 @@ impl TypeLowerer {
         Self {
             scopes: Vec::new(),
             table: UnificationTable::default(),
+            raw_resolution_lookup: HashMap::new(),
             hir,
             thir: Hir::default(),
             warnings: Vec::new(),
@@ -164,18 +172,30 @@ impl TypeLowerer {
 
     pub fn enter_scope(
         &mut self,
+        scope_id: ScopeId,
         module: ModuleId,
         kind: ScopeKind,
+        ty_params: Vec<TyParam>,
         label: Option<Spanned<Ident>>,
-    ) -> &mut Self {
-        self.scopes.push(Scope {
+    ) -> Ty {
+        let resolution = Ty::from_ty(crate::Ty::Unknown, &mut self.table);
+        let scope = Scope {
+            id: scope_id,
             module_id: module,
             kind,
-            ty_params: Vec::new(),
+            ty_params,
             locals: HashMap::new(),
             label,
+            resolution: resolution.clone(),
+            exited: false,
+        };
+        self.scopes.push(scope);
+        // SAFETY: the scope has just been pushed
+        self.raw_resolution_lookup.insert(scope_id, unsafe {
+            let last_index = self.scopes.len() - 1;
+            &mut self.scopes.get_unchecked_mut(last_index).resolution as *mut _
         });
-        self
+        resolution
     }
 
     pub fn exit_scope(&mut self) -> Scope {
@@ -197,14 +217,12 @@ impl TypeLowerer {
         scope
     }
 
-    pub fn exit_scopes_to(&mut self, f: impl Fn(&Scope) -> bool) -> Option<(usize, Scope)> {
+    pub fn find_scope(&self, f: impl Fn(&Scope) -> bool) -> Option<(usize, &Scope)> {
         self.scopes
             .iter()
             .rev()
             .enumerate()
-            .find_map(|(i, scope)| f(scope).then_some(i))
-            .map(|i| (0..=i).map(|_| (i, self.exit_scope())).last())
-            .flatten()
+            .find_map(|(i, scope)| f(scope).then_some((i, scope)))
     }
 
     pub fn lower_literal(lit: &Literal) -> Ty {
@@ -288,17 +306,19 @@ impl TypeLowerer {
     #[inline]
     fn lower_exit_in_context(&mut self, scope_id: ScopeId) -> Result<Ty> {
         let label = self.hir.scopes.get(&scope_id).unwrap().label.clone();
-        Ok(match self.lower_scope(scope_id, ScopeKind::Block)? {
-            // Does it exit *just* itself? If so, return the type of the expression
-            ExitAction::FromBlock(None, ty, _) => ty,
-            ExitAction::FromBlock(Some(lbl), ty, _)
-                if label.is_some_and(|label| label.0 == lbl.0) =>
-            {
-                ty
-            }
-            // Otherwise, return an exit type
-            action => Ty::Exit(Box::new(action)),
-        })
+        Ok(
+            match self.lower_scope(scope_id, ScopeKind::Block, Vec::new())? {
+                // Does it exit *just* itself? If so, return the type of the expression
+                ExitAction::FromBlock(None, ty, _) => ty,
+                ExitAction::FromBlock(Some(lbl), ty, _)
+                    if label.is_some_and(|label| label.0 == lbl.0) =>
+                {
+                    ty
+                }
+                // Otherwise, return an exit type
+                action => Ty::Exit(Box::new(action)),
+            },
+        )
     }
 
     /// Lowers an expression.
@@ -395,7 +415,8 @@ impl TypeLowerer {
                 for (ident, binding) in bindings {
                     // SAFETY: the local should live as long as &mut self
                     let target = unsafe {
-                        let target = self.lower_local(&Spanned(ident, binding.def_span))? as *mut Local;
+                        let target =
+                            self.lower_local(&Spanned(ident, binding.def_span))? as *mut Local;
                         (*target).mutated = true;
 
                         // Unify and update
@@ -431,9 +452,11 @@ impl TypeLowerer {
             }
             Expr::Loop(scope_id) => {
                 let label = self.hir.scopes.get(&scope_id).unwrap().label.clone();
-                let ty = match self.lower_scope(scope_id, ScopeKind::Loop)? {
+                let ty = match self.lower_scope(scope_id, ScopeKind::Loop, Vec::new())? {
                     // Are we exiting from just the loop?
-                    ExitAction::FromBlock(Some(lbl), ty, _) if label.is_some_and(|l| l == lbl) => ty,
+                    ExitAction::FromBlock(Some(lbl), ty, _) if label.is_some_and(|l| l == lbl) => {
+                        ty
+                    }
                     ExitAction::FromNearestLoop(ty, _) => ty,
                     // Otherwise we are exiting further out from the loop.
                     r => Ty::Exit(Box::new(r)),
@@ -571,11 +594,7 @@ impl TypeLowerer {
             Node::ImplicitReturn(expr) => {
                 let expr = self.lower_expr(expr)?;
                 let exit_ty = expr.as_ref().map(|expr| expr.1.clone());
-                action = Some(ExitAction::FromBlock(
-                    None,
-                    exit_ty.into_value(),
-                    Some(span),
-                ));
+                action = Some(ExitAction::FromBlock(None, exit_ty.into_value(), span));
                 Node::ImplicitReturn(expr)
             }
             Node::Continue(label) => {
@@ -590,7 +609,7 @@ impl TypeLowerer {
                     .unwrap_or(Ty::Primitive(PrimitiveTy::Void));
 
                 action = Some(match label {
-                    Some(label) => ExitAction::FromBlock(Some(label), exit_ty, Some(span)),
+                    Some(label) => ExitAction::FromBlock(Some(label), exit_ty, span),
                     None => ExitAction::FromNearestLoop(exit_ty, span),
                 });
                 Node::Break(label, value)
@@ -610,57 +629,103 @@ impl TypeLowerer {
         Ok((Spanned(node, span), action))
     }
 
+    /// Unifies the resolution type of a scope with a given type.
+    #[inline]
+    fn unify_scope(&mut self, scope_id: ScopeId, ty: Ty, span: Span) {
+        let Some(tgt) = self.raw_resolution_lookup.get(&scope_id) else { return };
+        // SAFETY: raw resolution guarantees all pointers are self-referential
+        // and non-dropping, so we can safely dereference them as long as `self` is alive
+        let tgt = unsafe { &mut **tgt };
+        // unify the return type of the function with the type of the return expression
+        self.table
+            .constraints
+            .push_back(Constraint(tgt.clone(), ty.clone()));
+        if let Some(conflict) = self.table.unify_all() {
+            self.err_nonfatal(Error::TypeConflict {
+                expected: (tgt.clone().into(), None),
+                actual: Spanned(ty.into(), span),
+                constraint: conflict,
+            });
+        }
+        tgt.apply(&self.table.substitutions);
+    }
+
     /// Runs type inference over a scope.
     /// *Moves* the scope into the new typed HIR and returns a tuple
     /// (ScopeId, exit type of the scope).
     ///
     /// The exit type of the scope is how the scope itself exits, not how it exits its outer scope.
     /// `FromBlock(None, ..)` means the scope exits from itself.
-    pub fn lower_scope(&mut self, scope_id: ScopeId, kind: ScopeKind) -> Result<ExitAction> {
+    pub fn lower_scope(
+        &mut self,
+        scope_id: ScopeId,
+        kind: ScopeKind,
+        ty_params: Vec<TyParam>,
+    ) -> Result<ExitAction> {
         let mut scope = self.hir.scopes.remove(&scope_id).expect("scope not found");
         let label = std::mem::replace(&mut scope.label, None);
-        self.enter_scope(scope.module_id, kind, label);
+        self.enter_scope(scope_id, scope.module_id, kind, ty_params, label);
 
-        let mut exit_action = match kind {
-            ScopeKind::Loop => ExitAction::NeverReturn,
-            _ => ExitAction::FromBlock(None, Ty::Primitive(PrimitiveTy::Void), None),
-        };
-        let mut lowered = Vec::with_capacity(scope.children.len());
-        let mut children = scope.children.drain(..);
+        let mut exit_action = None;
+        let full_span = scope.children.span();
+        let mut lowered = Vec::with_capacity(scope.children.value().len());
+        let mut children = scope.children.value_mut().drain(..);
 
         while let Some(node) = children.next() {
             let (node, et) = self.lower_node(node)?;
             lowered.push(node);
 
             if let Some(et) = et {
-                match et {
-                    ExitAction::FromFunc(_, span) => {
-                        if self.exit_scopes_to(|scope| scope.kind == ScopeKind::Func).is_none() {
-                            self.err_nonfatal(Error::InvalidReturn(span));
+                match et.clone() {
+                    ExitAction::FromFunc(ty, span) => {
+                        match self.find_scope(|scope| scope.kind == ScopeKind::Func) {
+                            Some((_, scope)) => self.unify_scope(scope.id, ty, span),
+                            None => self.err_nonfatal(Error::InvalidReturn(span)),
                         }
+                        self.exit_scope();
                     }
-                    ExitAction::FromBlock(Some(ref label), ..) => {
-                        if self.exit_scopes_to(|scope| scope.label.is_some_and(|lbl| lbl.0 == label.0)).is_none() {
-                            self.err_nonfatal(Error::LabelNotFound(label.clone()));
-                        }
-                    }
-                    ExitAction::FromNearestLoop(_, span) | ExitAction::ContinueLoop(None, span) => {
-                        if self.exit_scopes_to(|scope| scope.kind == ScopeKind::Loop).is_none() {
-                            self.err_nonfatal(Error::InvalidBreak(span, None));
-                        }
-                    }
-                    ExitAction::ContinueLoop(Some(ref label), span) => {
-                        match self.exit_scopes_to(|scope| scope.label.is_some_and(|lbl| lbl.0 == label.0)) {
-                            Some((_, scope)) if scope.kind == ScopeKind::Loop => {}
-                            Some(_) => self.err_nonfatal(Error::InvalidBreak(span, Some(label.clone()))),
+                    ExitAction::FromBlock(Some(ref label), ty, span) => {
+                        match self.find_scope(|scope| scope.label.is_some_and(|lbl| lbl.0 == label.0)) {
+                            Some((_, scope)) => self.unify_scope(scope.id, ty, span),
                             None => self.err_nonfatal(Error::LabelNotFound(label.clone())),
                         }
+                        self.exit_scope();
                     }
-                    _ => {
-                        self.exit_scope(); // TODO this causes a panic?
-                    },
+                    ExitAction::FromNearestLoop(ty, span) => {
+
+                        match self.find_scope(|scope| scope.kind == ScopeKind::Loop) {
+                            Some((_, scope)) => self.unify_scope(scope.id, ty, span),
+                            None => self.err_nonfatal(Error::InvalidBreak(span, None)),
+                        }
+                    }
+                    ExitAction::ContinueLoop(None, span) => {
+                        if self
+                            .find_scope(|scope| scope.kind == ScopeKind::Loop)
+                            .is_none()
+                        {
+                            self.err_nonfatal(Error::InvalidBreak(span, None));
+                        }
+                        self.exit_scope();
+                    }
+                    ExitAction::ContinueLoop(Some(ref label), span) => {
+                        match self
+                            .find_scope(|scope| scope.label.is_some_and(|lbl| lbl.0 == label.0))
+                        {
+                            Some((_, scope)) if scope.kind == ScopeKind::Loop => {}
+                            Some(_) => {
+                                self.err_nonfatal(Error::InvalidBreak(span, Some(label.clone())))
+                            }
+                            None => self.err_nonfatal(Error::LabelNotFound(label.clone())),
+                        }
+                        self.exit_scope();
+                    }
+                    ExitAction::FromBlock(None, ty, span) => {
+                        let scope = self.exit_scope();
+                        self.unify_scope(scope.id, ty, span);
+                    }
+                    ExitAction::NeverReturn => {}
                 }
-                exit_action = et;
+                exit_action = Some(et);
                 break;
             }
         }
@@ -669,9 +734,16 @@ impl TypeLowerer {
             crate::Scope {
                 module_id: scope.module_id,
                 label: scope.label,
-                children: lowered,
+                children: lowered.spanned(full_span),
             },
         );
+        let exit_action = exit_action.unwrap_or_else(|| {
+            self.unify_scope(scope_id, Ty::Primitive(PrimitiveTy::Void), full_span);
+            match kind {
+                ScopeKind::Loop => ExitAction::NeverReturn,
+                _ => ExitAction::FromBlock(None, Ty::Primitive(PrimitiveTy::Void), full_span),
+            }
+        });
         // If there are any remaining nodes, they are unreachable
         if let Some(first) = children.next() {
             self.warnings.push(Warning::UnreachableCode(
@@ -689,7 +761,7 @@ impl TypeLowerer {
         let scope_id = *self.hir.modules.get(&module_id).unwrap();
 
         // TODO: exit action can be non-standard in things like REPLs
-        match self.lower_scope(scope_id, ScopeKind::Block)? {
+        match self.lower_scope(scope_id, ScopeKind::Block, Vec::new())? {
             _ => (), // TODO: check exit type is void
         }
 
@@ -710,7 +782,7 @@ pub enum ExitAction {
     /// return or implicit return from nearest function
     FromFunc(Ty, Span),
     /// break with label or return from block
-    FromBlock(Option<Spanned<Ident>>, Ty, Option<Span>),
+    FromBlock(Option<Spanned<Ident>>, Ty, Span),
     /// continue
     ContinueLoop(Option<Spanned<Ident>>, Span),
     /// break w/o label
@@ -723,10 +795,10 @@ impl ExitAction {
     pub const fn span(&self) -> Option<Span> {
         match self {
             Self::FromFunc(_, span)
-            | Self::FromBlock(_, _, Some(span))
+            | Self::FromBlock(_, _, span)
             | Self::ContinueLoop(_, span)
             | Self::FromNearestLoop(_, span) => Some(*span),
-            _ => None,
+            Self::NeverReturn => None,
         }
     }
 }

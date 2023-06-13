@@ -1,4 +1,4 @@
-use common::span::{Src};
+use common::span::{Span, Src};
 use diagnostics::write::DiagnosticWriter;
 use grammar::parser::Parser;
 use grammar::span::Provider;
@@ -47,7 +47,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let mut lowerer = AstLowerer::new(nodes);
 
                 let start = std::time::Instant::now();
-                match lowerer.resolve_module(ModuleId::from(Src::None)) {
+                match lowerer.resolve_module(ModuleId::from(Src::None), provider.eof().merge(Span::begin(Src::None))) {
                     Ok(_) => {
                         println!(
                             "=== [ HIR ({:?} to lower) ] ===\n\n{}",
@@ -58,7 +58,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let mut ty_lowerer = TypeLowerer::new(lowerer.hir.clone());
                         match ty_lowerer.lower_module(ModuleId::from(Src::None)) {
                             Ok(_) => {
-                                println!("=== [ HIR ({:?} to type) ] ===\n\n{:#?}", start.elapsed(), ty_lowerer.thir);
+                                println!(
+                                    "=== [ HIR ({:?} to type) ] ===\n\n{:#?}",
+                                    start.elapsed(),
+                                    ty_lowerer.thir
+                                );
                             }
                             Err(error) => {
                                 dwriter.write_diagnostic(

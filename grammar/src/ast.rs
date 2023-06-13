@@ -1360,6 +1360,17 @@ pub enum Node {
         /// This is always specified for const declarations.
         value: Option<Spanned<Expr>>,
     },
+    /// An expression-alias declaration.
+    Alias {
+        /// The visibility of the alias.
+        vis: ItemVisibility,
+        /// The span of the alias keyword.
+        kw: Span,
+        /// The name of the alias.
+        name: Spanned<String>,
+        /// The value of the alias.
+        value: Spanned<Expr>,
+    },
     /// A constant declaration.
     Const {
         /// The visibility of the constant.
@@ -1473,6 +1484,7 @@ impl Display for Node {
                 }
                 write!(f, " = {value};")
             }
+            Self::Alias { name, value, .. } => write!(f, "alias {name} = {value};"),
             Self::Return { value, cond, .. } => {
                 write_control_flow_stmt(f, "return", None, value, cond)
             }
