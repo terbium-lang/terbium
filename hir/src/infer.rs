@@ -113,7 +113,7 @@ pub struct Scope {
     locals: HashMap<Ident, Local>,
     label: Option<Spanned<Ident>>,
     resolution: Ty,
-    exited: bool,
+    exited: Option<ExitAction>,
 }
 
 #[derive(Clone, Debug)]
@@ -187,7 +187,7 @@ impl TypeLowerer {
             locals: HashMap::new(),
             label,
             resolution: resolution.clone(),
-            exited: false,
+            exited: None,
         };
         self.scopes.push(scope);
         // SAFETY: the scope has just been pushed
@@ -217,12 +217,19 @@ impl TypeLowerer {
         scope
     }
 
-    pub fn find_scope(&self, f: impl Fn(&Scope) -> bool) -> Option<(usize, &Scope)> {
-        self.scopes
+    pub fn mark_scopes(&mut self, f: impl Fn(&Scope) -> bool, action: &ExitAction) -> Option<(usize, ScopeId, ScopeKind)> {
+        let target_scope = self.scopes
             .iter()
             .rev()
             .enumerate()
-            .find_map(|(i, scope)| f(scope).then_some((i, scope)))
+            .find_map(|(i, scope)| f(scope).then_some((i, scope.id, scope.kind)));
+
+        let len = self.scopes.len();
+        if let Some((i, ..)) = target_scope {
+            (1..=i + 1).for_each(|i| self.scopes[len - i].exited = Some(action.clone()));
+        }
+        self.exit_scope();
+        target_scope
     }
 
     pub fn lower_literal(lit: &Literal) -> Ty {
@@ -639,7 +646,7 @@ impl TypeLowerer {
         // unify the return type of the function with the type of the return expression
         self.table
             .constraints
-            .push_back(Constraint(tgt.clone(), ty.clone()));
+            .push_back(Constraint(ty.clone(), tgt.clone()));
         if let Some(conflict) = self.table.unify_all() {
             self.err_nonfatal(Error::TypeConflict {
                 expected: (tgt.clone().into(), None),
@@ -672,52 +679,51 @@ impl TypeLowerer {
         let mut children = scope.children.value_mut().drain(..);
 
         while let Some(node) = children.next() {
-            let (node, et) = self.lower_node(node)?;
+            let (node, mut et) = self.lower_node(node)?;
             lowered.push(node);
 
+            if let Some(action) = &self.scope().exited {
+                et = Some(action.clone());
+            }
             if let Some(et) = et {
                 match et.clone() {
                     ExitAction::FromFunc(ty, span) => {
-                        match self.find_scope(|scope| scope.kind == ScopeKind::Func) {
-                            Some((_, scope)) => self.unify_scope(scope.id, ty, span),
+                        match self.mark_scopes(|scope| scope.kind == ScopeKind::Func, &et) {
+                            Some((_, scope, _)) => self.unify_scope(scope, ty, span),
                             None => self.err_nonfatal(Error::InvalidReturn(span)),
                         }
-                        self.exit_scope();
                     }
                     ExitAction::FromBlock(Some(ref label), ty, span) => {
-                        match self.find_scope(|scope| scope.label.is_some_and(|lbl| lbl.0 == label.0)) {
-                            Some((_, scope)) => self.unify_scope(scope.id, ty, span),
-                            None => self.err_nonfatal(Error::LabelNotFound(label.clone())),
+                        match self.mark_scopes(|scope| scope.label.is_some_and(|lbl| lbl.0 == label.0), &et) {
+                            Some((_, scope, _)) => self.unify_scope(scope, ty, span),
+                            // TODO: label not found can be non-fatal but it currently will emit multiple times
+                            None => return Err(Error::LabelNotFound(label.clone())),
                         }
-                        self.exit_scope();
                     }
                     ExitAction::FromNearestLoop(ty, span) => {
-
-                        match self.find_scope(|scope| scope.kind == ScopeKind::Loop) {
-                            Some((_, scope)) => self.unify_scope(scope.id, ty, span),
+                        match self.mark_scopes(|scope| scope.kind == ScopeKind::Loop, &et) {
+                            Some((_, scope, _)) => self.unify_scope(scope, ty, span),
                             None => self.err_nonfatal(Error::InvalidBreak(span, None)),
                         }
                     }
                     ExitAction::ContinueLoop(None, span) => {
                         if self
-                            .find_scope(|scope| scope.kind == ScopeKind::Loop)
+                            .mark_scopes(|scope| scope.kind == ScopeKind::Loop, &et)
                             .is_none()
                         {
                             self.err_nonfatal(Error::InvalidBreak(span, None));
                         }
-                        self.exit_scope();
                     }
                     ExitAction::ContinueLoop(Some(ref label), span) => {
                         match self
-                            .find_scope(|scope| scope.label.is_some_and(|lbl| lbl.0 == label.0))
+                            .mark_scopes(|scope| scope.label.is_some_and(|lbl| lbl.0 == label.0), &et)
                         {
-                            Some((_, scope)) if scope.kind == ScopeKind::Loop => {}
+                            Some((_, _, kind)) if kind == ScopeKind::Loop => {}
                             Some(_) => {
                                 self.err_nonfatal(Error::InvalidBreak(span, Some(label.clone())))
                             }
-                            None => self.err_nonfatal(Error::LabelNotFound(label.clone())),
+                            None => return Err(Error::LabelNotFound(label.clone())),
                         }
-                        self.exit_scope();
                     }
                     ExitAction::FromBlock(None, ty, span) => {
                         let scope = self.exit_scope();
