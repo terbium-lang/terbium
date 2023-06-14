@@ -47,7 +47,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let mut lowerer = AstLowerer::new(nodes);
 
                 let start = std::time::Instant::now();
-                match lowerer.resolve_module(ModuleId::from(Src::None), provider.eof().merge(Span::begin(Src::None))) {
+                match lowerer.resolve_module(
+                    ModuleId::from(Src::None),
+                    provider.eof().merge(Span::begin(Src::None)),
+                ) {
                     Ok(_) => {
                         println!(
                             "=== [ HIR ({:?} to lower) ] ===\n\n{}",

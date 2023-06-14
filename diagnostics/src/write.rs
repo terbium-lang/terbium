@@ -216,7 +216,10 @@ impl DiagnosticWriter {
                 span.get_span(span.start, span.start + content.len())
             }
             Action::InsertAfter(span, content) => {
-                line.chars.insert_str(span.end - line.offset, content);
+                let idx = span.end - line.offset;
+                (0..idx.saturating_sub(line.chars.len())).for_each(|_| line.chars.push(' '));
+
+                line.chars.insert_str(idx, content);
                 span.get_span(span.end, span.end + content.len())
             }
             Action::Replace(span, content) => {
@@ -308,6 +311,9 @@ impl DiagnosticWriter {
                     labels.iter().map(|lbl| (lbl.span, lbl.color)).collect()
                 ),
             )?;
+            if labels.is_empty() {
+                continue;
+            }
 
             // For single-line labels, the label can be written inline with the arrow
             if labels.len() == 1 {
