@@ -16,6 +16,7 @@
 
 extern crate core;
 
+pub mod check;
 pub mod error;
 pub mod infer;
 pub mod lower;

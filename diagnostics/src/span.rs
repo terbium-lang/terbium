@@ -70,14 +70,19 @@ impl<S: AsRef<str>> From<S> for LineSrc {
 
 // Derived from https://github.com/zesterer/ariadne/blob/main/src/source.rs#L117-L157
 impl LineSrc {
+    /// Whether `self.len()` is zero.
+    pub const fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
     /// Get the length of the total number of characters in the source.
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.len
     }
 
     /// Return an iterator over the characters in the source.
     pub fn chars(&self) -> impl Iterator<Item = char> + '_ {
-        self.lines.iter().map(|l| l.chars()).flatten()
+        self.lines.iter().flat_map(|l| l.chars())
     }
 
     /// Get access to a specific, zero-indexed [`Line`].

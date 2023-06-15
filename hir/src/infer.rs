@@ -1,15 +1,15 @@
 use crate::typed::Relation;
-use crate::{
-    error::{Error, Result},
-    typed::{self, Constraint, InvalidTypeCause, Ty, TypedExpr, UnificationTable},
-    warning::Warning,
-    Expr, FloatWidth, Hir, Ident, IntSign, IntWidth, ItemId, Literal, Metadata, ModuleId, Node,
-    Pattern, PrimitiveTy, ScopeId, TyParam,
-};
+use crate::{error::{Error, Result}, typed::{self, Constraint, InvalidTypeCause, Ty, TypedExpr, UnificationTable}, warning::Warning, Expr, FloatWidth, Hir, Ident, IntSign, IntWidth, ItemId, Literal, Metadata, ModuleId, Node, Pattern, PrimitiveTy, ScopeId, TyParam, Op};
 use common::span::{Span, Spanned, SpannedExt};
 use std::{borrow::Cow, collections::HashMap};
 
 impl UnificationTable {
+    /// Create a fresh type variable.
+    pub fn new_unknown(&mut self) -> Ty {
+        Ty::from_ty(crate::Ty::Unknown, self)
+    }
+
+    /// Substitute the unknown constraint a => b. Return failed constraint on conflict.
     pub fn substitute(&mut self, a: usize, b: Ty) {
         // Add a => b to our substitution
         self.substitutions[a] = b.clone();
@@ -20,7 +20,7 @@ impl UnificationTable {
         }
     }
 
-    /// Unify the constraint a = b. Return failed constraint on conflict.
+    /// Unify the constraint a == b. Return failed constraint on conflict.
     pub fn unify_constraint(&mut self, constraint: Constraint) -> Option<Constraint> {
         match constraint {
             // If both a and b are unknown, replace one of them with the other.
@@ -127,7 +127,7 @@ impl Metadata for InferMetadata {
 #[derive(Debug)]
 pub struct TypeLowerer {
     scopes: Vec<Scope>,
-    table: UnificationTable,
+    pub(crate) table: UnificationTable,
     // raw pointers are used here because:
     // 1. it can be guaranteed that the pointers are valid for the lifetime of the type lowerer
     // 2. it's faster
@@ -178,7 +178,7 @@ impl TypeLowerer {
         ty_params: Vec<TyParam>,
         label: Option<Spanned<Ident>>,
     ) -> Ty {
-        let resolution = Ty::from_ty(crate::Ty::Unknown, &mut self.table);
+        let resolution = self.table.new_unknown();
         let scope = Scope {
             id: scope_id,
             module_id: module,
@@ -480,6 +480,16 @@ impl TypeLowerer {
                 };
                 TypedExpr(typed::Expr::Loop(scope_id), ty)
             }
+            Expr::CallOp(op, lhs, rhs) => {
+                TypedExpr(
+                    typed::Expr::CallOp(
+                        op,
+                        Box::new(self.lower_expr(*lhs)?),
+                        rhs.into_iter().map(|expr| self.lower_expr(expr)).collect::<Result<Vec<_>>>()?,
+                    ),
+                    self.table.new_unknown(),
+                )
+            }
             _ => unimplemented!(),
         };
         Ok(Spanned(expr, span))
@@ -634,7 +644,6 @@ impl TypeLowerer {
 
                 Node::Return(value)
             }
-            _ => todo!(),
         };
         Ok((Spanned(node, span), action))
     }
@@ -658,6 +667,64 @@ impl TypeLowerer {
             });
         }
         tgt.apply(&self.table.substitutions);
+    }
+
+    fn handle_exit(&mut self, et: &ExitAction, divergent: bool) -> Result<()> {
+        macro_rules! et {
+            () => {{
+                divergent.then_some(et)
+            }};
+        }
+        match et.clone() {
+            ExitAction::FromFunc(ty, span) => {
+                match self.mark_scopes(|scope| scope.kind == ScopeKind::Func, et!()) {
+                    Some((_, scope, _)) => self.unify_scope(scope, ty, span),
+                    None => self.err_nonfatal(Error::InvalidReturn(span)),
+                }
+            }
+            ExitAction::FromBlock(Some(ref label), ty, span) => {
+                match self.mark_scopes(
+                    |scope| scope.label.is_some_and(|lbl| lbl.0 == label.0),
+                    et!(),
+                ) {
+                    Some((_, scope, _)) => self.unify_scope(scope, ty, span),
+                    // TODO: label not found can be non-fatal but it currently will emit multiple times
+                    None => return Err(Error::LabelNotFound(label.clone())),
+                }
+            }
+            ExitAction::FromNearestLoop(ty, span) => {
+                match self.mark_scopes(|scope| scope.kind == ScopeKind::Loop, et!()) {
+                    Some((_, scope, _)) => self.unify_scope(scope, ty, span),
+                    None => self.err_nonfatal(Error::InvalidBreak(span, None)),
+                }
+            }
+            ExitAction::ContinueLoop(None, span) => {
+                if self
+                    .mark_scopes(|scope| scope.kind == ScopeKind::Loop, et!())
+                    .is_none()
+                {
+                    self.err_nonfatal(Error::InvalidBreak(span, None));
+                }
+            }
+            ExitAction::ContinueLoop(Some(ref label), span) => {
+                match self.mark_scopes(
+                    |scope| scope.label.is_some_and(|lbl| lbl.0 == label.0),
+                    et!(),
+                ) {
+                    Some((_, _, kind)) if kind == ScopeKind::Loop => {}
+                    Some(_) => {
+                        self.err_nonfatal(Error::InvalidBreak(span, Some(label.clone())))
+                    }
+                    None => return Err(Error::LabelNotFound(label.clone())),
+                }
+            }
+            ExitAction::FromBlock(None, ty, span) => {
+                let scope = self.exit_scope();
+                self.unify_scope(scope.id, ty, span);
+            }
+            ExitAction::NeverReturn => {}
+        }
+        Ok(())
     }
 
     /// Runs type inference over a scope.
@@ -690,61 +757,7 @@ impl TypeLowerer {
                 et = Some(action.clone());
             }
             if let Some(et) = et {
-                macro_rules! et {
-                    () => {{
-                        divergent.then_some(&et)
-                    }};
-                }
-
-                match et.clone() {
-                    ExitAction::FromFunc(ty, span) => {
-                        match self.mark_scopes(|scope| scope.kind == ScopeKind::Func, et!()) {
-                            Some((_, scope, _)) => self.unify_scope(scope, ty, span),
-                            None => self.err_nonfatal(Error::InvalidReturn(span)),
-                        }
-                    }
-                    ExitAction::FromBlock(Some(ref label), ty, span) => {
-                        match self.mark_scopes(
-                            |scope| scope.label.is_some_and(|lbl| lbl.0 == label.0),
-                            et!(),
-                        ) {
-                            Some((_, scope, _)) => self.unify_scope(scope, ty, span),
-                            // TODO: label not found can be non-fatal but it currently will emit multiple times
-                            None => return Err(Error::LabelNotFound(label.clone())),
-                        }
-                    }
-                    ExitAction::FromNearestLoop(ty, span) => {
-                        match self.mark_scopes(|scope| scope.kind == ScopeKind::Loop, et!()) {
-                            Some((_, scope, _)) => self.unify_scope(scope, ty, span),
-                            None => self.err_nonfatal(Error::InvalidBreak(span, None)),
-                        }
-                    }
-                    ExitAction::ContinueLoop(None, span) => {
-                        if self
-                            .mark_scopes(|scope| scope.kind == ScopeKind::Loop, et!())
-                            .is_none()
-                        {
-                            self.err_nonfatal(Error::InvalidBreak(span, None));
-                        }
-                    }
-                    ExitAction::ContinueLoop(Some(ref label), span) => {
-                        match self.mark_scopes(
-                            |scope| scope.label.is_some_and(|lbl| lbl.0 == label.0),
-                            et!(),
-                        ) {
-                            Some((_, _, kind)) if kind == ScopeKind::Loop => {}
-                            Some(_) => {
-                                self.err_nonfatal(Error::InvalidBreak(span, Some(label.clone())))
-                            }
-                            None => return Err(Error::LabelNotFound(label.clone())),
-                        }
-                    }
-                    ExitAction::FromBlock(None, ty, span) => {
-                        let scope = self.exit_scope();
-                        self.unify_scope(scope.id, ty, span);
-                    }
-                    ExitAction::NeverReturn => {}
-                }
+                self.handle_exit(&et, divergent)?;
                 exit_action = Some(et);
                 break;
             }

@@ -68,6 +68,12 @@ pub struct DiagnosticWriter {
     ansi: bool,
 }
 
+impl Default for DiagnosticWriter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl DiagnosticWriter {
     pub fn new() -> Self {
         Self {
@@ -127,9 +133,9 @@ impl DiagnosticWriter {
         // "Color" the spans
         for (span, color) in spans {
             for i in span.range() {
-                chars
-                    .get_mut(i - line.offset)
-                    .map(|(_, c)| *c = Some(color));
+                if let Some((_, c)) = chars.get_mut(i - line.offset) {
+                    *c = Some(color);
+                }
             }
         }
         self.tidy_chunks(chars)
@@ -155,7 +161,7 @@ impl DiagnosticWriter {
             multiline: Vec::new(),
         };
 
-        for (position, label) in labels.into_iter().enumerate() {
+        for (position, label) in labels.iter().enumerate() {
             let color = LABEL_COLORS[position % LABEL_COLORS.len()];
             let span = label.context_span.unwrap_or(label.span);
             let line_range = self
@@ -260,7 +266,7 @@ impl DiagnosticWriter {
         max_line_num_len: usize,
     ) -> io::Result<()> {
         let blanks = vec![b' '; max_line_num_len + 1];
-        w.write(&blanks)?;
+        w.write_all(&blanks)?;
 
         let full_span = cached.section.full_span();
         let (src, start) = (full_span.src, full_span.start);
@@ -380,8 +386,8 @@ impl DiagnosticWriter {
                 // find the center of the primary span
                 let center = label.span.start + label.span.len() / 2 - line.offset;
                 // draw the vertical part of the arrow
-                for i in 0..idx {
-                    segments[i][center] = (VERTICAL, Some(label.color));
+                for segment in segments.iter_mut().take(idx) {
+                    segment[center] = (VERTICAL, Some(label.color));
                 }
                 segments[idx][center] = (BOTTOM_LEFT, Some(label.color));
                 // draw the horizontal part of the arrow. it should span until the end of the line.
@@ -407,7 +413,7 @@ impl DiagnosticWriter {
         }
         // Finish the section
         let blanks = vec![b' '; max_line_num_len];
-        w.write(&blanks)?;
+        w.write_all(&blanks)?;
         write!(
             w,
             "{}{}",
