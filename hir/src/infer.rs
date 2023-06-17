@@ -590,7 +590,7 @@ impl TypeLowerer {
                             expected: (ty, ty_span),
                             actual: expr.as_ref().map(|expr| expr.1.clone().into()),
                             constraint: conflict,
-                        })
+                        });
                     }
                     (lower_ty.clone(), Some(expr))
                 } else {
@@ -670,14 +670,10 @@ impl TypeLowerer {
     }
 
     fn handle_exit(&mut self, et: &ExitAction, divergent: bool) -> Result<()> {
-        macro_rules! et {
-            () => {{
-                divergent.then_some(et)
-            }};
-        }
+        let action = divergent.then_some(et);
         match et.clone() {
             ExitAction::FromFunc(ty, span) => {
-                match self.mark_scopes(|scope| scope.kind == ScopeKind::Func, et!()) {
+                match self.mark_scopes(|scope| scope.kind == ScopeKind::Func, action) {
                     Some((_, scope, _)) => self.unify_scope(scope, ty, span),
                     None => self.err_nonfatal(Error::InvalidReturn(span)),
                 }
@@ -685,7 +681,7 @@ impl TypeLowerer {
             ExitAction::FromBlock(Some(ref label), ty, span) => {
                 match self.mark_scopes(
                     |scope| scope.label.is_some_and(|lbl| lbl.0 == label.0),
-                    et!(),
+                    action,
                 ) {
                     Some((_, scope, _)) => self.unify_scope(scope, ty, span),
                     // TODO: label not found can be non-fatal but it currently will emit multiple times
@@ -693,14 +689,14 @@ impl TypeLowerer {
                 }
             }
             ExitAction::FromNearestLoop(ty, span) => {
-                match self.mark_scopes(|scope| scope.kind == ScopeKind::Loop, et!()) {
+                match self.mark_scopes(|scope| scope.kind == ScopeKind::Loop, action) {
                     Some((_, scope, _)) => self.unify_scope(scope, ty, span),
                     None => self.err_nonfatal(Error::InvalidBreak(span, None)),
                 }
             }
             ExitAction::ContinueLoop(None, span) => {
                 if self
-                    .mark_scopes(|scope| scope.kind == ScopeKind::Loop, et!())
+                    .mark_scopes(|scope| scope.kind == ScopeKind::Loop, action)
                     .is_none()
                 {
                     self.err_nonfatal(Error::InvalidBreak(span, None));
@@ -709,7 +705,7 @@ impl TypeLowerer {
             ExitAction::ContinueLoop(Some(ref label), span) => {
                 match self.mark_scopes(
                     |scope| scope.label.is_some_and(|lbl| lbl.0 == label.0),
-                    et!(),
+                    action,
                 ) {
                     Some((_, _, kind)) if kind == ScopeKind::Loop => {}
                     Some(_) => {

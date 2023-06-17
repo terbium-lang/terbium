@@ -1,0 +1,109 @@
+//! Provides the `fmt` module, which contains types for formatting strings.
+
+import lib.marker.Literal;
+import lib.op.Default;
+
+/// Represents a formatter of an interpolated string.
+///
+/// A formatter should not be used directly. These types are what interpolated strings desugar to.
+///
+/// For example, the interpolated string:
+/// ```
+/// // Assume `let name = "Foo";` is defined in the scope
+/// $"Hello, {name}!"
+/// ```
+/// Desugars to:
+/// ```
+/// {
+///     let mut __formatter = $.core.fmt.DefaultFormatter();
+///     __formatter.write_literal("Hello, ");
+///     __formatter.write_fmt(name, $.core.fmt.FormatStyle());
+///     __formatter.write_literal("!");
+///     __formatter.finish()
+/// }
+/// ```
+///
+/// # Custom Formatters
+///
+/// A custom formatter can be created by implementing this trait:
+/// ```
+/// import core.{
+///     fmt.{format, Formatter, FormatStyle},
+///     op.Debug,
+/// };
+/// import std.string.StringBuffer;
+///
+/// struct CustomFormatter {
+///     value: StringBuffer,
+///
+///     // Must have the `default` op
+///     public op func default() -> Self {
+///         Self { value: StringBuffer() }
+///     }
+/// }
+///
+/// extend Formatter for CustomFormatter {
+///     type Error = never;
+///
+///     func write_literal(mut self, literal: string) {
+///         self.value.push(literal);
+///     }
+///
+///     func write_fmt<F: FormatSpec>(mut self, value: F.Input, _: FormatSpec<F>) {
+///         self.value.push(value);
+///     }
+/// }
+/// ```
+/// And then used like so:
+/// ```
+/// func main() {
+///    @!format_with(CustomFormatter) // Outer decorator makes this entire scope use the custom formatter
+///    println($"Hello, {name}!");
+/// }
+/// ```
+public trait Formatter: Default {
+    /// The type of error that can occur while formatting.
+    type Error;
+
+    /// Writes a literal string to the formatter.
+    func write_literal(mut self, literal: string & Literal);
+
+    /// Writes a format value to the formatter.
+    func write_fmt<F>(mut self, value: F.Input, spec: FormatSpec<F>);
+
+    /// Finishes writing to the formatter and returns the result.
+    func finish(self) -> string;
+}
+
+/// The default formatter used by interpolated strings.
+///
+/// This formatter is used when no other formatter is specified. See [`Formatter`] for more information.
+public struct DefaultFormatter {
+    inner: StringBuffer,
+
+    /// Creates a new formatter.
+    public op func default() = Self { inner: StringBuffer() };
+}
+
+extend Formatter for DefaultFormatter {
+    type Error = never;
+
+    func finish(self) = self.inner to string;
+}
+
+public trait FormatSpec {
+    type Input;
+    type Writer;
+    type Error;
+
+    func fmt(self, value: Self.Input, mut writer: Self.Writer) -> void throws Self.Error;
+    func style(self) -> FormatStyle;
+}
+
+extend<T: to string> FormatSpec for T {
+    type Input = T;
+    type Writer = StringBuffer;
+    type Error = never;
+
+    func fmt()
+}

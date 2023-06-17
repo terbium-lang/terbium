@@ -1,0 +1,51 @@
+//! Structual subtype equivalents for operations.
+
+public protocol Neg {
+    public type Output;
+
+    public op func neg(self) -> Self.Output;
+}
+
+public protocol Not {
+    public type Output;
+
+    public op func not(self) -> Self.Output;
+}
+
+extend<T: to bool & !Not> T {
+    type Output = bool;
+
+    public op func not(self) = !(self to bool);
+}
+
+public protocol Add<Rhs> {
+    public type Output;
+
+    public op func add(self, rhs: Rhs) -> Self.Output;
+}
+
+public protocol AddAssign<Rhs> {
+    public op func add_assign(mut self, rhs: Rhs);
+}
+
+extend<Rhs, T: Add<Rhs, Output = Self> & !AddAssign> T {
+    public op func add_assign(mut self, rhs: Rhs) {
+        &self = self + rhs;
+    }
+}
+
+public protocol Sub<Rhs> {
+    public type Output;
+
+    public op func sub(self, rhs: Rhs) -> Self.Output;
+}
+
+public protocol SubAssign<Rhs> {
+    public op func sub_assign(mut self, rhs: Rhs);
+}
+
+extend<Rhs, T: Sub<Rhs, Output = Self> & !SubAssign> T {
+    public op func sub_assign(mut self, rhs: Rhs) {
+        &self = self - rhs;
+    }
+}

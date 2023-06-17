@@ -1,0 +1,124 @@
+//! Defines the concrete implementation of optional types, which are internally represented as enums.
+
+import lib.default.Default;
+import lib.intrinsics.unreachable_unchecked;
+import lib.try.Try;
+
+const UNWRAP_PANIC_MESSAGE = "Called .unwrap() on a `none` value";
+
+/// Represents an optional value, which is either a value or the absence thereof.
+public enum Option<T> {
+    /// The absence of a value.
+    none,
+    /// A value that exists.
+    some(T),
+
+    /// Returns `true` if the option is a `some` value.
+    public func is_some(self) -> bool {
+        match self {
+            .some(_) -> true,
+            .none -> false,
+        }
+    }
+
+    /// Returns `true` if the option is a `none` value.
+    public func is_none(self) -> bool {
+        match self {
+            .some(_) -> false,
+            .none -> true,
+        }
+    }
+
+    /// Returns the contained value. Panics if the value is a `none`.
+    public func unwrap(self, *, panic_with: string = UNWRAP_PANIC_MESSAGE) -> T {
+        match self {
+            .some(value) -> value,
+            .none -> panic(panic_with),
+        }
+    }
+
+    /// Returns the contained value. If the value is `none`, undefined behavior will occur in release mode.
+    public func unwrap_unchecked(self) -> T {
+        debug_assert(
+            self.is_some(),
+            "Called .unwrap_unchecked() on a `none` value, which is undefined behavior in release mode",
+        );
+        match self {
+            .some(value) -> value,
+            .none -> unreachable_unchecked(),
+        }
+    }
+
+    /// Returns the contained value, or the default value if the value is `none`.
+    public func or_default() -> T where T: Default {
+        match self {
+            .some(value) -> value,
+            .none -> .default(),
+        }
+    }
+
+    /// Returns the contained value, or the provided value if the value is `none`.
+    public func or(self, default: T) -> T {
+        match self {
+            .some(value) -> value,
+            .none -> default,
+        }
+    }
+
+    /// Returns the contained value, or the result of the provided function if the value is `none`.
+    public func or_else(self, default: () -> T) -> T {
+        match self {
+            .some(value) -> value,
+            .none -> default(),
+        }
+    }
+
+    /// If the option is a `some` value, return this value kept as a `some`. Otherwise, return the optional result
+    /// of the provided function.
+    public func or_maybe(self, default: () -> Self) -> Self {
+        match self {
+            .some(value) -> .some(value),
+            .none -> default(),
+        }
+    }
+
+    /// If the option is a `some` value, return the optional result of the provided function when applying the contained
+    /// value of this optional value. Otherwise, return `none`.
+    public func and_then<U>(self, f: (T) -> Option<U>) -> Option<U> {
+        match self {
+            .some(value) -> f(value),
+            .none -> .none,
+        }
+    }
+
+    /// Maps the option to another option by applying a function to the contained value.
+    public func map<U>(self, f: (T) -> U) -> Option<U> {
+        match self {
+            .some(value) -> .some(f(value)),
+            .none -> .none,
+        }
+    }
+
+    /// Maps the option to another option by applying a function to the contained value. If the function returns `none`,
+    /// then `none` is returned.
+    public func flat_map<U>(self, f: (T) -> U?) -> U? {
+        match self {
+            .some(value) -> f(value),
+            .none -> .none,
+        }
+    }
+
+    @coercable
+    public cast from T = .some(value);
+
+    public cast to T = self.unwrap();
+}
+
+extend<T> Try for Option<T> {
+    type Success = T;
+    type Residual = never;
+
+    func from_success(value: Self.Success) = .some(value);
+    func from_residual(value: Self.Residual) = .none;
+    func try_unwrap(self) -> Self.Success? = self;
+}

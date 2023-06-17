@@ -1,0 +1,20 @@
+//! Defines the `Try` trait.
+
+/// Represents a type that contains two or more categories of values, in which a subset of the values can "unwrap"
+/// to a type, and the rest of the values are considered "invalid" or "propagable" values which are commonly handled
+/// through early returns.
+public trait Try {
+    /// The type of the value that can be unwrapped.
+    type Success;
+    /// The type of the "invalid" or "propagable" value.
+    type Residual;
+
+    /// Creates a new fallible value from a success value.
+    func from_success(value: Self.Success) -> Self;
+
+    /// Creates a new fallible value from an invalid value.
+    func from_residual(value: Self.Residual) -> Self;
+
+    /// Unwraps into a success value if it exists.
+    func try_unwrap(self) -> Self.Success?;
+}

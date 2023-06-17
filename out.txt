@@ -1,0 +1,160 @@
+===== changes detected... =====
+parse: 3.29925ms
+[
+    Let {
+        kw: test.trb:0..3,
+        pat: Ident {
+            ident: "x" @ test.trb:4..5,
+            mut_kw: None,
+        } @ test.trb:4..5,
+        ty: None,
+        value: Some(
+            Atom(
+                Int(
+                    "1",
+                    IntLiteralInfo {
+                        radix: Decimal,
+                        unsigned: false,
+                    },
+                ),
+            ) @ test.trb:8..9,
+        ),
+    } @ test.trb:0..10,
+    Expr(
+        Assign {
+            target: Pattern(
+                Ident {
+                    ident: "x" @ test.trb:11..12,
+                    mut_kw: None,
+                },
+            ) @ test.trb:11..12,
+            op: Assign @ test.trb:13..14,
+            value: Atom(
+                Int(
+                    "2",
+                    IntLiteralInfo {
+                        radix: Decimal,
+                        unsigned: false,
+                    },
+                ),
+            ) @ test.trb:15..16,
+        } @ test.trb:11..16,
+    ) @ test.trb:11..18,
+]
+let x = 1;
+x = 2;
+=== [ HIR (165.75µs to lower) ] ===
+
+module <root> {
+    let x: <unknown> = 1;
+    x = 2;
+}
+=== [ HIR (230.583µs to type) ] ===
+
+Hir {
+    modules: {
+        ModuleId(
+            0x00006000011c0060 : [],
+        ): ScopeId(
+            0,
+        ),
+    },
+    funcs: {},
+    aliases: {},
+    consts: {},
+    structs: {},
+    types: {},
+    scopes: {
+        ScopeId(
+            0,
+        ): Scope {
+            module_id: ModuleId(
+                0x00006000011c0060 : [],
+            ),
+            label: None,
+            children: [
+                Let {
+                    pat: Ident {
+                        ident: Ident(
+                            0x00006000011c0040 : "x",
+                        ) @ test.trb:4..5,
+                        mut_kw: None,
+                    } @ test.trb:4..5,
+                    ty: Primitive(
+                        Int(
+                            Signed,
+                            Int32,
+                        ),
+                    ),
+                    ty_span: None,
+                    value: Some(
+                        TypedExpr(
+                            Literal(
+                                Int(
+                                    1,
+                                ),
+                            ),
+                            Primitive(
+                                Int(
+                                    Signed,
+                                    Int32,
+                                ),
+                            ),
+                        ) @ test.trb:8..9,
+                    ),
+                } @ test.trb:0..10,
+                Expr(
+                    TypedExpr(
+                        Assign(
+                            Ident {
+                                ident: Ident(
+                                    0x00006000011c0040 : "x",
+                                ) @ test.trb:11..12,
+                                mut_kw: None,
+                            } @ test.trb:11..12,
+                            TypedExpr(
+                                Literal(
+                                    Int(
+                                        2,
+                                    ),
+                                ),
+                                Primitive(
+                                    Int(
+                                        Signed,
+                                        Int32,
+                                    ),
+                                ),
+                            ) @ test.trb:15..16,
+                        ),
+                        Primitive(
+                            Int(
+                                Signed,
+                                Int32,
+                            ),
+                        ),
+                    ) @ test.trb:11..16,
+                ) @ test.trb:11..18,
+            ] @ test.trb:0..19,
+        },
+    },
+}
+[1;31merror[0m (E116): [1mcannot reassign to immutable variable[0m
+  [38;5;246m┌[0m[38;5;246m[[0mtest.trb:2:1[38;5;246m][0m
+  [38;5;246m│[0m
+[38;5;250m2[0m [38;5;246m│[0m [36mx[0m = 2;
+  [38;5;246m│[0m [36m^[0m cannot reassign to immutable variable `x`
+ [38;5;246m─[0m[38;5;246m┘[0m
+`x` was defined as immutable here:
+  [38;5;246m┌[0m[38;5;246m[[0mtest.trb:1:5[38;5;246m][0m
+  [38;5;246m│[0m
+[38;5;250m1[0m [38;5;246m│[0m let [36mx[0m = 1;
+  [38;5;246m│[0m     [36m^[0m `x` defined as immutable here
+ [38;5;246m─[0m[38;5;246m┘[0m
+
+[1;38;5;43mfix:[0m add `mut` to make the binding mutable
+  [38;5;246m┌[0m[38;5;246m[[0mtest.trb:1:5[38;5;246m][0m
+  [38;5;246m│[0m
+[38;5;250m1[0m [38;5;246m│[0m let [32mmut [0mx = 1;
+  [38;5;246m│[0m     [32m++++[0m 
+ [38;5;246m─[0m[38;5;246m┘[0m
+
