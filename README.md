@@ -1,6 +1,7 @@
 # Terbium
 
-A high-level language that doesn't compromise in performance. This is the rewrite branch of Terbium. See legacy Terbium [here](https://github.com/TerbiumLang/Terbium/tree/legacy).
+Write bug-free code that runs at native performance with ease by using Terbium, a high-level programming language that doesn't compromise in performance, readability, reliability and developer experience. 
+This is the rewrite branch of Terbium. See legacy Terbium [here](https://github.com/TerbiumLang/Terbium/tree/legacy).
 
 ## Specification
 
