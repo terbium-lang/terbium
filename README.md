@@ -1,6 +1,7 @@
 # Terbium
 
-A high-level language that doesn't compromise in performance. This is the rewrite branch of Terbium. See legacy Terbium [here](https://github.com/TerbiumLang/Terbium/tree/legacy).
+Write bug-free code that runs at native performance with ease by using Terbium, a high-level programming language that doesn't compromise in performance, readability, reliability and developer experience. 
+This is the rewrite branch of Terbium. See legacy Terbium [here](https://github.com/TerbiumLang/Terbium/tree/legacy).
 
 ## Specification
 
@@ -11,7 +12,7 @@ A semi-formal language specification can be found [here](https://jay3332.gitbook
 Terbium is still a work in progress. If you want to:
 
 * *contribute to Terbium*, you can clone this repository. See [CONTRIBUTING.md](https://github.com/terbium-lang/terbium/blob/main/CONTRIBUTING.md) for more information.
-* *use Terbium*, see [INSTALLATION.md](https://github.com/terbium-lang/terbium/blob/main/INSTALLATION.md) for more information.
+* *use Terbium*, see [the quickstart guide](https://terbium-lilac.vercel.app/docs/quickstart) for more information.
 
 ## Why Terbium?
 
