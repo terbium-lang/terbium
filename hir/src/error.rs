@@ -1,4 +1,4 @@
-use crate::{typed::Constraint, Ident, ModuleId, Ty};
+use crate::{typed::Constraint, Ident, ModuleId, PrimitiveTy, Ty};
 use common::{
     pluralize,
     span::{Span, Spanned},
@@ -38,6 +38,9 @@ pub enum Error {
         /// The actual number of type arguments.
         actual: usize,
     },
+    /// A scalar type like `int` was provided with type arguments. Represented as
+    /// `(ty, type_span, application_span)`.
+    ScalarTypeWithArguments(PrimitiveTy, Span, Span),
     /// Encountered a circular type reference. Each cycle is represented as `(def_src, def_dest)`.
     CircularTypeReference(Vec<(Spanned<Ident>, Spanned<TypePath>)>),
     /// Visibility for field access is less than the visibility for field mutation.
@@ -119,6 +122,9 @@ impl Display for Error {
                     "incorrect number of type arguments for `{ty}`: expected {expected} type arguments, found {actual}",
                 )
             }
+            Self::ScalarTypeWithArguments(ty, _, _) => {
+                write!(f, "scalar type `{ty}` cannot have type arguments")
+            }
             Self::CircularTypeReference(cycle) => {
                 let src = &cycle.first().expect("cycle cannot be empty").0;
                 let dest = &cycle.last().unwrap().1;
@@ -193,6 +199,7 @@ impl Error {
             Self::TypeNotFound(..) => "could not resolve type",
             Self::ModuleNotFound(..) => "could not resolve module",
             Self::IncorrectTypeArgumentCount { .. } => "incorrect number of type arguments",
+            Self::ScalarTypeWithArguments(..) => "scalar type cannot have type arguments",
             Self::CircularTypeReference { .. } => "encountered circular type reference",
             Self::GetterLessVisibleThanSetter { .. } => "getter is less visible than setter",
             Self::InvalidAssignmentTarget(..) => "invalid assignment target",
@@ -218,7 +225,9 @@ impl Error {
             Self::CannotExtendFieldsFromType(_) => 100,
             Self::NameConflict(..) => 101,
             Self::IntegerLiteralOverflow(..) => 102,
-            // NOTE: error code 103 is open
+            // NOTE: error code 103 was left open which was eventually taken by
+            // `ScalarTypeWithArguments`.
+            Self::ScalarTypeWithArguments(..) => 103,
             Self::TypeNotFound(..) => 104,
             Self::ModuleNotFound(..) => 105,
             Self::IncorrectTypeArgumentCount { .. } => 106,
@@ -329,6 +338,19 @@ impl Error {
                         if you do not want to specify types in full, you can specify the \
                         inference type `_` instead"
                     ))
+            }
+            Self::ScalarTypeWithArguments(ty, ty_span, app_span) => {
+                diagnostic
+                    .with_section(Section::new()
+                        .with_label(Label::at(app_span)
+                            .with_context_span(ty_span.merge(app_span))
+                            .with_message(format!("scalar type `{ty}` does not take any type arguments"))
+                        )
+                    )
+                    .with_fix(
+                        Fix::new(Action::Remove(app_span))
+                            .with_message(format!("remove the type application provided to `{ty}`"))
+                    )
             }
             Self::CircularTypeReference(cycle) => {
                 let last = cycle.len() - 2;

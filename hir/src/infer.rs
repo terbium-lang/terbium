@@ -1,5 +1,11 @@
 use crate::typed::Relation;
-use crate::{error::{Error, Result}, typed::{self, Constraint, InvalidTypeCause, Ty, TypedExpr, UnificationTable}, warning::Warning, Expr, FloatWidth, Hir, Ident, IntSign, IntWidth, ItemId, Literal, Metadata, ModuleId, Node, Pattern, PrimitiveTy, ScopeId, TyParam, Op};
+use crate::{
+    error::{Error, Result},
+    typed::{self, Constraint, InvalidTypeCause, Ty, TypedExpr, UnificationTable},
+    warning::Warning,
+    Expr, FloatWidth, Hir, Ident, IntSign, IntWidth, ItemId, Literal, Metadata, ModuleId, Node, Op,
+    Pattern, PrimitiveTy, ScopeId, TyParam,
+};
 use common::span::{Span, Spanned, SpannedExt};
 use std::{borrow::Cow, collections::HashMap};
 
@@ -309,7 +315,12 @@ impl TypeLowerer {
 
         // Does a constant with this name exist?
         let item = ItemId(self.scope().module_id, *ident.value());
-        if let Some(cnst) = self.hir.consts.get(&item) {
+        if let Some(cnst) = self
+            .hir
+            .scopes
+            .get(&self.scope().id)
+            .and_then(|scope| scope.consts.get(&item))
+        {
             return Ok(Binding {
                 def_span: cnst.name.span(),
                 ty: self.lower_hir_ty(cnst.ty.clone()),
@@ -480,16 +491,16 @@ impl TypeLowerer {
                 };
                 TypedExpr(typed::Expr::Loop(scope_id), ty)
             }
-            Expr::CallOp(op, lhs, rhs) => {
-                TypedExpr(
-                    typed::Expr::CallOp(
-                        op,
-                        Box::new(self.lower_expr(*lhs)?),
-                        rhs.into_iter().map(|expr| self.lower_expr(expr)).collect::<Result<Vec<_>>>()?,
-                    ),
-                    self.table.new_unknown(),
-                )
-            }
+            Expr::CallOp(op, lhs, rhs) => TypedExpr(
+                typed::Expr::CallOp(
+                    op,
+                    Box::new(self.lower_expr(*lhs)?),
+                    rhs.into_iter()
+                        .map(|expr| self.lower_expr(expr))
+                        .collect::<Result<Vec<_>>>()?,
+                ),
+                self.table.new_unknown(),
+            ),
             _ => unimplemented!(),
         };
         Ok(Spanned(expr, span))
@@ -708,9 +719,7 @@ impl TypeLowerer {
                     action,
                 ) {
                     Some((_, _, kind)) if kind == ScopeKind::Loop => {}
-                    Some(_) => {
-                        self.err_nonfatal(Error::InvalidBreak(span, Some(label.clone())))
-                    }
+                    Some(_) => self.err_nonfatal(Error::InvalidBreak(span, Some(label.clone()))),
                     None => return Err(Error::LabelNotFound(label.clone())),
                 }
             }
@@ -760,11 +769,7 @@ impl TypeLowerer {
         }
         self.thir.scopes.insert(
             scope_id,
-            crate::Scope {
-                module_id: scope.module_id,
-                label: scope.label,
-                children: lowered.spanned(full_span),
-            },
+            crate::Scope::new(scope.module_id, scope.label, lowered.spanned(full_span)),
         );
         let exit_action = exit_action.unwrap_or_else(|| {
             self.unify_scope(scope_id, Ty::Primitive(PrimitiveTy::Void), full_span);

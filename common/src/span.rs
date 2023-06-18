@@ -55,6 +55,9 @@ mod sealed {
     reason = "semantically incorrect to include is_empty method"
 )]
 impl Span {
+    /// A placeholder span with no source.
+    pub const PLACEHOLDER: Self = Self::new(Src::None, 0, 0);
+
     /// Creates a new span from the given start, end, and source.
     #[must_use]
     pub const fn new(src: Src, start: usize, end: usize) -> Self {

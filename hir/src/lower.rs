@@ -36,17 +36,23 @@ pub struct AstLowerer {
 }
 
 /// A cumulative context used when lowering an AST to HIR.
-pub struct Ctx {
-    pub module: ModuleId,
+pub struct Ctx<'a> {
+    pub scope: &'a Scope,
+    pub parent_scope: Option<ScopeId>,
     pub ty_params: Vec<TyParam>,
 }
 
-impl Ctx {
-    fn new(module: ModuleId) -> Self {
+impl<'a> Ctx<'a> {
+    fn new(scope: &'a Scope) -> Self {
         Self {
-            module,
+            scope,
+            parent_scope: None,
             ty_params: Vec::new(),
         }
+    }
+
+    fn module(&self) -> ModuleId {
+        self.scope.module_id
     }
 }
 
@@ -103,11 +109,11 @@ impl AstLowerer {
     #[inline]
     fn anon_scope_from_expr(&mut self, module: ModuleId, expr: Spanned<Expr>) -> ScopeId {
         let span = expr.span();
-        self.register_scope(Scope {
-            module_id: module,
-            label: None,
-            children: Spanned(vec![Spanned(Node::ImplicitReturn(expr), span)], span),
-        })
+        self.register_scope(Scope::new(
+            module,
+            None,
+            Spanned(vec![Spanned(Node::ImplicitReturn(expr), span)], span),
+        ))
     }
 
     #[inline]
@@ -128,10 +134,15 @@ impl AstLowerer {
 
     /// Asserts the item ID is unique.
     #[inline]
-    pub fn assert_item_unique(&self, item: &ItemId, src: Spanned<String>) -> Result<()> {
-        let occupied = if let Some(occupied) = self.hir.structs.get(item) {
+    pub fn assert_item_unique(
+        &self,
+        scope: &Scope,
+        item: &ItemId,
+        src: Spanned<String>,
+    ) -> Result<()> {
+        let occupied = if let Some(occupied) = scope.structs.get(item) {
             Some(occupied.name.span())
-        } else if let Some(occupied) = self.hir.consts.get(item) {
+        } else if let Some(occupied) = scope.consts.get(item) {
             Some(occupied.name.span())
         } else {
             None
@@ -142,33 +153,45 @@ impl AstLowerer {
         Ok(())
     }
 
+    /// Creates a new context for the given scope.
+    #[inline]
+    pub fn scope_ctx(&self, scope: ScopeId) -> Ctx {
+        Ctx::new(self.hir.scopes.get(&scope).unwrap())
+    }
+
+    /// Creates a new context for the given module.
+    #[inline]
+    pub fn module_ctx(&self, module: ModuleId) -> Ctx {
+        let scope_id = self.hir.modules.get(&module).unwrap();
+        self.scope_ctx(*scope_id)
+    }
+
     /// Completely performs a lowering pass over a module.
     pub fn resolve_module(&mut self, module: ModuleId, span: Span) -> Result<()> {
-        self.resolve_top_level_types(module)?;
-        self.resolve_top_level_consts(module)?;
-        self.resolve_top_level_funcs(module)?;
+        // SAFETY: `children` is set later in this function.
+        let mut scope = Scope::from_module_id(module);
+        self.resolve_types(module, &mut scope)?;
+        self.resolve_consts(module, &mut scope)?;
+        self.resolve_funcs(module, &mut scope)?;
 
-        let ctx = Ctx::new(module);
+        let ctx = Ctx::new(&scope);
         let nodes = std::mem::replace(self.module_nodes.get_mut(&module).unwrap(), Vec::new());
-        let children = self.lower_ast_nodes(&ctx, nodes)?;
-        let scope_id = self.register_scope(Scope {
-            module_id: module,
-            label: None,
-            children: Spanned(children, span),
-        });
+        scope.children = self.lower_ast_nodes(&ctx, nodes)?.spanned(span);
+
+        let scope_id = self.register_scope(scope);
         self.hir.modules.insert(module, scope_id);
 
         Ok(())
     }
 
     /// Perform a pass over the AST to simply resolve all top-level types.
-    pub fn resolve_top_level_types(&mut self, module: ModuleId) -> Result<()> {
+    pub fn resolve_types(&mut self, module: ModuleId, scope: &mut Scope) -> Result<()> {
         let nodes = self.module_nodes.get(&module).expect("module not found");
 
         // Do a pass over all types to identify them
         for node in nodes {
             if let Some((item_id, ty_def)) = self.pass_over_ty_def(module, node)? {
-                self.hir.types.insert(item_id, ty_def);
+                scope.types.insert(item_id, ty_def);
             }
         }
 
@@ -179,14 +202,14 @@ impl AstLowerer {
                     let sct_name = sct.name.clone();
                     let ident = get_ident(sct_name.0.clone());
                     let item_id = ItemId(module, ident);
-                    let sty = self.lower_struct_def_into_ty(module, sct.clone())?;
+                    let sty = self.lower_struct_def_into_ty(module, sct.clone(), scope)?;
 
                     // Update type parameters with their bounds
-                    if let Some(ty_def) = self.hir.types.get_mut(&item_id) {
+                    if let Some(ty_def) = scope.types.get_mut(&item_id) {
                         ty_def.ty_params = sty.ty_params.clone();
                     }
-                    self.propagate_nonfatal(self.assert_item_unique(&item_id, sct_name));
-                    self.hir.structs.insert(item_id, sty);
+                    self.propagate_nonfatal(self.assert_item_unique(scope, &item_id, sct_name));
+                    scope.structs.insert(item_id, sty);
                 }
                 _ => (),
             }
@@ -224,8 +247,7 @@ impl AstLowerer {
                     return Err(Error::CircularTypeReference(cycle));
                 }
 
-                let fields = self
-                    .hir
+                let fields = scope
                     .structs
                     .get(&pid)
                     .cloned()
@@ -235,8 +257,7 @@ impl AstLowerer {
                 removed.push(sid);
 
                 for child in &removed {
-                    let sty = self
-                        .hir
+                    let sty = scope
                         .structs
                         .get_mut(&child)
                         .expect("struct not found, this is a bug");
@@ -251,14 +272,13 @@ impl AstLowerer {
             }
         }
 
-        self.desugar_inferred_types_in_structs();
+        self.desugar_inferred_types_in_structs(scope);
         Ok(())
     }
 
     /// Perform a pass over the AST to resolve all top-level constants
-    pub fn resolve_top_level_consts(&mut self, module: ModuleId) -> Result<()> {
+    pub fn resolve_consts(&mut self, module: ModuleId, scope: &mut Scope) -> Result<()> {
         let nodes = self.module_nodes.get(&module).expect("module not found");
-        let ctx = Ctx::new(module);
 
         // TODO: Cloning may not be necessary here...
         for node in nodes.clone() {
@@ -270,6 +290,7 @@ impl AstLowerer {
                 ..
             } = node.into_value()
             {
+                let ctx = Ctx::new(scope);
                 let ident = name.as_ref().map(get_ident_from_ref);
                 let cnst = Const {
                     vis,
@@ -278,8 +299,8 @@ impl AstLowerer {
                     value: self.lower_expr(&ctx, value)?,
                 };
                 let item = ItemId(module, *ident.value());
-                self.propagate_nonfatal(self.assert_item_unique(&item, name));
-                self.hir.consts.insert(item, cnst);
+                self.propagate_nonfatal(self.assert_item_unique(scope, &item, name));
+                scope.consts.insert(item, cnst);
             }
         }
         Ok(())
@@ -330,9 +351,10 @@ impl AstLowerer {
         &mut self,
         module: ModuleId,
         struct_def: StructDef,
+        scope: &Scope,
     ) -> Result<StructTy> {
         // Accumulate all generic type parameters
-        let mut ctx = Ctx::new(module);
+        let mut ctx = Ctx::new(scope);
         for param in struct_def.ty_params {
             let param = self.lower_ty_param(&ctx, param)?;
             ctx.ty_params.push(param);
@@ -397,8 +419,8 @@ impl AstLowerer {
     /// ```text
     /// struct A<__0> { a: __0 }
     /// ```
-    fn desugar_inferred_types_in_structs(&mut self) {
-        for sty in self.hir.structs.values_mut() {
+    fn desugar_inferred_types_in_structs(&mut self, scope: &mut Scope) {
+        for sty in scope.structs.values_mut() {
             // Desugar inference type into generics that will be inferred anyways
             for (i, ty) in sty
                 .fields
@@ -455,6 +477,9 @@ impl AstLowerer {
         for Spanned(segment, _) in segments {
             // Always favor primitive types over anything else
             if let Some(ty) = Self::lower_ty_ident_into_primitive(segment.0.value()) {
+                if let Some(Spanned(_, span)) = &segment.1 {
+                    return Err(Error::ScalarTypeWithArguments(ty, segment.0.span(), *span));
+                }
                 return Ok(Ty::Primitive(ty));
             }
 
@@ -481,14 +506,14 @@ impl AstLowerer {
                 return Ok(Ty::Generic(param.name));
             }
             // If we have no segments, then we have an empty path. Look in the current module.
-            ctx.module
+            ctx.module()
         } else {
             ModuleId(Intern::from_ref(ty_module.as_slice()))
         };
 
         let lookup = ItemId(mid, ident);
-        let ty_def = self
-            .hir
+        let ty_def = ctx
+            .scope
             .types
             .get(&lookup)
             .cloned()
@@ -537,7 +562,7 @@ impl AstLowerer {
     }
 
     /// Lowers a top-level function declaration into an HIR node.
-    pub fn resolve_top_level_funcs(&mut self, module: ModuleId) -> Result<()> {
+    pub fn resolve_funcs(&mut self, module: ModuleId, scope: &mut Scope) -> Result<()> {
         let nodes = self.module_nodes.get(&module).expect("module not found");
 
         for node in nodes.clone() {
@@ -551,7 +576,7 @@ impl AstLowerer {
                 body,
             } = node.into_value()
             {
-                let mut ctx = Ctx::new(module);
+                let mut ctx = Ctx::new(&scope);
                 let ident = name.as_ref().map(get_ident_from_ref);
                 for ty_param in ty_params {
                     ctx.ty_params.push(self.lower_ty_param(&ctx, ty_param)?);
@@ -581,8 +606,8 @@ impl AstLowerer {
                     body: self.lower_body(&ctx, &None, body)?,
                 };
                 let item = ItemId(module, *ident.value());
-                self.propagate_nonfatal(self.assert_item_unique(&item, name));
-                self.hir.funcs.insert(item, func);
+                self.propagate_nonfatal(self.assert_item_unique(ctx.scope, &item, name));
+                scope.funcs.insert(item, func);
             }
         }
         Ok(())
@@ -601,11 +626,7 @@ impl AstLowerer {
             Node::Expr(Spanned(
                 Expr::If(
                     Box::new(self.lower_expr(ctx, cond)?),
-                    self.register_scope(Scope {
-                        module_id: ctx.module,
-                        label: None,
-                        children: Spanned(vec![base], span),
-                    }),
+                    self.register_scope(Scope::new(ctx.module(), None, Spanned(vec![base], span))),
                     None,
                 ),
                 span,
@@ -698,11 +719,11 @@ impl AstLowerer {
             .map(|nodes| self.lower_ast_nodes(ctx, nodes))
             .transpose()?;
 
-        Ok(self.register_scope(Scope {
-            module_id: ctx.module,
-            label: label.as_ref().map(|l| l.as_ref().map(get_ident_from_ref)),
+        Ok(self.register_scope(Scope::new(
+            ctx.module(),
+            label.as_ref().map(|l| l.as_ref().map(get_ident_from_ref)),
             children,
-        }))
+        )))
     }
 
     /// Lowers an expression into an HIR node.
@@ -979,11 +1000,7 @@ impl AstLowerer {
             .body
             .map(|body| self.lower_ast_nodes(ctx, body))
             .transpose()?;
-        let then = self.register_scope(Scope {
-            module_id: ctx.module,
-            label: None,
-            children,
-        });
+        let then = self.register_scope(Scope::new(ctx.module(), None, children));
         let else_body = stmt
             .else_body
             .map(|body| {
@@ -992,42 +1009,35 @@ impl AstLowerer {
                     .transpose()?;
                 let span = children.span();
 
-                let block = self.register_scope(Scope {
-                    module_id: ctx.module,
-                    label: None,
-                    children,
-                });
-                Ok(self.register_scope(Scope {
-                    module_id: ctx.module,
-                    label: None,
-                    children: vec![
-                        Node::Break(label, Some(Spanned(Expr::Block(block), span))).spanned(span)
-                    ]
-                    .spanned(span),
-                }))
+                let block = self.register_scope(Scope::new(ctx.module(), None, children));
+                Ok(self.register_scope(Scope::new(
+                    ctx.module(),
+                    None,
+                    vec![Node::Break(label, Some(Spanned(Expr::Block(block), span))).spanned(span)]
+                        .spanned(span),
+                )))
             })
             .transpose()?
             // this is the `else { break; }` portion
             .unwrap_or_else(|| {
-                self.register_scope(Scope {
-                    module_id: ctx.module,
-                    label: None,
-                    children: vec![Node::Break(label, None).spanned(body_span)].spanned(body_span),
-                })
+                self.register_scope(Scope::new(
+                    ctx.module(),
+                    None,
+                    vec![Node::Break(label, None).spanned(body_span)].spanned(body_span),
+                ))
             });
 
-        let scope_id = self.register_scope(Scope {
-            module_id: ctx.module,
-            label: stmt
-                .label
+        let scope_id = self.register_scope(Scope::new(
+            ctx.module(),
+            stmt.label
                 .as_ref()
                 .map(|l| l.as_ref().map(get_ident_from_ref)),
-            children: vec![Node::Expr(
-                Expr::If(Box::new(cond), then, Some(else_body)).spanned(body_span),
-            )
-            .spanned(body_span)]
+            vec![
+                Node::Expr(Expr::If(Box::new(cond), then, Some(else_body)).spanned(body_span))
+                    .spanned(body_span),
+            ]
             .spanned(body_span),
-        });
+        ));
         Ok(Expr::Loop(scope_id))
     }
 
@@ -1038,8 +1048,8 @@ impl AstLowerer {
         ident: Spanned<Ident>,
         app: Option<GenericTyApp>,
     ) -> Result<Spanned<Expr>> {
-        let item_id = ItemId(ctx.module, *ident.value());
-        Ok(if let Some(cnst) = self.hir.consts.get(&item_id) {
+        let item_id = ItemId(ctx.module(), *ident.value());
+        Ok(if let Some(cnst) = ctx.scope.consts.get(&item_id) {
             // TODO: true const-eval instead of inline (this will be replaced by `alias`)
             if let Some(app) = app {
                 return Err(Error::ExplicitTypeArgumentsNotAllowed(app.span()));
@@ -1115,8 +1125,8 @@ impl AstLowerer {
             lhs.span(),
         ));
 
-        let then = self.anon_scope_from_expr(ctx.module, binding_expr);
-        let els = self.anon_scope_from_expr(ctx.module, rhs);
+        let then = self.anon_scope_from_expr(ctx.module(), binding_expr);
+        let els = self.anon_scope_from_expr(ctx.module(), rhs);
         let stmt = match op {
             ast::BinaryOp::LogicalOr => Expr::If(cond, then, Some(els)),
             ast::BinaryOp::LogicalAnd => Expr::If(cond, then, Some(els)),
@@ -1124,10 +1134,10 @@ impl AstLowerer {
         };
 
         let spanned = |node| Spanned(node, span);
-        let block = self.register_scope(Scope {
-            module_id: ctx.module,
-            label: None,
-            children: vec![
+        let block = self.register_scope(Scope::new(
+            ctx.module(),
+            None,
+            vec![
                 // Store the LHS in a temporary binding
                 spanned(Node::Let {
                     pat: lhs.as_ref().map(|_| Pattern::Ident {
@@ -1141,7 +1151,7 @@ impl AstLowerer {
                 spanned(Node::ImplicitReturn(Spanned(stmt, span))),
             ]
             .spanned(span),
-        });
+        ));
         Ok(Spanned(Expr::Block(block), span))
     }
 

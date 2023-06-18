@@ -88,7 +88,11 @@ pub struct ItemId(
 
 impl Display for ItemId {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}.{}", self.0, self.1)
+        if self.0 == ModuleId::root() {
+            write!(f, "{}", self.1)
+        } else {
+            write!(f, "{}.{}", self.0, self.1)
+        }
     }
 }
 
@@ -126,16 +130,6 @@ impl Metadata for LowerMetadata {
 pub struct Hir<M: Metadata = LowerMetadata> {
     /// A mapping of all modules within the program.
     pub modules: HashMap<ModuleId, ScopeId>,
-    /// A mapping of all top-level functions in the program.
-    pub funcs: HashMap<ItemId, Func<M>>,
-    /// A mapping of all aliases in the program.
-    pub aliases: HashMap<ItemId, Alias<M::Expr>>,
-    /// A mapping of all constants in the program.
-    pub consts: HashMap<ItemId, Const<M>>,
-    /// A mapping of all raw structs within the program.
-    pub structs: HashMap<ItemId, StructTy<M::Ty>>,
-    /// A mapping of all types within the program.
-    pub types: HashMap<ItemId, TyDef<M::Ty>>,
     /// A mapping of all lexical scopes within the program.
     pub scopes: HashMap<ScopeId, Scope<M>>,
 }
@@ -144,11 +138,6 @@ impl<M: Metadata> Default for Hir<M> {
     fn default() -> Self {
         Self {
             modules: HashMap::new(),
-            funcs: HashMap::new(),
-            aliases: HashMap::new(),
-            consts: HashMap::new(),
-            structs: HashMap::new(),
-            types: HashMap::new(),
             scopes: HashMap::new(),
         }
     }
@@ -164,30 +153,14 @@ fn join_by_comma<'a, T: ToString + 'a>(items: impl Iterator<Item = &'a T> + 'a) 
 
 impl<M: Metadata> Display for Hir<M>
 where
+    for<'a> WithHir<'a, M::Expr, M>: ToString,
     for<'a> WithHir<'a, Spanned<Node<M>>, M>: ToString,
     for<'a> WithHir<'a, Func<M>, M>: ToString,
     for<'a> WithHir<'a, Const<M>, M>: ToString,
     for<'a> WithHir<'a, StructTy<M::Ty>, M>: ToString,
     for<'a> WithHir<'a, Alias<M::Expr>, M>: ToString,
-    for<'a> WithHir<'a, M::Expr, M>: ToString,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        for (item, func) in &self.funcs {
-            writeln!(f, "{item}:")?;
-            WithHir(func, self).write_indent(f)?;
-        }
-        for (item, alias) in &self.aliases {
-            writeln!(f, "{item}:")?;
-            WithHir(alias, self).write_indent(f)?;
-        }
-        for (item, cnst) in &self.consts {
-            writeln!(f, "{item}:")?;
-            WithHir(cnst, self).write_indent(f)?;
-        }
-        for (item, strct) in &self.structs {
-            writeln!(f, "{item}:")?;
-            WithHir(strct, self).write_indent(f)?;
-        }
         for (module, scope) in &self.modules {
             writeln!(f, "module {} {{", module)?;
             let scope = self.scopes.get(scope).unwrap();
@@ -218,9 +191,46 @@ pub enum Node<M: Metadata = LowerMetadata> {
 
 #[derive(Clone, Debug)]
 pub struct Scope<M: Metadata = LowerMetadata> {
+    /// The module in which this scope is defined.
     pub module_id: ModuleId,
+    /// The label of this scope.
     pub label: Option<Spanned<Ident>>,
+    /// The children of this scope.
     pub children: Spanned<Vec<Spanned<Node<M>>>>,
+    /// A mapping of all top-level functions in the scope.
+    pub funcs: HashMap<ItemId, Func<M>>,
+    /// A mapping of all aliases in the scope.
+    pub aliases: HashMap<ItemId, Alias<M::Expr>>,
+    /// A mapping of all constants in the scope.
+    pub consts: HashMap<ItemId, Const<M>>,
+    /// A mapping of all raw structs within the scope.
+    pub structs: HashMap<ItemId, StructTy<M::Ty>>,
+    /// A mapping of all types within the scope.
+    pub types: HashMap<ItemId, TyDef<M::Ty>>,
+}
+
+impl<M: Metadata> Scope<M> {
+    // caller should verify `children` is set before accessing it.
+    pub(crate) fn from_module_id(module_id: ModuleId) -> Self {
+        Self::new(module_id, None, Spanned(Vec::new(), Span::PLACEHOLDER))
+    }
+
+    pub(crate) fn new(
+        module_id: ModuleId,
+        label: Option<Spanned<Ident>>,
+        children: Spanned<Vec<Spanned<Node<M>>>>,
+    ) -> Self {
+        Self {
+            module_id,
+            label,
+            children,
+            funcs: HashMap::new(),
+            aliases: HashMap::new(),
+            consts: HashMap::new(),
+            structs: HashMap::new(),
+            types: HashMap::new(),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -876,7 +886,17 @@ impl<'a, T, M: Metadata> WithHir<'a, T, M> {
     pub fn with<U>(&self, new: &'a U) -> WithHir<'a, U, M> {
         WithHir(new, self.1)
     }
+}
 
+impl<'a, T, M: Metadata> WithHir<'a, T, M>
+where
+    WithHir<'a, M::Expr, M>: Display,
+    WithHir<'a, Spanned<Node<M>>, M>: ToString,
+    WithHir<'a, Func<M>, M>: ToString,
+    WithHir<'a, Const<M>, M>: ToString,
+    WithHir<'a, StructTy<M::Ty>, M>: ToString,
+    WithHir<'a, Alias<M::Expr>, M>: ToString,
+{
     #[inline]
     pub fn get_scope(&self, sid: ScopeId) -> &'a Scope<M> {
         self.1
@@ -890,26 +910,34 @@ impl<'a, T, M: Metadata> WithHir<'a, T, M> {
         f: &mut Formatter,
         sid: ScopeId,
         header: impl FnOnce(&mut Formatter) -> fmt::Result,
-    ) -> fmt::Result
-    where
-        WithHir<'a, M::Expr, M>: Display,
-        WithHir<'a, Spanned<Node<M>>, M>: ToString,
-        M::Ty: Display,
-    {
+    ) -> fmt::Result {
         let scope = self.get_scope(sid);
         if let Some(label) = scope.label {
             write!(f, ":{label} ")?;
         }
         header(f)?;
-        self.write_block(f, scope.children.value())
+        self.write_block(f, &scope)
     }
 
-    pub fn write_block(&self, f: &mut Formatter, children: &'a [Spanned<Node<M>>]) -> fmt::Result
-    where
-        WithHir<'a, Spanned<Node<M>>, M>: ToString,
-    {
+    pub fn write_block(&self, f: &mut Formatter, scope: &'a Scope<M>) -> fmt::Result {
         f.write_str("{\n")?;
-        for line in children {
+        for (item, func) in &scope.funcs {
+            writeln!(f, "{item}:")?;
+            self.with(func).write_indent(f)?;
+        }
+        for (item, alias) in &scope.aliases {
+            writeln!(f, "{item}:")?;
+            self.with(alias).write_indent(f)?;
+        }
+        for (item, cnst) in &scope.consts {
+            writeln!(f, "{item}:")?;
+            self.with(cnst).write_indent(f)?;
+        }
+        for (item, strct) in &scope.structs {
+            writeln!(f, "{item}:")?;
+            self.with(strct).write_indent(f)?;
+        }
+        for line in scope.children.value() {
             self.with(line).write_indent(f)?;
         }
         f.write_str("}")
@@ -1001,12 +1029,12 @@ impl Display for WithHir<'_, Expr> {
                     write!(f, ":{label} ")?;
                 }
                 write!(f, "if {} ", self.with(&**cond))?;
-                self.write_block(f, then.children.value())?;
+                self.write_block(f, then)?;
 
                 if let Some(els) = els {
                     let els = self.get_scope(*els);
                     write!(f, " else ")?;
-                    self.write_block(f, els.children.value())?;
+                    self.write_block(f, els)?;
                 }
                 Ok(())
             }
@@ -1151,10 +1179,12 @@ impl<'a, M: Metadata> Display for WithHir<'a, Func<M>, M>
 where
     WithHir<'a, FuncHeader<M>, M>: Display,
     WithHir<'a, M::Expr, M>: Display,
-    M::Ty: Display,
+    WithHir<'a, Spanned<Node<M>>, M>: ToString,
+    WithHir<'a, Const<M>, M>: ToString,
+    WithHir<'a, StructTy<M::Ty>, M>: ToString,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{} func {} ", self.0.vis, self.with(&self.0.header))?;
-        self.write_block(f, self.get_scope(self.0.body).children.value())
+        self.write_block(f, self.get_scope(self.0.body))
     }
 }
