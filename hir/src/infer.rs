@@ -1,7 +1,6 @@
-use crate::typed::Relation;
 use crate::{
     error::{Error, Result},
-    typed::{self, Constraint, InvalidTypeCause, Ty, TypedExpr, UnificationTable},
+    typed::{self, Constraint, InvalidTypeCause, Relation, Ty, TypedExpr, UnificationTable},
     warning::Warning,
     Expr, FloatWidth, Hir, Ident, IntSign, IntWidth, ItemId, Literal, Metadata, ModuleId, Node, Op,
     Pattern, PrimitiveTy, ScopeId, TyParam,
@@ -74,6 +73,7 @@ struct Binding {
     pub def_span: Span,
     pub ty: Ty,
     pub mutable: Option<Span>,
+    pub initialized: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -82,17 +82,19 @@ pub struct Local {
     pub ty: Ty,
     pub mutable: Option<Span>,
     // analysis checks
+    pub initialized: bool,
     pub used: bool,
     pub mutated: bool,
 }
 
 impl Local {
     #[inline]
-    pub const fn new(def_span: Span, ty: Ty, mutable: Option<Span>) -> Self {
+    pub const fn new(def_span: Span, ty: Ty, mutable: Option<Span>, initialized: bool) -> Self {
         Self {
             def_span,
             ty,
             mutable,
+            initialized,
             used: false,
             mutated: false,
         }
@@ -104,6 +106,7 @@ impl Local {
             def_span: binding.def_span,
             ty: binding.ty,
             mutable: binding.mutable,
+            initialized: binding.initialized,
             used: false,
             mutated: false,
         }
@@ -204,8 +207,8 @@ impl TypeLowerer {
         resolution
     }
 
-    pub fn exit_scope(&mut self) -> Scope {
-        let mut scope = self.scopes.pop().expect("no scopes entered?");
+    pub fn exit_scope_if_exists(&mut self) -> Option<Scope> {
+        let mut scope = self.scopes.pop()?;
         for (ident, local) in &mut scope.locals {
             // Apply substitutions to the type one final time
             local.ty.apply(&mut self.table.substitutions);
@@ -223,7 +226,11 @@ impl TypeLowerer {
                 self.warnings.push(Warning::UnusedMut(Spanned(ident.to_string(), local.def_span), mutable))
             }
         }
-        scope
+        Some(scope)
+    }
+
+    pub fn exit_scope(&mut self) -> Scope {
+        self.exit_scope_if_exists().expect("no scopes entered?")
     }
 
     pub fn mark_scopes(
@@ -310,6 +317,7 @@ impl TypeLowerer {
                 def_span: local.def_span,
                 ty: local.ty.clone(),
                 mutable: local.mutable,
+                initialized: local.initialized,
             });
         }
 
@@ -325,6 +333,7 @@ impl TypeLowerer {
                 def_span: cnst.name.span(),
                 ty: self.lower_hir_ty(cnst.ty.clone()),
                 mutable: None,
+                initialized: true,
             });
         }
 
@@ -445,7 +454,6 @@ impl TypeLowerer {
                     let target = unsafe {
                         let target =
                             self.lower_local(&Spanned(ident, binding.def_span))? as *mut Local;
-                        (*target).mutated = true;
 
                         // Unify and update
                         self.table
@@ -453,6 +461,9 @@ impl TypeLowerer {
                             .push_back(Constraint(binding.ty.clone(), (*target).ty.clone()));
 
                         let target = &mut *target;
+                        if target.initialized {
+                            target.mutated = true;
+                        }
                         if let Some(conflict) = self.table.unify_all() {
                             self.err_nonfatal(Error::TypeConflict {
                                 constraint: conflict,
@@ -466,9 +477,10 @@ impl TypeLowerer {
                             def_span: target.def_span,
                             ty: target.ty.clone(),
                             mutable: target.mutable,
+                            initialized: std::mem::replace(&mut target.initialized, true),
                         }
                     };
-                    if target.mutable.is_none() {
+                    if target.initialized && target.mutable.is_none() {
                         self.err_nonfatal(Error::ReassignmentToImmutable(
                             binding.def_span,
                             Spanned(ident, target.def_span),
@@ -520,16 +532,17 @@ impl TypeLowerer {
                         def_span: ident.1,
                         ty,
                         mutable: mut_kw.clone(),
+                        initialized: expr.is_some(),
                     },
                 ));
             }
             (Pattern::Tuple(pats), Ty::Tuple(tys)) => {
                 if pats.len() != tys.len() {
                     return Err(Error::PatternMismatch {
-                        pat: Cow::Owned(format!("tuple of length {}", pats.len())),
+                        pat: Cow::Owned(format!("{}-element tuple", pats.len())),
 
                         pat_span: pat.span(),
-                        value: format!("tuple of length {}", tys.len()),
+                        value: format!("{}-element tuple", tys.len()),
                         value_span: expr.map(|expr| expr.span()),
                     });
                 }
@@ -802,9 +815,9 @@ impl TypeLowerer {
 
         // TODO: exit action can be non-standard in things like REPLs
         match self.lower_scope(scope_id, ScopeKind::Block, Vec::new(), true)? {
-            _ => (), // TODO: check exit type is void
+            _ => (), // TODO: For packaged code, check exit type is void
         }
-
+        self.exit_scope_if_exists();
         self.thir.modules.insert(module_id, scope_id);
         Ok(())
     }

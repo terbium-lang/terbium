@@ -1,6 +1,10 @@
 //! Typeck stage of HIR.
 
-use crate::{infer::InferMetadata, infer::TypeLowerer, typed::UnificationTable, Hir, ScopeId};
+use crate::{
+    infer::{InferMetadata, TypeLowerer},
+    typed::UnificationTable,
+    Hir, ScopeId,
+};
 
 /// Performs any remaining type checking and desugaring with the knowledge of the types of all
 /// expressions.
