@@ -62,7 +62,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         match ty_lowerer.lower_module(ModuleId::from(Src::None)) {
                             Ok(_) => {
                                 println!(
-                                    "=== [ HIR ({:?} to type) ] ===\n\n{:#?}",
+                                    "=== [ HIR ({:?} to type) ] ===\n\n{}",
                                     start.elapsed(),
                                     ty_lowerer.thir
                                 );

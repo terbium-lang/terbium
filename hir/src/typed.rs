@@ -1,12 +1,17 @@
-use crate::infer::ExitAction;
+use crate::infer::InferMetadata;
 use crate::{
-    Ident, IntSign, IntWidth, Intrinsic, ItemId, Literal, Node, Op, Pattern, PrimitiveTy, ScopeId,
-    StaticOp,
+    infer::ExitAction, Ident, IntSign, IntWidth, Intrinsic, ItemId, Literal, Node, Op, Pattern,
+    PrimitiveTy, ScopeId, StaticOp, WithHir,
 };
 use common::span::Spanned;
-use std::cmp::Ordering;
-use std::collections::VecDeque;
+use std::{
+    cmp::Ordering,
+    collections::VecDeque,
+    fmt::{self, Display, Formatter},
+};
 
+// TODO: This enum and its display impl are duplicates of crate::Expr, maybe find a way to unify
+// them?
 #[derive(Clone, Debug)]
 pub enum Expr {
     Literal(Literal),
@@ -29,6 +34,103 @@ pub enum Expr {
     Loop(ScopeId),
     Assign(Spanned<Pattern>, Box<E>),
     AssignPtr(Box<E>, Box<E>),
+}
+
+impl Display for WithHir<'_, TypedExpr, InferMetadata> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let comma_sep = |args: &[Spanned<TypedExpr>]| -> String {
+            args.iter()
+                .map(|e| self.with(e.value()).to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+
+        write!(f, "({}) ", self.0 .1)?;
+        match &self.0 .0 {
+            Expr::Literal(l) => write!(f, "{l}"),
+            Expr::Ident(i, args) => {
+                write!(f, "{i}")?;
+                if let Some(args) = args {
+                    write!(
+                        f,
+                        "<{}>",
+                        args.value()
+                            .iter()
+                            .map(|ty| ty.to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )?;
+                }
+                Ok(())
+            }
+            Expr::Tuple(exprs) => write!(f, "({})", comma_sep(exprs)),
+            Expr::Array(exprs) => write!(f, "[{}]", comma_sep(exprs)),
+            Expr::Intrinsic(intr, args) => {
+                write!(f, "{intr}({})", comma_sep(args))
+            }
+            Expr::Call {
+                callee,
+                args,
+                kwargs,
+            } => {
+                let args = args
+                    .iter()
+                    .map(|e| self.with(e).to_string())
+                    .chain(
+                        kwargs
+                            .iter()
+                            .map(|(name, e)| format!("{name}: {}", self.with(e))),
+                    )
+                    .collect::<Vec<_>>()
+                    .join(", ");
+
+                write!(f, "{}({args})", self.with(&**callee))
+            }
+            Expr::CallOp(op, slf, args) => {
+                write!(f, "{}.<{op}>({})", self.with(&**slf), comma_sep(args))
+            }
+            Expr::CallStaticOp(op, ty, args) => {
+                write!(f, "({ty}).{op}({})", comma_sep(args))
+            }
+            Expr::Cast(expr, ty) => {
+                write!(f, "({} to {ty})", self.with(&**expr))
+            }
+            Expr::GetAttr(expr, name) => {
+                write!(f, "({}.{name})", self.with(&**expr))
+            }
+            Expr::SetAttr(expr, name, value) => {
+                write!(
+                    f,
+                    "({}.{name} = {})",
+                    self.with(&**expr),
+                    self.with(&**value)
+                )
+            }
+            Expr::Block(sid) => self.1.write_scope(f, *sid, |_| Ok(())),
+            Expr::If(cond, then, els) => {
+                let then = self.1.get_scope(*then);
+                if let Some(label) = then.label {
+                    write!(f, ":{label} ")?;
+                }
+                write!(f, "if {} ", self.with(&**cond))?;
+                self.1.write_block(f, then)?;
+
+                if let Some(els) = els {
+                    let els = self.1.get_scope(*els);
+                    write!(f, " else ")?;
+                    self.1.write_block(f, els)?;
+                }
+                Ok(())
+            }
+            Expr::Loop(sid) => self.1.write_scope(f, *sid, |f| write!(f, "loop ")),
+            Expr::Assign(pat, value) => {
+                write!(f, "{pat} = {}", self.with(&**value))
+            }
+            Expr::AssignPtr(ptr, value) => {
+                write!(f, "&{} = {}", self.with(&**ptr), self.with(&**value))
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -100,6 +202,12 @@ impl TyConst {
     }
 }
 
+impl Display for TyConst {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.value)
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum InvalidTypeCause {
     CyclicTypeReference,
@@ -118,6 +226,56 @@ pub enum Ty {
     Struct(ItemId, Vec<Self>),
     Func(Vec<Self>, Box<Self>),
     Const(Box<TyConst>),
+}
+
+impl Display for Ty {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Invalid(_) => write!(f, "<invalid>"),
+            Self::Unknown(id) => write!(f, "${id}"),
+            Self::Exit(_) => write!(f, "never"),
+            Self::Primitive(p) => write!(f, "{p}"),
+            Self::Generic(id) => write!(f, "{id}"),
+            Self::Tuple(tys) => {
+                write!(f, "(")?;
+                for (i, ty) in tys.iter().enumerate() {
+                    if i != 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{ty}")?;
+                }
+                write!(f, ")")
+            }
+            Self::Array(ty, len) => {
+                write!(f, "[{ty}")?;
+                if let Some(len) = len {
+                    write!(f, "; {len}")?;
+                }
+                write!(f, "]")
+            }
+            Self::Struct(id, tys) => {
+                write!(f, "{id}<")?;
+                for (i, ty) in tys.iter().enumerate() {
+                    if i != 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{ty}")?;
+                }
+                write!(f, ">")
+            }
+            Self::Func(args, ret) => {
+                write!(f, "(")?;
+                for (i, ty) in args.iter().enumerate() {
+                    if i != 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{ty}")?;
+                }
+                write!(f, ") -> {ret}")
+            }
+            Self::Const(c) => write!(f, "{c}"),
+        }
+    }
 }
 
 impl Ty {

@@ -13,6 +13,7 @@
 //!   is performed by [`TypeChecker`].
 
 #![feature(let_chains)]
+#![feature(more_qualified_paths)]
 
 pub mod check;
 pub mod error;
@@ -153,21 +154,16 @@ fn join_by_comma<'a, T: ToString + 'a>(items: impl Iterator<Item = &'a T> + 'a) 
 
 impl<M: Metadata> Display for Hir<M>
 where
-    for<'a> WithHir<'a, M::Expr, M>: ToString,
-    for<'a> WithHir<'a, Spanned<Node<M>>, M>: ToString,
-    for<'a> WithHir<'a, Func<M>, M>: ToString,
-    for<'a> WithHir<'a, Const<M>, M>: ToString,
-    for<'a> WithHir<'a, StructTy<M::Ty>, M>: ToString,
-    for<'a> WithHir<'a, Alias<M::Expr>, M>: ToString,
+    for<'a> WithHir<'a, M::Expr, M>: Display,
+    for<'a> WithHir<'a, Spanned<Node<M>>, M>: Display,
+    for<'a> WithHir<'a, Func<M>, M>: Display,
+    for<'a> WithHir<'a, Const<M>, M>: Display,
+    for<'a> WithHir<'a, StructTy<M>, M>: Display,
+    for<'a> WithHir<'a, Alias<M::Expr>, M>: Display,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         for (module, scope) in &self.modules {
-            writeln!(f, "module {} {{", module)?;
-            let scope = self.scopes.get(scope).unwrap();
-            for node in scope.children.value() {
-                WithHir(node, self).write_indent(f)?;
-            }
-            write!(f, "}}")?;
+            self.write_scope(f, *scope, |f| write!(f, "module {module} "))?;
         }
         Ok(())
     }
@@ -204,7 +200,7 @@ pub struct Scope<M: Metadata = LowerMetadata> {
     /// A mapping of all constants in the scope.
     pub consts: HashMap<ItemId, Const<M>>,
     /// A mapping of all raw structs within the scope.
-    pub structs: HashMap<ItemId, StructTy<M::Ty>>,
+    pub structs: HashMap<ItemId, StructTy<M>>,
     /// A mapping of all types within the scope.
     pub types: HashMap<ItemId, TyDef<M::Ty>>,
 }
@@ -365,7 +361,7 @@ pub struct FuncHeader<M: Metadata = LowerMetadata> {
     /// The name of the function.
     pub name: Spanned<Ident>,
     /// The type parameters of the function.
-    pub ty_params: Vec<TyParam>,
+    pub ty_params: Vec<TyParam<M::Ty>>,
     /// The parameters of the function.
     pub params: Vec<FuncParam<M>>,
     /// The return type of the function.
@@ -567,24 +563,24 @@ impl<Ty: Display> Display for TyParam<Ty> {
 }
 
 #[derive(Clone, Debug)]
-pub struct StructField<T = Ty> {
+pub struct StructField<M: Metadata = LowerMetadata> {
     pub vis: FieldVisibility,
     pub name: Ident,
-    pub ty: T,
-    pub default: Option<Spanned<Expr>>,
+    pub ty: M::Ty,
+    pub default: Option<Spanned<M::Expr>>,
 }
 
 #[derive(Clone, Debug)]
-pub struct StructTy<T = Ty> {
+pub struct StructTy<M: Metadata = LowerMetadata> {
     pub vis: ItemVisibility,
     pub name: Spanned<Ident>,
-    pub ty_params: Vec<TyParam<T>>,
-    pub fields: Vec<StructField<T>>,
+    pub ty_params: Vec<TyParam<M::Ty>>,
+    pub fields: Vec<StructField<M>>,
 }
 
-impl<'a, M: Metadata> Display for WithHir<'a, StructField<M::Ty>, M>
+impl<'a, M: Metadata> Display for WithHir<'a, StructField<M>, M>
 where
-    WithHir<'a, Expr, M>: Display,
+    WithHir<'a, M::Expr, M>: Display,
     M::Ty: Display,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -596,10 +592,10 @@ where
     }
 }
 
-impl<'a, M: Metadata> Display for WithHir<'a, StructTy<M::Ty>, M>
+impl<'a, M: Metadata> Display for WithHir<'a, StructTy<M>, M>
 where
-    WithHir<'a, Expr, M>: Display,
-    WithHir<'a, StructField<M::Ty>, M>: Display,
+    WithHir<'a, M::Expr, M>: Display,
+    WithHir<'a, StructField<M>, M>: Display,
     M::Ty: Display,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -625,7 +621,7 @@ where
     }
 }
 
-impl<Ty: Clone + SubstituteTyParams<Ty>> StructTy<Ty> {
+impl StructTy {
     pub fn into_adhoc_struct_ty_with_applied_ty_params(
         self,
         span: Option<Span>,
@@ -880,7 +876,7 @@ pub enum Expr {
     AssignPtr(Box<Spanned<Self>>, Box<Spanned<Self>>),
 }
 
-struct WithHir<'a, T, M: Metadata = LowerMetadata>(&'a T, &'a Hir<M>);
+pub struct WithHir<'a, T, M: Metadata = LowerMetadata>(&'a T, &'a Hir<M>);
 
 impl<'a, T, M: Metadata> WithHir<'a, T, M> {
     pub fn with<U>(&self, new: &'a U) -> WithHir<'a, U, M> {
@@ -888,25 +884,24 @@ impl<'a, T, M: Metadata> WithHir<'a, T, M> {
     }
 }
 
-impl<'a, T, M: Metadata> WithHir<'a, T, M>
+impl<'a, M: 'a + Metadata> Hir<M>
 where
     WithHir<'a, M::Expr, M>: Display,
-    WithHir<'a, Spanned<Node<M>>, M>: ToString,
-    WithHir<'a, Func<M>, M>: ToString,
-    WithHir<'a, Const<M>, M>: ToString,
-    WithHir<'a, StructTy<M::Ty>, M>: ToString,
-    WithHir<'a, Alias<M::Expr>, M>: ToString,
+    WithHir<'a, Spanned<Node<M>>, M>: Display,
+    WithHir<'a, Func<M>, M>: Display,
+    WithHir<'a, Const<M>, M>: Display,
+    WithHir<'a, StructTy<M>, M>: Display,
+    WithHir<'a, Alias<M::Expr>, M>: Display,
 {
     #[inline]
-    pub fn get_scope(&self, sid: ScopeId) -> &'a Scope<M> {
-        self.1
-            .scopes
+    pub fn get_scope(&self, sid: ScopeId) -> &Scope<M> {
+        self.scopes
             .get(&sid)
             .expect(&format!("invalid scope id {sid}"))
     }
 
     pub fn write_scope(
-        &self,
+        &'a self,
         f: &mut Formatter,
         sid: ScopeId,
         header: impl FnOnce(&mut Formatter) -> fmt::Result,
@@ -919,26 +914,26 @@ where
         self.write_block(f, &scope)
     }
 
-    pub fn write_block(&self, f: &mut Formatter, scope: &'a Scope<M>) -> fmt::Result {
+    pub fn write_block(&'a self, f: &mut Formatter, scope: &'a Scope<M>) -> fmt::Result {
         f.write_str("{\n")?;
         for (item, func) in &scope.funcs {
             writeln!(f, "{item}:")?;
-            self.with(func).write_indent(f)?;
+            WithHir(func, self).write_indent(f)?;
         }
         for (item, alias) in &scope.aliases {
             writeln!(f, "{item}:")?;
-            self.with(alias).write_indent(f)?;
+            WithHir(alias, self).write_indent(f)?;
         }
         for (item, cnst) in &scope.consts {
             writeln!(f, "{item}:")?;
-            self.with(cnst).write_indent(f)?;
+            WithHir(cnst, self).write_indent(f)?;
         }
         for (item, strct) in &scope.structs {
             writeln!(f, "{item}:")?;
-            self.with(strct).write_indent(f)?;
+            WithHir(strct, self).write_indent(f)?;
         }
         for line in scope.children.value() {
-            self.with(line).write_indent(f)?;
+            WithHir(line, self).write_indent(f)?;
         }
         f.write_str("}")
     }
@@ -1022,23 +1017,23 @@ impl Display for WithHir<'_, Expr> {
                     self.with(&**value)
                 )
             }
-            Expr::Block(sid) => self.write_scope(f, *sid, |_| Ok(())),
+            Expr::Block(sid) => self.1.write_scope(f, *sid, |_| Ok(())),
             Expr::If(cond, then, els) => {
-                let then = self.get_scope(*then);
+                let then = self.1.get_scope(*then);
                 if let Some(label) = then.label {
                     write!(f, ":{label} ")?;
                 }
                 write!(f, "if {} ", self.with(&**cond))?;
-                self.write_block(f, then)?;
+                self.1.write_block(f, then)?;
 
                 if let Some(els) = els {
-                    let els = self.get_scope(*els);
+                    let els = self.1.get_scope(*els);
                     write!(f, " else ")?;
-                    self.write_block(f, els)?;
+                    self.1.write_block(f, els)?;
                 }
                 Ok(())
             }
-            Expr::Loop(sid) => self.write_scope(f, *sid, |f| write!(f, "loop ")),
+            Expr::Loop(sid) => self.1.write_scope(f, *sid, |f| write!(f, "loop ")),
             Expr::Assign(pat, value) => {
                 write!(f, "{pat} = {}", self.with(&**value))
             }
@@ -1095,9 +1090,10 @@ where
     }
 }
 
-impl<'a, M: Metadata> Display for WithHir<'a, Const, M>
+impl<'a, M: Metadata> Display for WithHir<'a, Const<M>, M>
 where
-    WithHir<'a, Expr, M>: Display,
+    WithHir<'a, M::Expr, M>: Display,
+    M::Ty: Display,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(
@@ -1177,14 +1173,15 @@ where
 
 impl<'a, M: Metadata> Display for WithHir<'a, Func<M>, M>
 where
-    WithHir<'a, FuncHeader<M>, M>: Display,
     WithHir<'a, M::Expr, M>: Display,
-    WithHir<'a, Spanned<Node<M>>, M>: ToString,
-    WithHir<'a, Const<M>, M>: ToString,
-    WithHir<'a, StructTy<M::Ty>, M>: ToString,
+    WithHir<'a, Spanned<Node<M>>, M>: Display,
+    WithHir<'a, Const<M>, M>: Display,
+    WithHir<'a, StructTy<M>, M>: Display,
+    WithHir<'a, Alias<M::Expr>, M>: Display,
+    M::Ty: Display,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{} func {} ", self.0.vis, self.with(&self.0.header))?;
-        self.write_block(f, self.get_scope(self.0.body))
+        self.1.write_block(f, self.1.get_scope(self.0.body))
     }
 }
