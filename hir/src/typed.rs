@@ -383,8 +383,15 @@ impl Ty {
     pub fn apply(&mut self, substitutions: &VecDeque<Ty>) {
         match self {
             Self::Unknown(i) => {
-                if let Some(ty) = substitutions.get(*i) {
-                    *self = ty.clone();
+                match substitutions.get(*i) {
+                    // If this substitution is a reference to another unknown, we need to apply that
+                    // substitution as well.
+                    Some(Self::Unknown(j)) if *j != *i => {
+                        *self = Self::Unknown(*j);
+                        self.apply(substitutions);
+                    }
+                    Some(ty) => *self = ty.clone(),
+                    None => (),
                 }
             }
             Self::Tuple(tys) => {

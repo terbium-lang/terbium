@@ -695,6 +695,7 @@ pub enum Intrinsic {
     IntLe,
     IntGt,
     IntGe,
+
     FloatPos,
     FloatNeg,
     FloatAdd,
@@ -708,8 +709,11 @@ pub enum Intrinsic {
     FloatLe,
     FloatGt,
     FloatGe,
+
     BoolEq,
     BoolNot,
+    BoolAnd,
+    BoolOr,
 }
 
 impl Intrinsic {
@@ -748,6 +752,8 @@ impl Intrinsic {
             Self::FloatGe => "float_ge",
             Self::BoolEq => "bool_eq",
             Self::BoolNot => "bool_not",
+            Self::BoolAnd => "bool_and",
+            Self::BoolOr => "bool_or",
         }
     }
 
@@ -852,6 +858,21 @@ impl Display for StaticOp {
     }
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum LogicalOp {
+    And,
+    Or,
+}
+
+impl Display for LogicalOp {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::And => "&&",
+            Self::Or => "||",
+        })
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum Expr {
     Literal(Literal),
@@ -866,6 +887,7 @@ pub enum Expr {
     },
     CallOp(Op, Box<Spanned<Self>>, Vec<Spanned<Self>>),
     CallStaticOp(StaticOp, Ty, Vec<Spanned<Self>>),
+    CallLogicalOp(LogicalOp, Box<Spanned<Self>>, Box<Spanned<Self>>),
     Cast(Box<Spanned<Self>>, Ty),
     GetAttr(Box<Spanned<Self>>, Spanned<Ident>),
     SetAttr(Box<Spanned<Self>>, Spanned<Ident>, Box<Spanned<Self>>),
@@ -1002,6 +1024,9 @@ impl Display for WithHir<'_, Expr> {
             }
             Expr::CallStaticOp(op, ty, args) => {
                 write!(f, "({ty}).{op}({})", comma_sep(args))
+            }
+            Expr::CallLogicalOp(op, lhs, rhs) => {
+                write!(f, "({} {op} {})", self.with(&**lhs), self.with(&**rhs))
             }
             Expr::Cast(expr, ty) => {
                 write!(f, "({} to {ty})", self.with(&**expr))

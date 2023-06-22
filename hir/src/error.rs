@@ -83,14 +83,16 @@ pub enum Error {
     ConditionNotBool(Spanned<Ty>),
     /// Cannot reassign to an immutable variable. Represented as (reass_span, def)
     ReassignmentToImmutable(Span, Spanned<Ident>),
-    /// Could not infer the type of a variable.
-    CouldNotInferType(Spanned<Ident>),
+    /// Could not infer the type of a variable or value.
+    CouldNotInferType(Span, Option<Ident>),
     /// There is no loop to break or continue from.
     InvalidBreak(Span, Option<Spanned<Ident>>),
     /// There is no function to return from.
     InvalidReturn(Span),
     /// Block label not found.
     LabelNotFound(Spanned<Ident>),
+    /// Used a variable before it was initialized.
+    UseOfUninitializedVariable(Span, Spanned<Ident>),
 }
 
 impl Display for Error {
@@ -171,8 +173,8 @@ impl Display for Error {
             Self::ReassignmentToImmutable(_, def) => {
                 write!(f, "cannot reassign to immutable variable `{def}`")
             }
-            Self::CouldNotInferType(def) => {
-                write!(f, "could not infer type for `{def}`")
+            Self::CouldNotInferType(_, def) => {
+                write!(f, "could not infer type for `{def:?}`")
             }
             Self::InvalidBreak(..) => {
                 write!(f, "cannot break from this context")
@@ -182,6 +184,9 @@ impl Display for Error {
             }
             Self::LabelNotFound(name) => {
                 write!(f, "cannot find label `{name}`")
+            }
+            Self::UseOfUninitializedVariable(_, name) => {
+                write!(f, "use of uninitialized variable `{name}`")
             }
         }
     }
@@ -216,6 +221,7 @@ impl Error {
             Self::InvalidBreak(..) => "cannot break from this context",
             Self::InvalidReturn(_) => "cannot return from this context",
             Self::LabelNotFound(_) => "cannot find label",
+            Self::UseOfUninitializedVariable(..) => "use of potentially uninitialized variable",
         }
     }
 
@@ -241,10 +247,11 @@ impl Error {
             Self::PatternMismatch { .. } => 114,
             Self::ConditionNotBool(_) => 115,
             Self::ReassignmentToImmutable(..) => 116,
-            Self::CouldNotInferType(_) => 117,
+            Self::CouldNotInferType(..) => 117,
             Self::InvalidBreak(..) => 118,
             Self::InvalidReturn(_) => 119,
             Self::LabelNotFound(_) => 120,
+            Self::UseOfUninitializedVariable(..) => 121,
         }
     }
 
@@ -547,11 +554,16 @@ impl Error {
                         .with_message("add `mut` to make the binding mutable")
                     )
             }
-            Self::CouldNotInferType(def) => {
+            Self::CouldNotInferType(span, def) => {
+                let message = if let Some(def) = def {
+                    format!("cannot infer type for variable `{def}`")
+                } else {
+                    "cannot infer type for this expression".to_string()
+                };
                 diagnostic
                     .with_section(Section::new()
-                        .with_label(Label::at(def.span())
-                            .with_message(format!("cannot infer type for variable `{def}`"))
+                        .with_label(Label::at(span)
+                            .with_message(message)
                         )
                         .with_note("all types must be known at compile-time")
                     )
@@ -588,6 +600,21 @@ impl Error {
                         )
                     )
                     .with_help("check the spelling of the label")
+            }
+            Self::UseOfUninitializedVariable(span, def) => {
+                diagnostic
+                    .with_section(Section::new()
+                        .with_label(Label::at(span)
+                            .with_message(format!("used uninitialized variable `{def}` here"))
+                        )
+                    )
+                    .with_section(Section::new()
+                        .with_header(format!("`{def}` was defined here:"))
+                        .with_label(Label::at(def.span())
+                            .with_message(format!("`{def}` is potentially left uninitialized"))
+                        )
+                    )
+                    .with_help(format!("make sure `{def}` is initialized with a value before using it"))
             }
         };
         diagnostic

@@ -2,8 +2,8 @@ use crate::{
     error::{Error, Result},
     typed::{self, Constraint, InvalidTypeCause, Relation, Ty, TypedExpr, UnificationTable},
     warning::Warning,
-    Expr, FloatWidth, Hir, Ident, IntSign, IntWidth, ItemId, Literal, Metadata, ModuleId, Node, Op,
-    Pattern, PrimitiveTy, ScopeId, TyParam,
+    Expr, FloatWidth, Hir, Ident, IntSign, IntWidth, Intrinsic, ItemId, Literal, LogicalOp,
+    Metadata, ModuleId, Node, Op, Pattern, PrimitiveTy, ScopeId, TyParam,
 };
 use common::span::{Span, Spanned, SpannedExt};
 use std::{borrow::Cow, collections::HashMap};
@@ -214,7 +214,7 @@ impl TypeLowerer {
             local.ty.apply(&mut self.table.substitutions);
             // At this point, the type should be fully known
             if local.ty.has_any_unknown() {
-                self.err_nonfatal(Error::CouldNotInferType(Spanned(*ident, local.def_span)))
+                self.err_nonfatal(Error::CouldNotInferType(local.def_span, Some(*ident)))
             }
             if ident.to_string().chars().next() != Some('_') && !local.used {
                 self.warnings.push(Warning::UnusedVariable(Spanned(
@@ -368,7 +368,13 @@ impl TypeLowerer {
                 TypedExpr(typed::Expr::Literal(lit), ty)
             }
             Expr::Ident(ident, args) => {
-                let ty = self.lower_ident_binding(&ident, &args)?.ty;
+                let binding = self.lower_ident_binding(&ident, &args)?;
+                if !binding.initialized {
+                    self.err_nonfatal(Error::UseOfUninitializedVariable(
+                        ident.span(),
+                        Spanned(ident.0, binding.def_span),
+                    ));
+                }
                 TypedExpr(
                     typed::Expr::Ident(
                         ident,
@@ -378,7 +384,7 @@ impl TypeLowerer {
                             })
                         }),
                     ),
-                    ty,
+                    binding.ty,
                 )
             }
             Expr::Tuple(exprs) => {
@@ -442,6 +448,34 @@ impl TypeLowerer {
                     None => Ty::Primitive(PrimitiveTy::Void),
                 };
                 TypedExpr(typed::Expr::If(Box::new(cond), left, right), ty)
+            }
+            Expr::CallLogicalOp(op, lhs, rhs) => {
+                // lower to an intrinsic and desugar from there in typeck stage
+                let op = match op {
+                    LogicalOp::And => Intrinsic::BoolAnd,
+                    LogicalOp::Or => Intrinsic::BoolOr,
+                };
+                let lhs = self.lower_expr(*lhs)?;
+                let rhs = self.lower_expr(*rhs)?;
+
+                let ty = {
+                    let left_ty = &lhs.value().1;
+                    let right_ty = &rhs.value().1;
+
+                    #[allow(unused_parens)]
+                    if !left_ty.known()
+                        || matches!(
+                            left_ty.relation_to(&right_ty),
+                            (Relation::Eq | Relation::Super)
+                        )
+                    {
+                        left_ty
+                    } else {
+                        // Like `If`, if left_ty != right_ty, check at the typeck stage.
+                        right_ty
+                    }
+                };
+                TypedExpr(typed::Expr::Intrinsic(op, vec![lhs, rhs]), ty.clone())
             }
             Expr::Assign(target, value) => {
                 let lowered = self.lower_expr(*value)?;

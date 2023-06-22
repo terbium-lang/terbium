@@ -1,7 +1,7 @@
 use crate::{
     error::{Error, Result},
     Const, Expr, FieldVisibility, FloatWidth, Func, FuncHeader, FuncParam, Hir, Ident, IntSign,
-    IntWidth, ItemId, Literal, ModuleId, Node, Op, Pattern, PrimitiveTy, Scope, ScopeId,
+    IntWidth, ItemId, Literal, LogicalOp, ModuleId, Node, Op, Pattern, PrimitiveTy, Scope, ScopeId,
     StructField, StructTy, Ty, TyDef, TyParam,
 };
 use common::span::{Span, Spanned, SpannedExt};
@@ -15,15 +15,11 @@ use grammar::{
 use internment::Intern;
 use std::collections::HashMap;
 
-const BOOL: Ty = Ty::Primitive(PrimitiveTy::Bool);
-
 type NamedTyDef = (ItemId, TyDef);
 
 /// A temporary state used when lowering an AST to HIR.
 #[must_use = "the HIR is only constructed when this is used"]
 pub struct AstLowerer {
-    /// Synchronously increasing scope ID
-    scope_id: ScopeId,
     /// Lookup of module ASTs given a module ID
     module_nodes: HashMap<ModuleId, Vec<Spanned<ast::Node>>>,
     /// During the lowering of structs to typerefs, this keeps a list of structs that need to
@@ -62,7 +58,7 @@ fn get_ident(ident: String) -> Ident {
 }
 
 #[inline]
-fn get_ident_from_ref(ident: impl AsRef<str>) -> Ident {
+pub fn get_ident_from_ref(ident: impl AsRef<str>) -> Ident {
     Ident(Intern::from_ref(ident.as_ref()))
 }
 
@@ -90,7 +86,6 @@ impl AstLowerer {
     /// Creates a new AST lowerer.
     pub fn new(root: Vec<Spanned<ast::Node>>) -> Self {
         Self {
-            scope_id: ScopeId(0),
             module_nodes: HashMap::from([(ModuleId::root(), root)]),
             sty_needs_field_resolution: HashMap::new(),
             hir: Hir::default(),
@@ -100,20 +95,9 @@ impl AstLowerer {
 
     #[inline]
     fn register_scope(&mut self, scope: Scope) -> ScopeId {
-        let scope_id = self.scope_id;
+        let scope_id = ScopeId(self.hir.scopes.len());
         self.hir.scopes.insert(scope_id, scope);
-        self.scope_id = self.scope_id.next();
         scope_id
-    }
-
-    #[inline]
-    fn anon_scope_from_expr(&mut self, module: ModuleId, expr: Spanned<Expr>) -> ScopeId {
-        let span = expr.span();
-        self.register_scope(Scope::new(
-            module,
-            None,
-            Spanned(vec![Spanned(Node::ImplicitReturn(expr), span)], span),
-        ))
     }
 
     #[inline]
@@ -753,7 +737,15 @@ impl AstLowerer {
                         vec![self.lower_expr(ctx, *right)?],
                     )
                 } else {
-                    return self.lower_logical_into_if_stmt(ctx, *left, *right, op.into_value());
+                    Expr::CallLogicalOp(
+                        match op.value() {
+                            ast::BinaryOp::LogicalAnd => LogicalOp::And,
+                            ast::BinaryOp::LogicalOr => LogicalOp::Or,
+                            _ => unimplemented!("operator is not a logical operator"),
+                        },
+                        Box::new(self.lower_expr(ctx, *left)?),
+                        Box::new(self.lower_expr(ctx, *right)?),
+                    )
                 }
             }
             E::Tuple(exprs) => Expr::Tuple(
@@ -829,19 +821,19 @@ impl AstLowerer {
                         // Desugar a ||= b or a &&= b to `a = a || b` or `a = a && b`
                         op @ (AssignmentOperator::LogicalOrAssign
                         | AssignmentOperator::LogicalAndAssign) => {
-                            let rhs = self.lower_logical_into_if_stmt(
-                                ctx,
-                                Self::lower_assignment_target_into_ast_expr(target.clone())?,
-                                *value,
+                            let rhs = Expr::CallLogicalOp(
                                 match op {
-                                    AssignmentOperator::LogicalOrAssign => ast::BinaryOp::LogicalOr,
-                                    AssignmentOperator::LogicalAndAssign => {
-                                        ast::BinaryOp::LogicalAnd
-                                    }
-                                    _ => unreachable!(),
+                                    AssignmentOperator::LogicalAndAssign => LogicalOp::And,
+                                    AssignmentOperator::LogicalOrAssign => LogicalOp::Or,
+                                    _ => unimplemented!("operator is not a logical operator"),
                                 },
-                            )?;
-                            self.lower_assignment(ctx, target, rhs)?
+                                Box::new(self.lower_expr(
+                                    ctx,
+                                    Self::lower_assignment_target_into_ast_expr(target.clone())?,
+                                )?),
+                                Box::new(self.lower_expr(ctx, *value)?),
+                            );
+                            self.lower_assignment(ctx, target, rhs.spanned(span))?
                         }
                         AssignmentOperator::Assign => {
                             let value = self.lower_expr(ctx, *value)?;
@@ -1095,64 +1087,6 @@ impl AstLowerer {
             B::Ge => Some(Op::Ge),
             _ => None,
         }
-    }
-
-    /// Desugar logical operators into if statements.
-    ///
-    /// For example, `a || b` becomes:
-    /// ```text
-    /// {
-    ///     let __lhs = a;
-    ///     if __lhs { __lhs } else { b }
-    /// }
-    /// ```
-    #[inline]
-    pub fn lower_logical_into_if_stmt(
-        &mut self,
-        ctx: &Ctx,
-        lhs: Spanned<ast::Expr>,
-        rhs: Spanned<ast::Expr>,
-        op: ast::BinaryOp,
-    ) -> Result<Spanned<Expr>> {
-        let span = lhs.span().merge(rhs.span());
-        let binding = Spanned(get_ident_from_ref("__lhs"), lhs.span());
-        let binding_expr = Spanned(Expr::Ident(binding, None), lhs.span());
-
-        let lhs = self.lower_expr(ctx, lhs)?;
-        let rhs = self.lower_expr(ctx, rhs)?;
-        let cond = Box::new(Spanned(
-            Expr::Cast(Box::new(binding_expr.clone()), BOOL),
-            lhs.span(),
-        ));
-
-        let then = self.anon_scope_from_expr(ctx.module(), binding_expr);
-        let els = self.anon_scope_from_expr(ctx.module(), rhs);
-        let stmt = match op {
-            ast::BinaryOp::LogicalOr => Expr::If(cond, then, Some(els)),
-            ast::BinaryOp::LogicalAnd => Expr::If(cond, then, Some(els)),
-            _ => unimplemented!("logical op is not implemented for this operator"),
-        };
-
-        let spanned = |node| Spanned(node, span);
-        let block = self.register_scope(Scope::new(
-            ctx.module(),
-            None,
-            vec![
-                // Store the LHS in a temporary binding
-                spanned(Node::Let {
-                    pat: lhs.as_ref().map(|_| Pattern::Ident {
-                        ident: binding,
-                        mut_kw: None,
-                    }),
-                    ty: Ty::Unknown,
-                    ty_span: Some(lhs.span()),
-                    value: Some(lhs),
-                }),
-                spanned(Node::ImplicitReturn(Spanned(stmt, span))),
-            ]
-            .spanned(span),
-        ));
-        Ok(Spanned(Expr::Block(block), span))
     }
 
     /// Lowers an atom into an HIR literal expression.
