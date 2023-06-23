@@ -628,8 +628,8 @@ impl Display for AssignmentOperator {
 pub enum AssignmentTarget {
     /// A pattern match target.
     Pattern(Pattern),
-    /// A dereference of a mutable reference, directing the reassignment to what the reference is
-    /// pointing to instead of the reference itself, e.g. `&x = 1;`.
+    /// A dereference of a mutable reference, directing the reassignment to the pointee instead of
+    /// the reference itself, e.g. `*x = 1;`.
     Pointer(Box<Spanned<Expr>>),
     /// An attribute access. Note that this overrides variant patterns such as `Enum.Variant`;
     /// that will parse as Attr { subject: Enum, attr: "Variant" }.
@@ -652,7 +652,7 @@ impl Display for AssignmentTarget {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Pattern(p) => write!(f, "{p}"),
-            Self::Pointer(p) => write!(f, "&{p}"),
+            Self::Pointer(p) => write!(f, "*{p}"),
             Self::Attr { subject, attr } => write!(f, "{subject}.{attr}"),
             Self::Index { subject, index } => write!(f, "{subject}[{index}]"),
         }

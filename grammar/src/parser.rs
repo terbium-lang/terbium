@@ -1343,7 +1343,7 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
                 pat.value().assert_immutable_bindings()?;
                 Ok(pat.map(AssignmentTarget::Pattern))
             }),
-            just(TokenInfo::And)
+            just(TokenInfo::Asterisk)
                 .then_ws()
                 .ignore_then(expr)
                 .map_with_span(|expr, span| {

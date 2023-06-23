@@ -427,7 +427,7 @@ impl<'a> TokenReader<'a> {
     }
 
     /// Consumes whitespace until the next non-whitespace character, returning `true` if whitespace
-    /// was encountered. This wil leave the cursor pointing at the whitespace character directly
+    /// was encountered. This will leave the cursor pointing at the whitespace character directly
     /// before the next non-whitespace character.
     fn consume_whitespace(&mut self) -> bool {
         let mut ws = false;
