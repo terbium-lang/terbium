@@ -112,7 +112,7 @@ pub enum Expr {
         args: Vec<E>,
         kwargs: Vec<(Ident, E)>,
     },
-    CallOp(Op, Box<E>, Vec<E>),
+    CallOp(Spanned<Op>, Box<E>, Vec<E>),
     CallStaticOp(StaticOp, Ty, Vec<E>),
     Cast(Box<E>, Ty),
     GetAttr(Box<E>, Spanned<Ident>),

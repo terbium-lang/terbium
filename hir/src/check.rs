@@ -133,15 +133,32 @@ impl<'a> TypeChecker<'a> {
         (Expr::Block(block), ty)
     }
 
-    fn lower_logical(&mut self, module_id: ModuleId, intrinsic: BoolIntrinsic) -> (Expr, Ty) {
+    fn lower_logical(
+        &mut self,
+        module_id: ModuleId,
+        intrinsic: BoolIntrinsic,
+        table: &mut UnificationTable,
+    ) -> (Expr, Ty) {
         let (is_or, lhs, rhs) = match intrinsic {
             BoolIntrinsic::And(lhs, rhs) => (false, *lhs, *rhs),
             BoolIntrinsic::Or(lhs, rhs) => (true, *lhs, *rhs),
             // SAFETY: this is a private function only called when the intrinsic is a logical
             _ => unsafe { std::hint::unreachable_unchecked() },
         };
-        let lhs_ty = lhs.value().1.clone();
-        let rhs_ty = rhs.value().1.clone();
+        let mut lhs_ty = lhs.value().1.clone();
+        let mut rhs_ty = rhs.value().1.clone();
+
+        // Unify the types of the LHS and RHS
+        if let Some(conflict) = table.unify_constraint(Constraint(lhs_ty.clone(), rhs_ty.clone())) {
+            self.lower.err_nonfatal(Error::TypeConflict {
+                actual: rhs_ty.clone().spanned(rhs.span()),
+                expected: (lhs_ty.clone(), Some(lhs.span())),
+                constraint: conflict,
+            });
+        }
+        lhs_ty.apply(&table.substitutions);
+        rhs_ty.apply(&table.substitutions);
+
         // Determine the diverging type
         let ty = match lhs_ty.relation_to(&rhs_ty) {
             // Favor the LHS type if it is less or equally as specific
@@ -150,11 +167,7 @@ impl<'a> TypeChecker<'a> {
             Relation::Sub => rhs_ty,
             // If the types are unrelated, this is a type error
             Relation::Unrelated => {
-                self.lower.err_nonfatal(Error::TypeConflict {
-                    actual: crate::Ty::from(rhs_ty.clone()).spanned(rhs.span()),
-                    expected: (crate::Ty::from(lhs_ty.clone()), Some(lhs.span())),
-                    constraint: Constraint(lhs_ty, rhs_ty.clone()),
-                });
+                // error: mismatched types
                 // Assume the RHS type
                 rhs_ty
             }
@@ -198,7 +211,7 @@ impl<'a> TypeChecker<'a> {
 
     /// Lowers an op call into a potential intrinsic.
     pub fn lower_op(
-        op: Op,
+        Spanned(op, op_span): Spanned<Op>,
         target: Spanned<TypedExpr>,
         arg1: Option<Spanned<TypedExpr>>,
         expr: &mut Expr,
@@ -211,6 +224,7 @@ impl<'a> TypeChecker<'a> {
 
         let arg1_ty = arg1.as_ref().map(|arg| &arg.value().1);
         match (op, int_intrinsic, &target.value().1, arg1_ty) {
+            // int logical_op int -> bool
             // int op int -> (widest, least specific) int
             (_, Some(intr), P(Int(lsign, lw)), Some(P(Int(rsign, rw)))) => {
                 let sign = match (lsign, rsign) {
@@ -223,7 +237,11 @@ impl<'a> TypeChecker<'a> {
                     sign,
                     width,
                 );
-                *ty = P(Int(sign, width));
+                *ty = if matches!(op, Op::Lt | Op::Gt | Op::Le | Op::Ge | Op::Eq) {
+                    BOOL
+                } else {
+                    P(Int(sign, width))
+                };
             }
             // op int -> int
             (Op::BitNot | Op::Neg, _, &P(Int(sign, width)), None) => {
@@ -260,27 +278,36 @@ impl<'a> TypeChecker<'a> {
         match expr {
             Expr::BoolIntrinsic(intrinsic) => {
                 // TODO: intrinsic does not need to be cloned at all
-                let (new_expr, new_ty) = self.lower_logical(module, intrinsic.clone());
+                let (new_expr, new_ty) = self.lower_logical(module, intrinsic.clone(), table);
                 *expr = new_expr;
                 *ty = new_ty;
             }
-            Expr::If(_, then, Some(els)) => {
+            Expr::If(_, then_id, Some(else_id)) => {
                 // TODO: lots of repetitive code here, this could be refactored.
                 let scopes = &self.thir().scopes;
-                let then_span = scopes.get(then).expect("missing scope").children.span();
-                let els_span = scopes.get(els).expect("missing scope").children.span();
+                let then_span = scopes.get(then_id).expect("missing scope").children.span();
+                let els_span = scopes.get(else_id).expect("missing scope").children.span();
 
-                let Some(then) = self
+                let Some(mut then) = self
                     .lower
-                    .raw_resolution_lookup
-                    .get(then) else { return };
-                let Some(els) = self
+                    .resolution_lookup
+                    .remove(then_id) else { return };
+                let Some(mut els) = self
                     .lower
-                    .raw_resolution_lookup
-                    .get(els) else { return };
-                // SAFETY: since self.lower is a valid reference to the lowerer, and the lowerer
-                //   owns the type resolution table, this is safe.
-                let (then, els) = unsafe { (&mut **then, &mut **els) };
+                    .resolution_lookup
+                    .remove(else_id) else { return };
+
+                if let Some(conflict) =
+                    table.unify_constraint(Constraint(then.clone(), els.clone()))
+                {
+                    self.lower.err_nonfatal(Error::TypeConflict {
+                        actual: conflict.1.clone().spanned(els_span),
+                        expected: (conflict.0.clone(), Some(then_span)),
+                        constraint: conflict,
+                    });
+                }
+                then.apply(&table.substitutions);
+                els.apply(&table.substitutions);
 
                 match then.relation_to(&els) {
                     // Favor the LHS type if it is less or equally as specific
@@ -289,15 +316,14 @@ impl<'a> TypeChecker<'a> {
                     Relation::Sub => *ty = els.clone(),
                     // If the types are unrelated, this is a type error
                     Relation::Unrelated => {
-                        self.lower.err_nonfatal(Error::TypeConflict {
-                            actual: crate::Ty::from(els.clone()).spanned(els_span),
-                            expected: (crate::Ty::from(then.clone()), Some(then_span)),
-                            constraint: Constraint(then.clone(), els.clone()),
-                        });
+                        // err(self, Constraint(then.clone(), els.clone()));
                         // Assume the RHS type
                         *ty = els.clone();
                     }
                 }
+                // Replace the then and else scopes with the new types
+                self.lower.resolution_lookup.insert(*then_id, then);
+                self.lower.resolution_lookup.insert(*else_id, els);
             }
             Expr::CallOp(op, target, args) => {
                 Self::lower_op(*op, (**target).clone(), args.first().cloned(), expr, ty);
@@ -307,8 +333,8 @@ impl<'a> TypeChecker<'a> {
         // Unify the new type with the old type
         if let Some(conflict) = table.unify_constraint(Constraint(initial, ty.clone())) {
             self.lower.err_nonfatal(Error::TypeConflict {
-                expected: (crate::Ty::from(conflict.0.clone()), None),
-                actual: crate::Ty::from(conflict.1.clone()).spanned(*span),
+                expected: (conflict.0.clone(), None),
+                actual: conflict.1.clone().spanned(*span),
                 constraint: conflict,
             });
         }
@@ -423,12 +449,8 @@ impl<'a> TypeChecker<'a> {
                 _ => (),
             }
         }
-        if let Some(ty) = self.lower.raw_resolution_lookup.get_mut(&scope_id) {
-            // SAFETY: since self.lower is a valid reference to the lowerer, and the lowerer
-            //   owns the type resolution table, this is safe.
-            unsafe {
-                (**ty).apply(&table.substitutions);
-            }
+        if let Some(ty) = self.lower.resolution_lookup.get_mut(&scope_id) {
+            ty.apply(&table.substitutions);
         }
         // Put the scope back into THIR
         self.thir_mut().scopes.insert(scope_id, scope);

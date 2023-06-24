@@ -720,29 +720,29 @@ impl AstLowerer {
             E::Atom(atom) => return self.lower_atom(Spanned(atom, span)),
             E::Ident(ident, tys) => return self.lower_ident_expr(ctx, ident.map(get_ident), tys),
             E::UnaryOp { op, expr } => Expr::CallOp(
-                match *op.value() {
+                op.map(|op| match op {
                     U::Plus => Op::Pos,
                     U::Minus => Op::Neg,
                     U::BitNot => Op::BitNot,
                     U::Not => Op::Not,
-                },
+                }),
                 Box::new(self.lower_expr(ctx, *expr)?),
                 Vec::new(),
             ),
             E::BinaryOp { left, op, right } => {
-                if let Some(op) = Self::lower_bin_op(*op.value()) {
+                if let Some(inner) = Self::lower_bin_op(*op.value()) {
                     Expr::CallOp(
-                        op,
+                        inner.spanned(op.span()),
                         Box::new(self.lower_expr(ctx, *left)?),
                         vec![self.lower_expr(ctx, *right)?],
                     )
                 } else {
                     Expr::CallLogicalOp(
-                        match op.value() {
+                        op.map(|op| match op {
                             ast::BinaryOp::LogicalAnd => LogicalOp::And,
                             ast::BinaryOp::LogicalOr => LogicalOp::Or,
                             _ => unimplemented!("operator is not a logical operator"),
-                        },
+                        }),
                         Box::new(self.lower_expr(ctx, *left)?),
                         Box::new(self.lower_expr(ctx, *right)?),
                     )
@@ -810,23 +810,30 @@ impl AstLowerer {
                     .map(|(name, arg)| Ok((get_ident(name), self.lower_expr(ctx, arg)?)))
                     .collect::<Result<Vec<_>>>()?,
             },
-            E::Assign { target, op, value } => {
-                match Self::lower_assign_op_into_op(*op.value()) {
+            E::Assign {
+                target,
+                op: raw_op,
+                value,
+            } => {
+                match Self::lower_assign_op_into_op(*raw_op.value()) {
                     Some(op) => Expr::CallOp(
-                        op,
+                        op.spanned(raw_op.span()),
                         Box::new(self.lower_assignment_target_into_expr(ctx, target)?),
                         vec![self.lower_expr(ctx, *value)?],
                     ),
-                    None => match op.value() {
+                    None => match raw_op.value() {
                         // Desugar a ||= b or a &&= b to `a = a || b` or `a = a && b`
                         op @ (AssignmentOperator::LogicalOrAssign
                         | AssignmentOperator::LogicalAndAssign) => {
                             let rhs = Expr::CallLogicalOp(
-                                match op {
-                                    AssignmentOperator::LogicalAndAssign => LogicalOp::And,
-                                    AssignmentOperator::LogicalOrAssign => LogicalOp::Or,
-                                    _ => unimplemented!("operator is not a logical operator"),
-                                },
+                                Spanned(
+                                    match op {
+                                        AssignmentOperator::LogicalAndAssign => LogicalOp::And,
+                                        AssignmentOperator::LogicalOrAssign => LogicalOp::Or,
+                                        _ => unimplemented!("operator is not a logical operator"),
+                                    },
+                                    raw_op.span(),
+                                ),
                                 Box::new(self.lower_expr(
                                     ctx,
                                     Self::lower_assignment_target_into_ast_expr(target.clone())?,
@@ -848,7 +855,7 @@ impl AstLowerer {
                 attr.map(get_ident),
             ),
             E::Index { subject, index } => Expr::CallOp(
-                Op::Index,
+                Op::Index.spanned(index.span()),
                 Box::new(self.lower_expr(ctx, *subject)?),
                 vec![self.lower_expr(ctx, *index)?],
             ),
@@ -882,7 +889,7 @@ impl AstLowerer {
             AssignmentTarget::Index { subject, index } => Expr::AssignPtr(
                 Box::new(Spanned(
                     Expr::CallOp(
-                        Op::IndexMut,
+                        Op::IndexMut.spanned(index.span()),
                         Box::new(self.lower_expr(ctx, *subject)?),
                         vec![self.lower_expr(ctx, *index)?],
                     ),
@@ -963,7 +970,7 @@ impl AstLowerer {
             )),
             AssignmentTarget::Index { subject, index } => Ok(Spanned(
                 Expr::CallOp(
-                    Op::IndexMut,
+                    Op::IndexMut.spanned(index.span()),
                     Box::new(self.lower_expr(ctx, *subject)?),
                     vec![self.lower_expr(ctx, *index)?],
                 ),
@@ -1081,6 +1088,7 @@ impl AstLowerer {
             B::Shl => Some(Op::Shl),
             B::Shr => Some(Op::Shr),
             B::Eq => Some(Op::Eq),
+            B::Ne => Some(Op::Ne),
             B::Lt => Some(Op::Lt),
             B::Le => Some(Op::Le),
             B::Gt => Some(Op::Gt),

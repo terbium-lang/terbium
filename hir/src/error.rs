@@ -1,8 +1,8 @@
-use crate::{typed::Constraint, Ident, ModuleId, PrimitiveTy, Ty};
-use common::{
-    pluralize,
-    span::{Span, Spanned},
+use crate::{
+    typed::{self, Constraint},
+    Ident, ModuleId, PrimitiveTy, Ty,
 };
+use common::span::{Span, Spanned};
 use diagnostics::{Action, Diagnostic, Fix, Label, Section, Severity};
 use grammar::ast::{self, TypeExpr, TypePath};
 use std::{
@@ -11,6 +11,17 @@ use std::{
 };
 
 pub type Result<T> = std::result::Result<T, Error>;
+
+/// Pluralizes the given string
+#[inline]
+#[must_use]
+pub const fn pluralize<'a>(count: usize, singular: &'a str, plural: &'a str) -> &'a str {
+    if count == 1 {
+        singular
+    } else {
+        plural
+    }
+}
 
 /// Represents an error that occurred during the lowering of AST to HIR.
 #[derive(Clone, Debug)]
@@ -53,14 +64,14 @@ pub enum Error {
         /// The span of the type constraint.
         span: Span,
         /// The right-hand side of the type constraint that was cyclic.
-        rhs: Ty,
+        rhs: typed::Ty,
     },
     /// Type conflict when trying to unify types.
     TypeConflict {
         /// The expected type with an optional span.
-        expected: (Ty, Option<Span>),
+        expected: (typed::Ty, Option<Span>),
         /// The actual type.
-        actual: Spanned<Ty>,
+        actual: Spanned<typed::Ty>,
         /// The constraint that caused the type conflict.
         constraint: Constraint,
     },

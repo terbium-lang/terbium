@@ -144,7 +144,9 @@ pub struct TypeLowerer {
     // raw pointers are used here because:
     // 1. it can be guaranteed that the pointers are valid for the lifetime of the type lowerer
     // 2. it's faster
-    pub(crate) raw_resolution_lookup: HashMap<ScopeId, *mut Ty>,
+    raw_resolution_lookup: HashMap<ScopeId, *mut Ty>,
+    /// Scope resolution lookup.
+    pub(crate) resolution_lookup: HashMap<ScopeId, Ty>,
     /// The HIR that is being lowered.
     pub hir: Hir,
     /// The HIR that is being generated.
@@ -163,6 +165,7 @@ impl TypeLowerer {
             scopes: Vec::new(),
             table: UnificationTable::default(),
             raw_resolution_lookup: HashMap::new(),
+            resolution_lookup: HashMap::new(),
             hir,
             thir: Hir::default(),
             warnings: Vec::new(),
@@ -214,6 +217,9 @@ impl TypeLowerer {
 
     pub fn exit_scope_if_exists(&mut self) -> Option<Scope> {
         let mut scope = self.scopes.pop()?;
+        self.resolution_lookup
+            .insert(scope.id, scope.resolution.clone());
+
         for ((ident, env), local) in &mut scope.locals {
             // Only check locals in the current environment
             if *env != self.local_env {
@@ -478,7 +484,7 @@ impl TypeLowerer {
                         right_ty.clone()
                     }
                 };
-                let intrinsic = match op {
+                let intrinsic = match op.value() {
                     LogicalOp::And => BoolIntrinsic::And(lhs, rhs),
                     LogicalOp::Or => BoolIntrinsic::Or(lhs, rhs),
                 };
@@ -651,12 +657,12 @@ impl TypeLowerer {
 
                     if let Some(conflict) = conflict {
                         self.err_nonfatal(Error::TypeConflict {
-                            expected: (ty, ty_span),
+                            expected: (lower_ty.clone(), ty_span),
                             actual: expr.as_ref().map(|expr| expr.1.clone().into()),
                             constraint: conflict,
                         });
                     }
-                    (lower_ty.clone(), Some(expr))
+                    (lower_ty, Some(expr))
                 } else {
                     (self.lower_hir_ty(ty), None)
                 };
@@ -860,6 +866,11 @@ impl TypeLowerer {
         }
         self.exit_scope_if_exists();
         self.thir.modules.insert(module_id, scope_id);
+
+        println!("{}", self.thir);
+        for (n, ty) in self.resolution_lookup.iter_mut() {
+            println!("{n:?} <- {}", ty)
+        }
         Ok(())
     }
 }

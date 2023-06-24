@@ -5,17 +5,6 @@
 
 pub mod span;
 
-/// Pluralizes the given string
-#[inline]
-#[must_use]
-pub const fn pluralize<'a>(count: usize, singular: &'a str, plural: &'a str) -> &'a str {
-    if count == 1 {
-        singular
-    } else {
-        plural
-    }
-}
-
 /// Compilation target.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Target {
