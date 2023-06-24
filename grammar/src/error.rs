@@ -7,7 +7,6 @@ use common::span::Src;
 use diagnostics::{Action, Diagnostic, Fix, Section, Severity};
 use std::{
     fmt::{self, Display, Formatter, Result as FmtResult},
-    io::Write,
     string::ToString,
 };
 

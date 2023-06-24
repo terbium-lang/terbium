@@ -2,6 +2,7 @@ use common::span::{Span, Src};
 use diagnostics::write::DiagnosticWriter;
 use grammar::parser::Parser;
 use grammar::span::Provider;
+use hir::check::TypeChecker;
 use hir::infer::TypeLowerer;
 use hir::lower::AstLowerer;
 use hir::Expr::Ident;
@@ -66,6 +67,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     start.elapsed(),
                                     ty_lowerer.thir
                                 );
+
+                                let mut typeck = TypeChecker::from_lowerer(&mut ty_lowerer);
+                                let subst = typeck.take_substitutions();
+
+                                typeck.check_module(ModuleId::from(Src::None), &subst);
+
+                                println!(
+                                    "=== [ THIR ({:?} to check) ] ===\n\n{}",
+                                    start.elapsed(),
+                                    typeck.lower.thir
+                                );
+                                for error in typeck.lower.errors.drain(..) {
+                                    dwriter.write_diagnostic(
+                                        &mut std::io::stdout(),
+                                        error.into_diagnostic(),
+                                    )?;
+                                }
                             }
                             Err(error) => {
                                 dwriter.write_diagnostic(

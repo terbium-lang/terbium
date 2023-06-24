@@ -1,7 +1,7 @@
-use crate::infer::InferMetadata;
 use crate::{
-    infer::ExitAction, Ident, IntSign, IntWidth, Intrinsic, ItemId, Literal, Node, Op, Pattern,
-    PrimitiveTy, ScopeId, StaticOp, WithHir,
+    infer::{ExitAction, InferMetadata},
+    Ident, IntSign, IntWidth, Intrinsic, ItemId, Literal, Node, Op, Pattern, PrimitiveTy, ScopeId,
+    StaticOp, WithHir,
 };
 use common::span::Spanned;
 use std::{
@@ -10,14 +10,102 @@ use std::{
     fmt::{self, Display, Formatter},
 };
 
-// TODO: This enum and its display impl are duplicates of crate::Expr, maybe find a way to unify
-// them?
+/// The kind of the local environment.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub enum LocalEnv {
+    /// The local is a standard lowered local.
+    #[default]
+    Standard,
+    /// The local is lowered through a user-defined macro.
+    Macro, // TODO: this would take a macro ID
+    /// The local is lowered internally.
+    Internal,
+}
+
+/// Unary intrinsic.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum UnaryIntIntrinsic {
+    Neg,
+    BitNot,
+}
+
+impl Display for UnaryIntIntrinsic {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            UnaryIntIntrinsic::Neg => write!(f, "-"),
+            UnaryIntIntrinsic::BitNot => write!(f, "~"),
+        }
+    }
+}
+
+/// Binary intrinsic.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum BinaryIntIntrinsic {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+    BitAnd,
+    BitOr,
+    BitXor,
+    Shl,
+    Shr,
+    Eq,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+}
+
+impl Display for BinaryIntIntrinsic {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            BinaryIntIntrinsic::Add => write!(f, "+"),
+            BinaryIntIntrinsic::Sub => write!(f, "-"),
+            BinaryIntIntrinsic::Mul => write!(f, "*"),
+            BinaryIntIntrinsic::Div => write!(f, "/"),
+            BinaryIntIntrinsic::Mod => write!(f, "%"),
+            BinaryIntIntrinsic::BitAnd => write!(f, "&"),
+            BinaryIntIntrinsic::BitOr => write!(f, "|"),
+            BinaryIntIntrinsic::BitXor => write!(f, "^"),
+            BinaryIntIntrinsic::Shl => write!(f, "<<"),
+            BinaryIntIntrinsic::Shr => write!(f, ">>"),
+            BinaryIntIntrinsic::Eq => write!(f, "=="),
+            BinaryIntIntrinsic::Lt => write!(f, "<"),
+            BinaryIntIntrinsic::Le => write!(f, "<="),
+            BinaryIntIntrinsic::Gt => write!(f, ">"),
+            BinaryIntIntrinsic::Ge => write!(f, ">="),
+        }
+    }
+}
+
+/// Integer intrinsic.
+#[derive(Clone, Debug)]
+pub enum IntIntrinsic {
+    Unary(UnaryIntIntrinsic, Box<E>),
+    Binary(BinaryIntIntrinsic, Box<E>, Box<E>),
+}
+
+/// Boolean intrinsic.
+#[derive(Clone, Debug)]
+pub enum BoolIntrinsic {
+    Not(Box<E>),
+    And(Box<E>, Box<E>),
+    Or(Box<E>, Box<E>),
+    Xor(Box<E>, Box<E>),
+}
+
+// TODO: This enum and its display impl are almost duplicates of crate::Expr, maybe find a way to unify them?
 #[derive(Clone, Debug)]
 pub enum Expr {
     Literal(Literal),
-    Ident(Spanned<Ident>, Option<Spanned<Vec<Ty>>>),
+    Local(Spanned<Ident>, Option<Spanned<Vec<Ty>>>, LocalEnv),
+    Type(Spanned<Ty>),
     Tuple(Vec<E>),
     Array(Vec<E>),
+    IntIntrinsic(IntIntrinsic, IntSign, IntWidth),
+    BoolIntrinsic(BoolIntrinsic),
     Intrinsic(Intrinsic, Vec<E>),
     Call {
         callee: Box<E>,
@@ -48,7 +136,7 @@ impl Display for WithHir<'_, TypedExpr, InferMetadata> {
         write!(f, "({}) ", self.0 .1)?;
         match &self.0 .0 {
             Expr::Literal(l) => write!(f, "{l}"),
-            Expr::Ident(i, args) => {
+            Expr::Local(i, args, _) => {
                 write!(f, "{i}")?;
                 if let Some(args) = args {
                     write!(
@@ -63,8 +151,27 @@ impl Display for WithHir<'_, TypedExpr, InferMetadata> {
                 }
                 Ok(())
             }
+            Expr::Type(ty) => write!(f, "{ty}"),
             Expr::Tuple(exprs) => write!(f, "({})", comma_sep(exprs)),
             Expr::Array(exprs) => write!(f, "[{}]", comma_sep(exprs)),
+            Expr::IntIntrinsic(intr, ..) => match intr {
+                IntIntrinsic::Unary(intr, e) => write!(f, "({intr}{})", self.with(&**e)),
+                IntIntrinsic::Binary(intr, lhs, rhs) => {
+                    write!(f, "({} {intr} {})", self.with(&**lhs), self.with(&**rhs))
+                }
+            },
+            Expr::BoolIntrinsic(intr) => match intr {
+                BoolIntrinsic::Not(e) => write!(f, "(!{})", self.with(&**e)),
+                BoolIntrinsic::And(lhs, rhs) => {
+                    write!(f, "({} && {})", self.with(&**lhs), self.with(&**rhs))
+                }
+                BoolIntrinsic::Or(lhs, rhs) => {
+                    write!(f, "({} || {})", self.with(&**lhs), self.with(&**rhs))
+                }
+                BoolIntrinsic::Xor(lhs, rhs) => {
+                    write!(f, "({} ^ {})", self.with(&**lhs), self.with(&**rhs))
+                }
+            },
             Expr::Intrinsic(intr, args) => {
                 write!(f, "{intr}({})", comma_sep(args))
             }
@@ -108,6 +215,7 @@ impl Display for WithHir<'_, TypedExpr, InferMetadata> {
             }
             Expr::Block(sid) => self.1.write_scope(f, *sid, |_| Ok(())),
             Expr::If(cond, then, els) => {
+                write!(f, "[{then}] ")?;
                 let then = self.1.get_scope(*then);
                 if let Some(label) = then.label {
                     write!(f, ":{label} ")?;
@@ -116,6 +224,7 @@ impl Display for WithHir<'_, TypedExpr, InferMetadata> {
                 self.1.write_block(f, then)?;
 
                 if let Some(els) = els {
+                    write!(f, " [{els}]")?;
                     let els = self.1.get_scope(*els);
                     write!(f, " else ")?;
                     self.1.write_block(f, els)?;

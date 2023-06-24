@@ -1,3 +1,4 @@
+use crate::typed::{BoolIntrinsic, LocalEnv};
 use crate::{
     error::{Error, Result},
     typed::{self, Constraint, InvalidTypeCause, Relation, Ty, TypedExpr, UnificationTable},
@@ -119,7 +120,7 @@ pub struct Scope {
     module_id: ModuleId,
     kind: ScopeKind,
     ty_params: Vec<TyParam>,
-    locals: HashMap<Ident, Local>,
+    locals: HashMap<(Ident, LocalEnv), Local>,
     label: Option<Spanned<Ident>>,
     resolution: Ty,
     exited: Option<ExitAction>,
@@ -136,11 +137,12 @@ impl Metadata for InferMetadata {
 #[derive(Debug)]
 pub struct TypeLowerer {
     scopes: Vec<Scope>,
+    local_env: LocalEnv,
     pub(crate) table: UnificationTable,
     // raw pointers are used here because:
     // 1. it can be guaranteed that the pointers are valid for the lifetime of the type lowerer
     // 2. it's faster
-    raw_resolution_lookup: HashMap<ScopeId, *mut Ty>,
+    pub(crate) raw_resolution_lookup: HashMap<ScopeId, *mut Ty>,
     /// The HIR that is being lowered.
     pub hir: Hir,
     /// The HIR that is being generated.
@@ -156,6 +158,7 @@ impl TypeLowerer {
     pub fn new(hir: Hir) -> Self {
         Self {
             scopes: Vec::new(),
+            local_env: LocalEnv::Standard,
             table: UnificationTable::default(),
             raw_resolution_lookup: HashMap::new(),
             hir,
@@ -202,14 +205,18 @@ impl TypeLowerer {
         // SAFETY: the scope has just been pushed
         self.raw_resolution_lookup.insert(scope_id, unsafe {
             let last_index = self.scopes.len() - 1;
-            &mut self.scopes.get_unchecked_mut(last_index).resolution as *mut _
+            std::ptr::addr_of_mut!(self.scopes.get_unchecked_mut(last_index).resolution)
         });
         resolution
     }
 
     pub fn exit_scope_if_exists(&mut self) -> Option<Scope> {
         let mut scope = self.scopes.pop()?;
-        for (ident, local) in &mut scope.locals {
+        for ((ident, env), local) in &mut scope.locals {
+            // Only check locals in the current environment
+            if *env != self.local_env {
+                continue;
+            }
             // Apply substitutions to the type one final time
             local.ty.apply(&mut self.table.substitutions);
             // At this point, the type should be fully known
@@ -293,7 +300,7 @@ impl TypeLowerer {
 
     fn lower_local(&mut self, ident: &Spanned<Ident>) -> Result<&mut Local> {
         for scope in self.scopes.iter_mut().rev() {
-            if let Some(local) = scope.locals.get_mut(ident.value()) {
+            if let Some(local) = scope.locals.get_mut(&(*ident.value(), self.local_env)) {
                 local.used = true;
                 return Ok(local);
             }
@@ -376,13 +383,14 @@ impl TypeLowerer {
                     ));
                 }
                 TypedExpr(
-                    typed::Expr::Ident(
+                    typed::Expr::Local(
                         ident,
                         args.map(|args| {
                             args.map(|args| {
                                 args.into_iter().map(|ty| self.lower_hir_ty(ty)).collect()
                             })
                         }),
+                        self.local_env,
                     ),
                     binding.ty,
                 )
@@ -451,12 +459,8 @@ impl TypeLowerer {
             }
             Expr::CallLogicalOp(op, lhs, rhs) => {
                 // lower to an intrinsic and desugar from there in typeck stage
-                let op = match op {
-                    LogicalOp::And => Intrinsic::BoolAnd,
-                    LogicalOp::Or => Intrinsic::BoolOr,
-                };
-                let lhs = self.lower_expr(*lhs)?;
-                let rhs = self.lower_expr(*rhs)?;
+                let lhs = Box::new(self.lower_expr(*lhs)?);
+                let rhs = Box::new(self.lower_expr(*rhs)?);
 
                 let ty = {
                     let left_ty = &lhs.value().1;
@@ -469,13 +473,17 @@ impl TypeLowerer {
                             (Relation::Eq | Relation::Super)
                         )
                     {
-                        left_ty
+                        left_ty.clone()
                     } else {
                         // Like `If`, if left_ty != right_ty, check at the typeck stage.
-                        right_ty
+                        right_ty.clone()
                     }
                 };
-                TypedExpr(typed::Expr::Intrinsic(op, vec![lhs, rhs]), ty.clone())
+                let intrinsic = match op {
+                    LogicalOp::And => BoolIntrinsic::And(lhs, rhs),
+                    LogicalOp::Or => BoolIntrinsic::Or(lhs, rhs),
+                };
+                TypedExpr(typed::Expr::BoolIntrinsic(intrinsic), ty)
             }
             Expr::Assign(target, value) => {
                 let lowered = self.lower_expr(*value)?;
@@ -574,7 +582,6 @@ impl TypeLowerer {
                 if pats.len() != tys.len() {
                     return Err(Error::PatternMismatch {
                         pat: Cow::Owned(format!("{}-element tuple", pats.len())),
-
                         pat_span: pat.span(),
                         value: format!("{}-element tuple", tys.len()),
                         value_span: expr.map(|expr| expr.span()),
@@ -663,9 +670,10 @@ impl TypeLowerer {
                 };
 
                 for (ident, binding) in bindings {
+                    let local_env = self.local_env;
                     self.scope_mut()
                         .locals
-                        .insert(ident, Local::from_binding(binding));
+                        .insert((ident, local_env), Local::from_binding(binding));
                 }
                 node
             }

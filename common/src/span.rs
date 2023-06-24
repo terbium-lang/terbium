@@ -85,7 +85,7 @@ impl Span {
 
     /// Converts this span into a range.
     #[must_use]
-    pub fn range(&self) -> Range<usize> {
+    pub const fn range(&self) -> Range<usize> {
         self.start..self.end
     }
 
@@ -102,10 +102,7 @@ impl Span {
     /// Merges this span with another, or leaves the span unchanged if the other span is `None`.
     #[must_use]
     pub fn merge_opt(self, other: Option<Self>) -> Self {
-        match other {
-            Some(other) => self.merge(other),
-            None => self,
-        }
+        other.map_or(self, |other| self.merge(other))
     }
 
     /// Merges an iterator of spans.
