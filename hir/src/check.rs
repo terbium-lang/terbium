@@ -6,12 +6,11 @@ use crate::{
     lower::get_ident_from_ref,
     typed::{
         BinaryIntIntrinsic, BoolIntrinsic, Constraint, Expr, IntIntrinsic, LocalEnv, Relation, Ty,
-        TypedExpr, UnaryIntIntrinsic,
+        TypedExpr, UnaryIntIntrinsic, UnificationTable,
     },
     Hir, IntSign, ModuleId, Node, Op, Pattern, PrimitiveTy, Scope, ScopeId,
 };
 use common::span::{Spanned, SpannedExt};
-use std::collections::VecDeque;
 
 const BOOL: Ty = Ty::Primitive(PrimitiveTy::Bool);
 
@@ -36,8 +35,8 @@ impl<'a> TypeChecker<'a> {
         &mut self.lower.thir
     }
 
-    pub fn take_substitutions(&mut self) -> VecDeque<Ty> {
-        self.lower.table.substitutions.drain(..).collect()
+    pub fn take_table(&mut self) -> UnificationTable {
+        std::mem::take(&mut self.lower.table)
     }
 
     #[inline]
@@ -238,6 +237,12 @@ impl<'a> TypeChecker<'a> {
                     Expr::IntIntrinsic(IntIntrinsic::Unary(intr, Box::new(target)), sign, width);
                 *ty = P(Int(sign, width));
             }
+            // pos a: int -> a
+            (Op::Pos, _, P(Int(..)), None) => {
+                let TypedExpr(new_expr, new_ty) = target.into_value();
+                *expr = new_expr;
+                *ty = new_ty;
+            }
             // a: int ** b: int -> (a to float64) powi b -> float64
             (Op::Pow, _, P(Int(sign, width)), Some(P(Int(..)))) => todo!(),
             _ => (),
@@ -245,8 +250,13 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Lower the given expression, performing any remaining type checking and desugaring.
-    pub fn lower_expr(&mut self, module: ModuleId, expr: &mut Spanned<TypedExpr>) {
-        let TypedExpr(expr, ty) = expr.value_mut();
+    pub fn lower_expr(
+        &mut self,
+        module: ModuleId,
+        Spanned(TypedExpr(expr, ty), span): &mut Spanned<TypedExpr>,
+        table: &mut UnificationTable,
+    ) {
+        let initial = ty.clone();
         match expr {
             Expr::BoolIntrinsic(intrinsic) => {
                 // TODO: intrinsic does not need to be cloned at all
@@ -294,83 +304,92 @@ impl<'a> TypeChecker<'a> {
             }
             _ => (),
         }
+        // Unify the new type with the old type
+        if let Some(conflict) = table.unify_constraint(Constraint(initial, ty.clone())) {
+            self.lower.err_nonfatal(Error::TypeConflict {
+                expected: (crate::Ty::from(conflict.0.clone()), None),
+                actual: crate::Ty::from(conflict.1.clone()).spanned(*span),
+                constraint: conflict,
+            });
+        }
     }
 
     pub fn substitute_expr(
         &mut self,
         module: ModuleId,
         typed_expr: &mut Spanned<TypedExpr>,
-        substitutions: &VecDeque<Ty>,
+        table: &mut UnificationTable,
     ) {
-        typed_expr.value_mut().1.apply(substitutions);
         match &mut typed_expr.value_mut().0 {
             Expr::Local(_, Some(tys), _) => tys
                 .value_mut()
                 .iter_mut()
-                .for_each(|ty| ty.apply(substitutions)),
-            Expr::Type(ty) => ty.value_mut().apply(substitutions),
+                .for_each(|ty| ty.apply(&table.substitutions)),
+            Expr::Type(ty) => ty.value_mut().apply(&table.substitutions),
             Expr::Tuple(values) | Expr::Array(values) | Expr::Intrinsic(_, values) => values
                 .iter_mut()
-                .for_each(|value| value.value_mut().1.apply(substitutions)),
+                .for_each(|value| self.pass_over_expr(module, value, table)),
             Expr::Call { args, kwargs, .. } => args
                 .iter_mut()
                 .chain(kwargs.iter_mut().map(|(_, value)| value))
-                .for_each(|value| value.value_mut().1.apply(substitutions)),
+                .for_each(|value| self.pass_over_expr(module, value, table)),
             Expr::CallOp(_, target, operands) => operands
                 .iter_mut()
                 .chain(std::iter::once(target.as_mut()))
-                .for_each(|value| value.value_mut().1.apply(substitutions)),
+                .for_each(|value| self.pass_over_expr(module, value, table)),
             Expr::CallStaticOp(_, ty, operands) => {
-                ty.apply(substitutions);
                 operands
                     .iter_mut()
-                    .for_each(|value| value.value_mut().1.apply(substitutions))
+                    .for_each(|value| self.pass_over_expr(module, value, table));
+                ty.apply(&table.substitutions);
             }
             Expr::Cast(value, ty) => {
-                value.value_mut().1.apply(substitutions);
-                ty.apply(substitutions);
+                self.pass_over_expr(module, value, table);
+                ty.apply(&table.substitutions);
             }
             Expr::GetAttr(value, _) | Expr::Assign(_, value) => {
-                value.value_mut().1.apply(substitutions)
+                self.pass_over_expr(module, value, table);
             }
             Expr::SetAttr(value, _, new_value) => {
-                value.value_mut().1.apply(substitutions);
-                new_value.value_mut().1.apply(substitutions);
+                self.pass_over_expr(module, value, table);
+                self.pass_over_expr(module, new_value, table);
             }
-            Expr::Block(scope) => self.substitute_scope(module, *scope, substitutions),
+            Expr::Block(scope) => self.substitute_scope(module, *scope, table),
             Expr::If(cond, then, els) => {
-                let cond_ty = &mut cond.value_mut().1;
-                cond_ty.apply(substitutions);
+                self.pass_over_expr(module, cond, table);
+
+                let cond_ty = &cond.value().1;
                 if cond_ty != &BOOL {
                     self.lower.err_nonfatal(Error::ConditionNotBool(Spanned(
                         cond_ty.clone().into(),
                         cond.span(),
                     )));
                 }
-                self.substitute_scope(module, *then, substitutions);
+                self.substitute_scope(module, *then, table);
                 if let Some(els) = els {
-                    self.substitute_scope(module, *els, substitutions);
+                    self.substitute_scope(module, *els, table);
                 }
             }
-            Expr::Loop(scope) => self.substitute_scope(module, *scope, substitutions),
+            Expr::Loop(scope) => self.substitute_scope(module, *scope, table),
             Expr::AssignPtr(pointee, value) => {
-                pointee.value_mut().1.apply(substitutions);
-                value.value_mut().1.apply(substitutions);
+                pointee.value_mut().1.apply(&table.substitutions);
+                value.value_mut().1.apply(&table.substitutions);
             }
             _ => (),
         }
+        typed_expr.value_mut().1.apply(&table.substitutions);
     }
 
     pub fn pass_over_expr(
         &mut self,
         module: ModuleId,
         typed_expr: &mut Spanned<TypedExpr>,
-        substitutions: &VecDeque<Ty>,
+        table: &mut UnificationTable,
     ) {
-        self.substitute_expr(module, typed_expr, substitutions);
-        self.lower_expr(module, typed_expr);
+        self.substitute_expr(module, typed_expr, table);
+        self.lower_expr(module, typed_expr, table);
         // Substitute again to give fresh types
-        self.substitute_expr(module, typed_expr, substitutions);
+        self.substitute_expr(module, typed_expr, table);
     }
 
     /// Performs a shallow type substitution over the scope.
@@ -378,7 +397,7 @@ impl<'a> TypeChecker<'a> {
         &mut self,
         module: ModuleId,
         scope_id: ScopeId,
-        substitutions: &VecDeque<Ty>,
+        table: &mut UnificationTable,
     ) {
         // Remove the scope out of THIR temporarily to avoid accidentally mutating it later
         let mut scope = self
@@ -393,13 +412,13 @@ impl<'a> TypeChecker<'a> {
                 | Node::Break(_, Some(expr))
                 | Node::Return(Some(expr))
                 | Node::ImplicitReturn(expr) => {
-                    self.pass_over_expr(module, expr, substitutions);
+                    self.pass_over_expr(module, expr, table);
                 }
                 Node::Let { ty, value, .. } => {
-                    ty.apply(substitutions);
                     if let Some(value) = value {
-                        self.pass_over_expr(module, value, substitutions);
+                        self.pass_over_expr(module, value, table);
                     }
+                    ty.apply(&table.substitutions);
                 }
                 _ => (),
             }
@@ -408,7 +427,7 @@ impl<'a> TypeChecker<'a> {
             // SAFETY: since self.lower is a valid reference to the lowerer, and the lowerer
             //   owns the type resolution table, this is safe.
             unsafe {
-                (**ty).apply(substitutions);
+                (**ty).apply(&table.substitutions);
             }
         }
         // Put the scope back into THIR
@@ -416,8 +435,12 @@ impl<'a> TypeChecker<'a> {
     }
 
     /// Performs a typeck lowering over the module.
-    pub fn check_module(&mut self, module_id: ModuleId, substitutions: &VecDeque<Ty>) {
+    pub fn check_module(&mut self, module_id: ModuleId, table: &mut UnificationTable) {
         let scope_id = *self.thir().modules.get(&module_id).unwrap();
-        self.substitute_scope(module_id, scope_id, substitutions);
+        self.substitute_scope(module_id, scope_id, table);
+
+        for (i, subst) in table.substitutions.iter().enumerate() {
+            println!("${} => {}", i, subst);
+        }
     }
 }

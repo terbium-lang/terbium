@@ -1,10 +1,12 @@
-use crate::typed::{BoolIntrinsic, LocalEnv};
 use crate::{
     error::{Error, Result},
-    typed::{self, Constraint, InvalidTypeCause, Relation, Ty, TypedExpr, UnificationTable},
+    typed::{
+        self, BoolIntrinsic, Constraint, InvalidTypeCause, LocalEnv, Relation, Ty, TypedExpr,
+        UnificationTable,
+    },
     warning::Warning,
-    Expr, FloatWidth, Hir, Ident, IntSign, IntWidth, Intrinsic, ItemId, Literal, LogicalOp,
-    Metadata, ModuleId, Node, Op, Pattern, PrimitiveTy, ScopeId, TyParam,
+    Expr, FloatWidth, Hir, Ident, IntSign, IntWidth, ItemId, Literal, LogicalOp, Metadata,
+    ModuleId, Node, Pattern, PrimitiveTy, ScopeId, TyParam,
 };
 use common::span::{Span, Spanned, SpannedExt};
 use std::{borrow::Cow, collections::HashMap};
@@ -136,8 +138,8 @@ impl Metadata for InferMetadata {
 /// Lowers types of expressions and performs type inference and one pass of typeck.
 #[derive(Debug)]
 pub struct TypeLowerer {
-    scopes: Vec<Scope>,
     local_env: LocalEnv,
+    pub(crate) scopes: Vec<Scope>,
     pub(crate) table: UnificationTable,
     // raw pointers are used here because:
     // 1. it can be guaranteed that the pointers are valid for the lifetime of the type lowerer
@@ -157,8 +159,8 @@ impl TypeLowerer {
     /// Creates a new type lowerer over the given HIR.
     pub fn new(hir: Hir) -> Self {
         Self {
-            scopes: Vec::new(),
             local_env: LocalEnv::Standard,
+            scopes: Vec::new(),
             table: UnificationTable::default(),
             raw_resolution_lookup: HashMap::new(),
             hir,
@@ -219,10 +221,7 @@ impl TypeLowerer {
             }
             // Apply substitutions to the type one final time
             local.ty.apply(&mut self.table.substitutions);
-            // At this point, the type should be fully known
-            if local.ty.has_any_unknown() {
-                self.err_nonfatal(Error::CouldNotInferType(local.def_span, Some(*ident)))
-            }
+
             if ident.to_string().chars().next() != Some('_') && !local.used {
                 self.warnings.push(Warning::UnusedVariable(Spanned(
                     ident.to_string(),

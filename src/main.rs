@@ -69,9 +69,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 );
 
                                 let mut typeck = TypeChecker::from_lowerer(&mut ty_lowerer);
-                                let subst = typeck.take_substitutions();
+                                let mut table = typeck.take_table();
 
-                                typeck.check_module(ModuleId::from(Src::None), &subst);
+                                typeck.check_module(ModuleId::from(Src::None), &mut table);
 
                                 println!(
                                     "=== [ THIR ({:?} to check) ] ===\n\n{}",
