@@ -1,17 +1,14 @@
 //! Typeck stage of HIR.
 
-use crate::error::Error;
-use crate::error::Error::TypeConflict;
-use crate::infer::ScopeKind;
-use crate::lower::get_ident_from_ref;
-use crate::typed::{
-    BinaryIntIntrinsic, BoolIntrinsic, Constraint, Expr, IntIntrinsic, LocalEnv, Relation, Ty,
-    TypedExpr, UnaryIntIntrinsic,
-};
 use crate::{
-    error::Result,
+    error::Error,
     infer::{InferMetadata, TypeLowerer},
-    Hir, IntSign, Intrinsic, ModuleId, Node, Op, Pattern, PrimitiveTy, Scope, ScopeId,
+    lower::get_ident_from_ref,
+    typed::{
+        BinaryIntIntrinsic, BoolIntrinsic, Constraint, Expr, IntIntrinsic, LocalEnv, Relation, Ty,
+        TypedExpr, UnaryIntIntrinsic,
+    },
+    Hir, IntSign, ModuleId, Node, Op, Pattern, PrimitiveTy, Scope, ScopeId,
 };
 use common::span::{Spanned, SpannedExt};
 use std::collections::VecDeque;
@@ -154,7 +151,7 @@ impl<'a> TypeChecker<'a> {
             Relation::Sub => rhs_ty,
             // If the types are unrelated, this is a type error
             Relation::Unrelated => {
-                self.lower.err_nonfatal(TypeConflict {
+                self.lower.err_nonfatal(Error::TypeConflict {
                     actual: crate::Ty::from(rhs_ty.clone()).spanned(rhs.span()),
                     expected: (crate::Ty::from(lhs_ty.clone()), Some(lhs.span())),
                     constraint: Constraint(lhs_ty, rhs_ty.clone()),
@@ -285,7 +282,7 @@ impl<'a> TypeChecker<'a> {
                     Relation::Sub => *ty = els.clone(),
                     // If the types are unrelated, this is a type error
                     Relation::Unrelated => {
-                        self.lower.err_nonfatal(TypeConflict {
+                        self.lower.err_nonfatal(Error::TypeConflict {
                             actual: crate::Ty::from(els.clone()).spanned(els_span),
                             expected: (crate::Ty::from(then.clone()), Some(then_span)),
                             constraint: Constraint(then.clone(), els.clone()),
