@@ -82,7 +82,7 @@ impl<'a> TypeChecker<'a> {
         rhs: Spanned<TypedExpr>,
         ty: Ty,
         is_or: bool,
-    ) -> Spanned<TypedExpr> {
+    ) -> (Expr, Ty) {
         let span = lhs.span().merge(rhs.span());
         let binding = Spanned(get_ident_from_ref("__lhs"), lhs.span());
 
@@ -131,7 +131,7 @@ impl<'a> TypeChecker<'a> {
             ]
             .spanned(span),
         ));
-        Spanned(TypedExpr(Expr::Block(block), ty), span)
+        (Expr::Block(block), ty)
     }
 
     fn lower_logical(&mut self, module_id: ModuleId, intrinsic: BoolIntrinsic) -> (Expr, Ty) {
@@ -169,10 +169,7 @@ impl<'a> TypeChecker<'a> {
             (Expr::BoolIntrinsic(intrinsic), ty)
         } else {
             // If the types are not bool, desugar into an if-statement
-            let desugared = self
-                .lower_logical_into_if_stmt(module_id, lhs, rhs, ty, is_or)
-                .into_value();
-            (desugared.0, desugared.1)
+            self.lower_logical_into_if_stmt(module_id, lhs, rhs, ty, is_or)
         }
     }
 
