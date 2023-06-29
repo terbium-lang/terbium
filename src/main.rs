@@ -59,6 +59,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             lowerer.hir
                         );
 
+                        let start = std::time::Instant::now();
                         let mut ty_lowerer = TypeLowerer::new(lowerer.hir.clone());
                         match ty_lowerer.lower_module(ModuleId::from(Src::None)) {
                             Ok(_) => {
@@ -68,6 +69,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     ty_lowerer.thir
                                 );
 
+                                let start = std::time::Instant::now();
                                 let mut typeck = TypeChecker::from_lowerer(&mut ty_lowerer);
                                 let mut table = typeck.take_table();
 
@@ -84,6 +86,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         error.into_diagnostic(),
                                     )?;
                                 }
+
+                                let start = std::time::Instant::now();
+                                let mut mir_lowerer =
+                                    mir::Lowerer::from_thir(typeck.lower.thir.clone());
+                                mir_lowerer.lower_module(ModuleId::from(Src::None));
+
+                                println!(
+                                    "=== [ MIR ({:?} to lower) ] ===\n\n{}",
+                                    start.elapsed(),
+                                    mir_lowerer.mir
+                                );
                             }
                             Err(error) => {
                                 dwriter.write_diagnostic(

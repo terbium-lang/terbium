@@ -1,11 +1,14 @@
 //! Lowers a typed HIR to MIR.
 
-use std::collections::HashMap;
+use crate::{
+    BlockId, BlockMap, BoolIntrinsic, Constant, Expr, Func, IntIntrinsic, LocalId, Mir, Node,
+    TypedHir,
+};
 use common::span::{Spanned, SpannedExt};
-use hir::{Ident, IntSign, Literal, ModuleId, PrimitiveTy, ScopeId, typed::Ty};
-use hir::lower::{get_ident, get_ident_from_ref};
-use hir::typed::{LocalEnv, TypedExpr};
-use crate::{BlockId, BlockMap, BoolIntrinsic, Constant, Expr, IntIntrinsic, LocalId, Mir, Node, TypedHir};
+use hir::{
+    typed::{LocalEnv, Ty, TypedExpr},
+    IntSign, ItemId, Literal, ModuleId, PrimitiveTy, ScopeId,
+};
 
 #[derive(Clone, Debug)]
 #[must_use = "the lowerer must be called to produce the MIR"]
@@ -14,26 +17,18 @@ pub struct Lowerer {
     pub thir: TypedHir,
     /// The MIR being constructed.
     pub mir: Mir,
-
-    // Keep a current stack of blocks
-    blocks: Vec<BlockId>,
-    // Keep a mapping of labels to blocks
-    labels: HashMap<Ident, BlockId>,
 }
 
-struct Ctx<'a> {
-    blocks: &'a mut BlockMap,
+pub struct Ctx<'a> {
+    blocks: *mut BlockMap,
     current: &'a mut Vec<Spanned<Node>>,
 }
 
 impl Lowerer {
     pub fn from_thir(thir: TypedHir) -> Self {
-        let len = thir.scopes.len();
         Self {
             thir,
             mir: Mir::default(),
-            blocks: Vec::with_capacity(len),
-            labels: HashMap::with_capacity(len)
         }
     }
 
@@ -42,8 +37,9 @@ impl Lowerer {
         use Ty::Primitive as P;
 
         match (literal, ty) {
-            (Literal::UInt(u), P(PrimitiveTy::Int(_, width))) =>
-                Constant::Int(u, IntSign::Unsigned, *width),
+            (Literal::UInt(u), P(PrimitiveTy::Int(_, width))) => {
+                Constant::Int(u, IntSign::Unsigned, *width)
+            }
             (Literal::Int(i), P(PrimitiveTy::Int(sign, width))) => {
                 Constant::Int(i as _, *sign, *width)
             }
@@ -51,9 +47,7 @@ impl Lowerer {
             (Literal::Char(c), _) => Constant::Char(c),
             (Literal::Void, _) => Constant::Void,
             // TODO: this implementation will probably change in the future
-            (Literal::String(s), _) => {
-                Constant::Array(s.chars().map(Constant::Char).collect())
-            }
+            (Literal::String(s), _) => Constant::Array(s.chars().map(Constant::Char).collect()),
             _ => unimplemented!(),
         }
     }
@@ -68,19 +62,17 @@ impl Lowerer {
         match expr {
             HirExpr::Literal(lit) => Expr::Constant(self.lower_literal(lit, &ty)),
             HirExpr::IntIntrinsic(intr, sign, width) => {
-                use hir::typed::IntIntrinsic::{Unary, Binary};
+                use hir::typed::IntIntrinsic::{Binary, Unary};
 
                 let intr = match intr {
                     Unary(op, expr) => {
                         IntIntrinsic::Unary(op, Box::new(self.lower_expr(ctx, *expr)))
-                    },
-                    Binary(op, lhs, rhs) => {
-                        IntIntrinsic::Binary(
-                            op,
-                            Box::new(self.lower_expr(ctx, *lhs)),
-                            Box::new(self.lower_expr(ctx, *rhs)),
-                        )
                     }
+                    Binary(op, lhs, rhs) => IntIntrinsic::Binary(
+                        op,
+                        Box::new(self.lower_expr(ctx, *lhs)),
+                        Box::new(self.lower_expr(ctx, *rhs)),
+                    ),
                 };
                 Expr::IntIntrinsic(intr, sign, width)
             }
@@ -89,20 +81,21 @@ impl Lowerer {
 
                 Expr::BoolIntrinsic(match intr {
                     Not(expr) => BoolIntrinsic::Not(Box::new(self.lower_expr(ctx, *expr))),
-                    And(lhs, rhs) | Or(lhs, rhs) | Xor(lhs, rhs) => {
-                        let f: fn(_, _) -> _ = match intr {
+                    And(..) | Or(..) | Xor(..) => {
+                        let (f, lhs, rhs): (fn(_, _) -> _, _, _) = match intr {
                             Not(_) => unreachable!(),
-                            And(..) => BoolIntrinsic::And,
-                            Or(..) => BoolIntrinsic::Or,
-                            Xor(..) => BoolIntrinsic::Xor,
+                            And(lhs, rhs) => (BoolIntrinsic::And, lhs, rhs),
+                            Or(lhs, rhs) => (BoolIntrinsic::Or, lhs, rhs),
+                            Xor(lhs, rhs) => (BoolIntrinsic::Xor, lhs, rhs),
                         };
-                        f(Box::new(self.lower_expr(ctx, *lhs)), Box::new(self.lower_expr(ctx, *rhs)))
+                        f(
+                            Box::new(self.lower_expr(ctx, *lhs)),
+                            Box::new(self.lower_expr(ctx, *rhs)),
+                        )
                     }
                 })
             }
-            HirExpr::Local(local, _, env) => {
-                Expr::Local(LocalId(local.into_value(), env))
-            }
+            HirExpr::Local(local, _, env) => Expr::Local(LocalId(local.into_value(), env)),
             // In order to lower a block with a potential result,
             // create a temporary local `result` and jump to a new block
             // that will assign the result to the local and jump to the continuation block.
@@ -114,15 +107,16 @@ impl Lowerer {
             // will be lowered to:
             //
             // entry:
+            //   init %local.x
             //   init %internal.result ; temporary local
             //   jump _bb0 ; jump to the block that will assign the result
             // _bb0:
             //   init %local.y
             //   store %local.y <- 1 + 1
             //   store %internal.result <- %y ; assign the result
-            //   jump _bb0.after
+            //   jump _bb0.after ; jump to the continuation block
             // _bb0.after:
-            //   ... ; jump to the continuation block
+            //   store %local.x <- %internal.result ; now the result can be used here
             HirExpr::Block(scope) => {
                 let block_id = BlockId::from(scope);
                 let cont_id = BlockId(format!("_bb{}.after", scope.0).into());
@@ -133,41 +127,87 @@ impl Lowerer {
                     // Jump to the block that will assign the result
                     Node::Jump(block_id).spanned(span),
                 ]);
-                self.lower_scope(ctx.blocks, scope, block_id, |slf, value, current| {
+                self.lower_scope(ctx.blocks, scope, block_id, |slf, value, ctx| {
                     let span = value.span();
                     let expr = slf.lower_expr(ctx, value);
                     // Assign the result to the temporary local
-                    current.push(Node::Expr(Expr::Assign(result_local, Box::new(expr)).spanned(span)).spanned(span));
+                    ctx.current.push(
+                        Node::Expr(Expr::Assign(result_local, Box::new(expr)).spanned(span))
+                            .spanned(span),
+                    );
                     Node::Jump(cont_id)
                 });
+
+                // Modify the current buffer to the continuation scope
+                ctx.current = unsafe { &mut *ctx.blocks }
+                    .try_insert(cont_id, Vec::new())
+                    .expect("block already exists");
+
                 Expr::Local(result_local)
             }
-            _ => todo!()
+            _ => todo!(),
         }
         .spanned(span)
     }
 
     /// Lowers the scope and returns the entrypoint block.
-    pub fn lower_scope(&mut self, blocks: &mut BlockMap, scope: ScopeId, entry_id: BlockId, mut on_implicit_return: impl FnMut(&mut Self, Spanned<TypedExpr>, &mut Vec<Spanned<Node>>) -> Node) -> &mut Vec<Spanned<Node>> {
+    pub fn lower_scope<'a, F>(
+        &'a mut self,
+        blocks: *mut BlockMap,
+        scope: ScopeId,
+        entry_id: BlockId,
+        mut on_implicit_return: F,
+    ) -> &mut Vec<Spanned<Node>>
+    where
+        F: FnMut(&mut Self, Spanned<TypedExpr>, &mut Ctx) -> Node + 'a,
+    {
         let scope = self.thir.scopes.remove(&scope).expect("no such scope");
 
-        let mut entry = Vec::with_capacity(scope.children.value().len());
-        let mut ctx = Ctx { blocks, current: &mut entry };
+        // SAFETY: the blocks pointer is valid for the lifetime of the function
+        let mut entry = unsafe { &mut *blocks }
+            .try_insert(entry_id, Vec::with_capacity(scope.children.value().len()))
+            .expect("block already exists");
+        let mut ctx = Ctx {
+            blocks,
+            current: &mut entry,
+        };
 
         for Spanned(node, span) in scope.children.into_value() {
             let node = match node {
-                hir::Node::Expr(expr) => {
-                    Node::Expr(self.lower_expr(&mut ctx, expr))
+                hir::Node::Expr(expr) => Node::Expr(self.lower_expr(&mut ctx, expr)),
+                hir::Node::ImplicitReturn(value) => on_implicit_return(self, value, &mut ctx),
+                hir::Node::Return(value) => {
+                    let expr = value.map(|value| self.lower_expr(&mut ctx, value));
+                    Node::Return(expr)
                 }
-                hir::Node::ImplicitReturn(value) => on_implicit_return(self, value, &mut ctx.current),
-                _ => todo!()
+                _ => todo!(),
             };
-            entry.push(Spanned(node, span));
+            ctx.current.push(Spanned(node, span));
         }
-        ctx.blocks.try_insert(entry_id, entry).expect("block already exists")
+        entry
+    }
+
+    pub fn lower_map(&mut self, scope_id: ScopeId) -> BlockMap {
+        let mut blocks = BlockMap::default();
+        let entry_id = BlockId("entry".into());
+        self.lower_scope(&mut blocks, scope_id, entry_id, |slf, value, ctx| {
+            let expr = slf.lower_expr(ctx, value);
+            Node::Return(Some(expr))
+        });
+        blocks
     }
 
     pub fn lower_module(&mut self, module: ModuleId) {
-
+        let scope_id = self.thir.modules.get(&module).expect("no such module");
+        let blocks = self.lower_map(*scope_id);
+        let name = ItemId(module, "root".into());
+        self.mir.functions.insert(
+            name,
+            Func {
+                name,
+                params: Vec::new(),
+                blocks,
+            },
+        );
     }
 }

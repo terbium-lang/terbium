@@ -94,9 +94,9 @@ impl From<Src> for ModuleId {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ItemId(
     /// The module in which the item is defined.
-    ModuleId,
+    pub ModuleId,
     /// The name of the item, which is unique within the module.
-    Ident,
+    pub Ident,
 );
 
 impl Display for ItemId {

@@ -17,17 +17,40 @@
 
 mod lower;
 
-use std::{collections::HashMap, fmt::{self, Display, Formatter}};
+pub use lower::Lowerer;
+
 use common::span::Spanned;
 use hir::{
     typed::{BinaryIntIntrinsic, LocalEnv, UnaryIntIntrinsic},
-    IntWidth, IntSign, Ident, FloatWidth, ItemId, ScopeId,
+    FloatWidth, Ident, IntSign, IntWidth, ItemId, ScopeId,
 };
+use std::{
+    collections::HashMap,
+    fmt::{self, Display, Formatter},
+};
+
+#[inline]
+fn write_comma_sep<T: Display>(f: &mut Formatter, iter: impl Iterator<Item = T>) -> fmt::Result {
+    let mut iter = iter.peekable();
+    while let Some(c) = iter.next() {
+        write!(f, "{c}")?;
+        if iter.peek().is_some() {
+            write!(f, ", ")?;
+        }
+    }
+    Ok(())
+}
 
 pub type TypedHir = hir::Hir<hir::infer::InferMetadata>;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct BlockId(pub Ident);
+
+impl Display for BlockId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 impl From<ScopeId> for BlockId {
     fn from(value: ScopeId) -> Self {
@@ -53,10 +76,35 @@ pub struct Mir {
     pub functions: HashMap<ItemId, Func>,
 }
 
+impl Display for Mir {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        self.functions
+            .values()
+            .map(|func| writeln!(f, "{func}"))
+            .collect()
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Func {
+    pub name: ItemId,
     pub params: Vec<Ident>,
     pub blocks: BlockMap,
+}
+
+impl Display for Func {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "func {}(", self.name)?;
+        write_comma_sep(f, self.params.iter().map(|p| format!("%local.{p}")))?;
+        writeln!(f, ") {{")?;
+        for (id, block) in &self.blocks {
+            writeln!(f, "{id}:")?;
+            for node in block {
+                writeln!(f, "    {node}")?;
+            }
+        }
+        write!(f, "}}")
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -73,18 +121,6 @@ pub enum Constant {
 
 impl Display for Constant {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        #[inline]
-        fn write_comma_sep<'a>(f: &mut Formatter, iter: impl Iterator<Item = &'a Constant>) -> fmt::Result {
-            let mut iter = iter.peekable();
-            while let Some(c) = iter.next() {
-                write!(f, "{}", c)?;
-                if iter.peek().is_some() {
-                    write!(f, ", ")?;
-                }
-            }
-            Ok(())
-        }
-
         match self {
             Self::Never => write!(f, "never"),
             Self::Void => write!(f, "void"),
@@ -95,19 +131,19 @@ impl Display for Constant {
                     FloatWidth::Float32 => write!(f, "{}", f32::from_bits(*fl as u32)),
                     _ => write!(f, "{}", f64::from_bits(*fl)),
                 }
-            },
+            }
             Self::Bool(b) => write!(f, "{b}"),
             Self::Char(c) => write!(f, "c'{c}'"),
             Self::Tuple(t) => {
                 write!(f, "(")?;
                 write_comma_sep(f, t.iter())?;
                 write!(f, ")")
-            },
+            }
             Self::Array(a) => {
                 write!(f, "[")?;
                 write_comma_sep(f, a.iter())?;
                 write!(f, "]")
-            },
+            }
         }
     }
 }
@@ -118,12 +154,32 @@ pub enum IntIntrinsic {
     Binary(BinaryIntIntrinsic, Box<Spanned<Expr>>, Box<Spanned<Expr>>),
 }
 
+impl Display for IntIntrinsic {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Unary(op, target) => write!(f, "({op}{target})"),
+            Self::Binary(op, lhs, rhs) => write!(f, "({lhs} {op} {rhs})"),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum BoolIntrinsic {
     Not(Box<Spanned<Expr>>),
     And(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
     Or(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
     Xor(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
+}
+
+impl Display for BoolIntrinsic {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Not(target) => write!(f, "(!{target})"),
+            Self::And(lhs, rhs) => write!(f, "({lhs} && {rhs})"),
+            Self::Or(lhs, rhs) => write!(f, "({lhs} || {rhs})"),
+            Self::Xor(lhs, rhs) => write!(f, "({lhs} ^ {rhs})"),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -134,6 +190,25 @@ pub enum Expr {
     IntIntrinsic(IntIntrinsic, IntSign, IntWidth),
     BoolIntrinsic(BoolIntrinsic),
     Call(ItemId, Vec<Spanned<Self>>),
+}
+
+impl Display for Expr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Constant(c) => write!(f, "{c}"),
+            Self::Local(l) => write!(f, "{l}"),
+            Self::Assign(l, e) => write!(f, "{l} = {e}"),
+            Self::IntIntrinsic(i, sign, width) => {
+                write!(f, "<{}{}>{i}", sign.type_name(), *width as usize)
+            }
+            Self::BoolIntrinsic(b) => write!(f, "{b}"),
+            Self::Call(i, args) => {
+                write!(f, "{}(", i)?;
+                write_comma_sep(f, args.iter())?;
+                write!(f, ")")
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -150,4 +225,23 @@ pub enum Node {
     // llvm for Some(expr): ret ty expr
     // llvm for None: ret void
     Return(Option<Spanned<Expr>>),
+}
+
+impl Display for Node {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Expr(e) => write!(f, "{e}"),
+            Self::Declare(l, c) => write!(f, "init {l} = {c}"),
+            Self::Init(l) => write!(f, "init {l}"),
+            Self::Jump(b) => write!(f, "jump {b}"),
+            Self::Branch(cond, then, els) => write!(f, "branch {cond} {then} {els}"),
+            Self::Return(e) => write!(
+                f,
+                "return {}",
+                e.as_ref()
+                    .map(ToString::to_string)
+                    .unwrap_or("void".to_string())
+            ),
+        }
+    }
 }
