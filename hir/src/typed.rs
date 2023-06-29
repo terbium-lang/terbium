@@ -22,6 +22,16 @@ pub enum LocalEnv {
     Internal,
 }
 
+impl Display for LocalEnv {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            LocalEnv::Standard => write!(f, "local"),
+            LocalEnv::Macro => write!(f, "macro"),
+            LocalEnv::Internal => write!(f, "internal"),
+        }
+    }
+}
+
 /// Unary intrinsic.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum UnaryIntIntrinsic {

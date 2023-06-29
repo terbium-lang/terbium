@@ -40,6 +40,18 @@ impl Display for Ident {
     }
 }
 
+impl From<String> for Ident {
+    fn from(s: String) -> Self {
+        Self(Intern::new(s))
+    }
+}
+
+impl From<&str> for Ident {
+    fn from(s: &str) -> Self {
+        Self(Intern::from_ref(s))
+    }
+}
+
 /// The ID of a module.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ModuleId(Intern<Vec<String>>);
@@ -98,7 +110,7 @@ impl Display for ItemId {
 }
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
-pub struct ScopeId(usize);
+pub struct ScopeId(pub usize);
 
 impl Display for ScopeId {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -402,6 +414,15 @@ impl IntWidth {
 pub enum IntSign {
     Signed,
     Unsigned,
+}
+
+impl IntSign {
+    pub const fn type_name(&self) -> &str {
+        match self {
+            Self::Signed => "int",
+            Self::Unsigned => "uint",
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq, Ord, PartialOrd)]

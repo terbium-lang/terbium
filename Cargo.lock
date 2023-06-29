@@ -130,6 +130,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mir"
+version = "0.1.0"
+dependencies = [
+ "common",
+ "diagnostics",
+ "hir",
+]
+
+[[package]]
 name = "once_cell"
 version = "1.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -209,6 +218,7 @@ dependencies = [
  "diagnostics",
  "grammar",
  "hir",
+ "mir",
 ]
 
 [[package]]

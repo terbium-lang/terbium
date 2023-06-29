@@ -30,7 +30,7 @@ public protocol AddAssign<Rhs> {
 
 extend<Rhs, T: Add<Rhs, Output = Self> & !AddAssign> T {
     public op func add_assign(mut self, rhs: Rhs) {
-        &self = self + rhs;
+        *self = self + rhs;
     }
 }
 
@@ -46,6 +46,6 @@ public protocol SubAssign<Rhs> {
 
 extend<Rhs, T: Sub<Rhs, Output = Self> & !SubAssign> T {
     public op func sub_assign(mut self, rhs: Rhs) {
-        &self = self - rhs;
+        *self = self - rhs;
     }
 }

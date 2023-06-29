@@ -53,7 +53,7 @@ impl<'a> Ctx<'a> {
 }
 
 #[inline]
-fn get_ident(ident: String) -> Ident {
+pub fn get_ident(ident: String) -> Ident {
     Ident(Intern::new(ident))
 }
 
