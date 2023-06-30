@@ -16,6 +16,11 @@ Please ensure that your code meets the following requirements before contributin
 - LLVM 16.0+
 
 ## How do I install LLVM?
+
+_If you are using macOS and have [Homebrew](https://brew.sh) installed, see [how to install LLVM using Homebrew](#using-homebrew)._
+
+### From GitHub releases
+
 1. Go to the [LLVM release page](https://github.com/llvm/llvm-project/releases) and find the latest release.
 
 2. Pick the file that matches your system architecture.
@@ -39,3 +44,40 @@ Please ensure that your code meets the following requirements before contributin
 6. Building Terbium should work now.
 
 Happy Coding!
+
+### Using Homebrew
+
+*You must have [Homebrew](https://brew.sh) installed for this installation method. Homebrew is only available for macOS
+and Linux; if you are using Windows consider installing from [GitHub releases](#from-github-releases).*
+
+1. Install Homebrew if you haven't already (see https://brew.sh for instructions).
+
+2. Run `brew install llvm@16` to install LLVM 16.
+
+3. After installing, Homebrew may emit a *Caveats* section with instructions on how to use and link LLVM:
+    ```text
+    ==> Caveats
+    To use the bundled libc++ please add the following LDFLAGS:
+      LDFLAGS="-L/opt/homebrew/opt/llvm/lib/c++ -Wl,-rpath,/opt/homebrew/opt/llvm/lib/c++"
+    
+    llvm is keg-only, which means it was not symlinked into /opt/homebrew,
+    because macOS already provides this software and installing another version in
+    parallel can cause all kinds of trouble.
+    
+    If you need to have llvm first in your PATH, run:
+      fish_add_path /opt/homebrew/opt/llvm/bin
+    
+    For compilers to find llvm you may need to set:
+      set -gx LDFLAGS "-L/opt/homebrew/opt/llvm/lib"
+      set -gx CPPFLAGS "-I/opt/homebrew/opt/llvm/include"
+    ```
+
+4. Run the commands in this section, especially the commands suggested after *For compilers to find llvm you may need to set...*:
+
+    ```shell
+    # These commands will vary. Refer to the Caveats section for the exact commands to run.
+    $ set -gx LDFLAGS "-L/opt/homebrew/opt/llvm/lib"
+    $ set -gx CPPFLAGS "-I/opt/homebrew/opt/llvm/include"
+    ```
+
+5. Building Terbium should work now.
