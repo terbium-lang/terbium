@@ -7,7 +7,7 @@ use crate::{
 use common::span::{Spanned, SpannedExt};
 use hir::{
     typed::{LocalEnv, Ty, TypedExpr},
-    Ident, IntSign, ItemId, Literal, ModuleId, PrimitiveTy, ScopeId,
+    Ident, IntSign, ItemId, Literal, ModuleId, Pattern, PrimitiveTy, ScopeId,
 };
 use std::collections::HashMap;
 
@@ -342,6 +342,23 @@ impl Lowerer {
                             .push(expr.nest(|expr| Node::Store(local, Box::new(expr))))
                     }
                     Node::Jump(block)
+                }
+                // in this case we can use registers
+                hir::Node::Let {
+                    pat:
+                        Spanned(
+                            Pattern::Ident {
+                                ident,
+                                mut_kw: None,
+                            },
+                            _,
+                        ),
+                    value: Some(value),
+                    ..
+                } => {
+                    let value = self.lower_expr(&mut ctx, value);
+                    let local = LocalId(*ident.value(), LocalEnv::Standard);
+                    Node::Register(local, value)
                 }
                 _ => todo!(),
             };
