@@ -80,4 +80,7 @@ and Linux; if you are using Windows consider installing from [GitHub releases](#
     $ set -gx CPPFLAGS "-I/opt/homebrew/opt/llvm/include"
     ```
 
-5. Building Terbium should work now.
+5. Then set environment variable `LLVM_SYS_160_PREFIX=/path/to/llvm/folder/` when you are compiling Terbium. 
+   This is usually `/opt/homebrew/opt/llvm`.
+
+6. Building Terbium should work now.
