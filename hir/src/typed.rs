@@ -398,6 +398,9 @@ impl Display for Ty {
 }
 
 impl Ty {
+    /// The `void` type.
+    pub const VOID: Self = Self::Primitive(PrimitiveTy::Void);
+
     /// Example: `u32` is a subtype of `u64` because they coerce.
     pub fn relation_to(&self, other: &Self) -> Relation {
         match (self, other) {

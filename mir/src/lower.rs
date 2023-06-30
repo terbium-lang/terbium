@@ -7,8 +7,9 @@ use crate::{
 use common::span::{Spanned, SpannedExt};
 use hir::{
     typed::{LocalEnv, Ty, TypedExpr},
-    IntSign, ItemId, Literal, ModuleId, PrimitiveTy, ScopeId,
+    Ident, IntSign, ItemId, Literal, ModuleId, PrimitiveTy, ScopeId,
 };
+use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
 #[must_use = "the lowerer must be called to produce the MIR"]
@@ -22,6 +23,46 @@ pub struct Lowerer {
 pub struct Ctx<'a> {
     blocks: *mut BlockMap,
     current: &'a mut Vec<Spanned<Node>>,
+    track: BlockId,
+    bctx: *mut BlockCtx<'a>,
+}
+
+impl<'a> Ctx<'a> {
+    /// Move the context to start writing in the given block.
+    pub(crate) fn move_to(&mut self, block_id: BlockId) {
+        self.current = unsafe { &mut *self.blocks }
+            .try_insert(block_id, Vec::new())
+            .expect("block already exists");
+        self.track = block_id;
+    }
+}
+
+pub struct BlockCtx<'a> {
+    // nearest loop block
+    continue_to: Option<BlockId>,
+    // nearest loop continuation block along with the local to store the result into
+    break_to: Option<(BlockId, LocalId)>,
+    // keep a lookup of labels to their blocks
+    label_continue_map: &'a mut HashMap<Ident, BlockId>,
+    // keep a lookup of labels to their block continuations
+    label_break_map: &'a mut HashMap<Ident, (BlockId, Option<LocalId>)>,
+}
+
+impl<'a> BlockCtx<'a> {
+    /// Register a label to map to a block and continuation.
+    pub(crate) fn store_label(
+        &mut self,
+        lowerer: &mut Lowerer,
+        scope_id: ScopeId,
+        block: BlockId,
+        cont: BlockId,
+        result: Option<LocalId>,
+    ) {
+        let Some(Spanned(label, _)) = lowerer.thir.scopes[&scope_id].label else { return };
+
+        self.label_continue_map.insert(label, block);
+        self.label_break_map.insert(label, (cont, result));
+    }
 }
 
 impl Lowerer {
@@ -59,6 +100,8 @@ impl Lowerer {
     ) -> Spanned<Expr> {
         type HirExpr = hir::typed::Expr;
 
+        // SAFETY: the context is valid for the duration of the function
+        let bctx = unsafe { &mut *ctx.bctx };
         match expr {
             HirExpr::Literal(lit) => Expr::Constant(self.lower_literal(lit, &ty)),
             HirExpr::IntIntrinsic(intr, sign, width) => {
@@ -123,26 +166,122 @@ impl Lowerer {
                 // Create the temporary result local
                 let result_local = LocalId(format!("result{}", scope.0).into(), LocalEnv::Internal);
                 ctx.current.extend([
-                    Node::Init(result_local).spanned(span),
+                    Node::Local(result_local, ty).spanned(span),
                     // Jump to the block that will assign the result
                     Node::Jump(block_id).spanned(span),
                 ]);
-                self.lower_scope(ctx.blocks, scope, block_id, |slf, value, ctx| {
-                    let span = value.span();
+                bctx.store_label(self, scope, block_id, cont_id, Some(result_local));
+                self.lower_scope(
+                    ctx.blocks,
+                    ctx.bctx,
+                    scope,
+                    block_id,
+                    |slf, value, ctx| {
+                        let expr = slf.lower_expr(ctx, value);
+                        // Assign the result to the temporary local
+                        Node::Store(result_local, Box::new(expr))
+                    },
+                    Some(Node::Jump(cont_id).spanned(span)),
+                );
+                // Modify the current buffer to the continuation scope
+                ctx.move_to(cont_id);
+                Expr::Local(result_local)
+            }
+            // When lowering an if-statement without an else branch,
+            // jump to the if-true-block if the condition is true then the continuation block,
+            // otherwise jump to the continuation block immediately.
+            // Since all non-diverging if-expressions return `void`, this will also return `void`.
+            HirExpr::If(cond, then, None) => {
+                let then_id = BlockId::from(then);
+                let cont_id = BlockId(format!("_bb{}.after", then.0).into());
+
+                let cond = self.lower_expr(ctx, *cond);
+                ctx.current
+                    .push(Node::Branch(cond, then_id, cont_id).spanned(span));
+                bctx.store_label(self, then, then_id, cont_id, None);
+                self.lower_scope(
+                    ctx.blocks,
+                    ctx.bctx,
+                    then,
+                    then_id,
+                    |slf, value, ctx| Node::Expr(slf.lower_expr(ctx, value)),
+                    Some(Node::Jump(cont_id).spanned(span)),
+                );
+
+                ctx.move_to(cont_id);
+                Expr::Constant(Constant::Void)
+            }
+            // Since if-else-expressions may diverge, this will also store a temporary result local
+            HirExpr::If(cond, then, Some(els)) => {
+                let then_id = BlockId::from(then);
+                let else_id = BlockId::from(els);
+                let cont_id = BlockId(format!("_bb{}.after", then.0).into());
+                // Create the temporary result local
+                let result_local =
+                    LocalId(format!("result{}", then_id.0).into(), LocalEnv::Internal);
+
+                let cond = self.lower_expr(ctx, *cond);
+                ctx.current.extend([
+                    Node::Local(result_local, ty).spanned(span),
+                    Node::Branch(cond, then_id, else_id).spanned(span),
+                ]);
+                bctx.store_label(self, then, then_id, cont_id, Some(result_local));
+                bctx.store_label(self, els, else_id, cont_id, Some(result_local));
+
+                let implicit_return = |slf: &mut Self, value: Spanned<_>, ctx: &mut Ctx| {
                     let expr = slf.lower_expr(ctx, value);
                     // Assign the result to the temporary local
-                    ctx.current.push(
-                        Node::Expr(Expr::Assign(result_local, Box::new(expr)).spanned(span))
-                            .spanned(span),
-                    );
-                    Node::Jump(cont_id)
-                });
+                    Node::Store(result_local, Box::new(expr))
+                };
+                let exit_node = Some(Node::Jump(cont_id).spanned(span));
+                self.lower_scope(
+                    ctx.blocks,
+                    ctx.bctx,
+                    then,
+                    then_id,
+                    implicit_return,
+                    exit_node.clone(),
+                );
+                self.lower_scope(
+                    ctx.blocks,
+                    ctx.bctx,
+                    els,
+                    else_id,
+                    implicit_return,
+                    exit_node,
+                );
 
                 // Modify the current buffer to the continuation scope
-                ctx.current = unsafe { &mut *ctx.blocks }
-                    .try_insert(cont_id, Vec::new())
-                    .expect("block already exists");
+                ctx.move_to(cont_id);
+                Expr::Local(result_local)
+            }
+            // Loops could break with a value, so they also need a temporary result local
+            HirExpr::Loop(body) => {
+                let body_id = BlockId::from(body);
+                let cont_id = BlockId(format!("_bb{}.after", body.0).into());
+                // Create the temporary result local
+                let result_local =
+                    LocalId(format!("result{}", body_id.0).into(), LocalEnv::Internal);
 
+                ctx.current.extend([
+                    Node::Local(result_local, ty).spanned(span),
+                    Node::Jump(body_id).spanned(span),
+                ]);
+                bctx.store_label(self, body, body_id, cont_id, Some(result_local));
+                bctx.continue_to = Some(body_id);
+                bctx.break_to = Some((cont_id, result_local));
+                self.lower_scope(
+                    ctx.blocks,
+                    ctx.bctx,
+                    body,
+                    body_id,
+                    |slf, value, ctx| Node::Expr(slf.lower_expr(ctx, value)),
+                    // Loop back to the start of the loop
+                    Some(Node::Jump(body_id).spanned(span)),
+                );
+
+                // Modify the current buffer to the continuation scope
+                ctx.move_to(cont_id);
                 Expr::Local(result_local)
             }
             _ => todo!(),
@@ -154,23 +293,28 @@ impl Lowerer {
     pub fn lower_scope<'a, F>(
         &'a mut self,
         blocks: *mut BlockMap,
+        bctx: *mut BlockCtx,
         scope: ScopeId,
         entry_id: BlockId,
         mut on_implicit_return: F,
-    ) -> &mut Vec<Spanned<Node>>
-    where
+        exit_node: Option<Spanned<Node>>,
+    ) where
         F: FnMut(&mut Self, Spanned<TypedExpr>, &mut Ctx) -> Node + 'a,
     {
         let scope = self.thir.scopes.remove(&scope).expect("no such scope");
 
         // SAFETY: the blocks pointer is valid for the lifetime of the function
-        let mut entry = unsafe { &mut *blocks }
+        let entry = unsafe { &mut *blocks }
             .try_insert(entry_id, Vec::with_capacity(scope.children.value().len()))
             .expect("block already exists");
+
         let mut ctx = Ctx {
             blocks,
-            current: &mut entry,
+            current: entry,
+            track: entry_id,
+            bctx,
         };
+        let bctx = unsafe { &*bctx };
 
         for Spanned(node, span) in scope.children.into_value() {
             let node = match node {
@@ -180,20 +324,55 @@ impl Lowerer {
                     let expr = value.map(|value| self.lower_expr(&mut ctx, value));
                     Node::Return(expr)
                 }
+                hir::Node::Continue(Some(Spanned(label, _))) => {
+                    Node::Jump(*bctx.label_continue_map.get(&label).unwrap())
+                }
+                hir::Node::Continue(None) => Node::Jump(bctx.continue_to.unwrap()),
+                hir::Node::Break(label, value) => {
+                    let (block, local) = match label {
+                        Some(Spanned(label, _)) => *bctx.label_break_map.get(&label).unwrap(),
+                        None => {
+                            let (block, local) = bctx.break_to.unwrap();
+                            (block, Some(local))
+                        }
+                    };
+                    if let (Some(value), Some(local)) = (value, local) {
+                        let expr = self.lower_expr(&mut ctx, value);
+                        ctx.current
+                            .push(expr.nest(|expr| Node::Store(local, Box::new(expr))))
+                    }
+                    Node::Jump(block)
+                }
                 _ => todo!(),
             };
             ctx.current.push(Spanned(node, span));
         }
-        entry
+        ctx.current.extend(exit_node);
     }
 
     pub fn lower_map(&mut self, scope_id: ScopeId) -> BlockMap {
         let mut blocks = BlockMap::default();
         let entry_id = BlockId("entry".into());
-        self.lower_scope(&mut blocks, scope_id, entry_id, |slf, value, ctx| {
-            let expr = slf.lower_expr(ctx, value);
-            Node::Return(Some(expr))
-        });
+
+        let mut lcm = HashMap::new();
+        let mut lbm = HashMap::new();
+        let mut bctx = BlockCtx {
+            continue_to: None,
+            break_to: None,
+            label_continue_map: &mut lcm,
+            label_break_map: &mut lbm,
+        };
+        self.lower_scope(
+            &mut blocks,
+            &mut bctx,
+            scope_id,
+            entry_id,
+            |slf, value, ctx| {
+                let expr = slf.lower_expr(ctx, value);
+                Node::Return(Some(expr))
+            },
+            None,
+        );
         blocks
     }
 
@@ -206,6 +385,7 @@ impl Lowerer {
             Func {
                 name,
                 params: Vec::new(),
+                ret_ty: Ty::VOID,
                 blocks,
             },
         );

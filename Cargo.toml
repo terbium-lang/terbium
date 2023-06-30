@@ -16,9 +16,10 @@ categories = ["compilers", "command-line-interface", "parsing", "wasm"]
 # path = "src/bin/terbium.rs"
 
 [workspace]
-members = ["common", "diagnostics", "grammar", "hir", "mir"]
+members = ["codegen", "common", "diagnostics", "grammar", "hir", "mir"]
 
 [dependencies]
+codegen = { path = "codegen" }
 common = { path = "common" }
 diagnostics = { path = "diagnostics" }
 grammar = { path = "grammar" }

@@ -5,10 +5,14 @@
 //! Terbium-specific optimizations (that could not otherwise be done by LLVM or other codegen) are
 //! performed. Pattern validations and exhaustiveness checks are also performed during this stage.
 //!
-//! MIR is the last stage of the compiler that preserves all span, "type", and debuginfo. MIR can be
+//! MIR is the last stage of the compiler that preserves all span, type, and debuginfo. MIR can be
 //! transformed from and to MIR bytecode, and can be interpreted using the `interpreter` crate,
 //! usually referred to as the MIR Interpreter or "MIRI". Bytecode can also be used to aid
-//! incremental compilation as prior lowerings and parsing stages can be skipped.
+//! incremental compilation as prior lowerings and parsing stages can be skipped. MIR also conforms
+//! to *single static assignment* (SSA) form, similar to LLVM IR.
+//!
+//! You might have noticed MIR closely resembles LLVM IR. This is because MIR is designed to be
+//! as close to LLVM IR as possible while still maintaining Terbium-specific details.
 //!
 //! If a lower-level representation is requested, MIR can be lowered into a lower-level IR such as
 //! LLVM IR to be compiled into machine code.
@@ -21,7 +25,7 @@ pub use lower::Lowerer;
 
 use common::span::Spanned;
 use hir::{
-    typed::{BinaryIntIntrinsic, LocalEnv, UnaryIntIntrinsic},
+    typed::{BinaryIntIntrinsic, LocalEnv, Ty, UnaryIntIntrinsic},
     FloatWidth, Ident, IntSign, IntWidth, ItemId, ScopeId,
 };
 use std::{
@@ -88,15 +92,21 @@ impl Display for Mir {
 #[derive(Clone, Debug)]
 pub struct Func {
     pub name: ItemId,
-    pub params: Vec<Ident>,
+    pub params: Vec<(Ident, Ty)>,
+    pub ret_ty: Ty,
     pub blocks: BlockMap,
 }
 
 impl Display for Func {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "func {}(", self.name)?;
-        write_comma_sep(f, self.params.iter().map(|p| format!("%local.{p}")))?;
-        writeln!(f, ") {{")?;
+        write_comma_sep(
+            f,
+            self.params
+                .iter()
+                .map(|(p, ty)| format!("%local.{p}: {ty}")),
+        )?;
+        writeln!(f, ") -> {} {{", self.ret_ty)?;
         for (id, block) in &self.blocks {
             writeln!(f, "{id}:")?;
             for node in block {
@@ -186,7 +196,6 @@ impl Display for BoolIntrinsic {
 pub enum Expr {
     Constant(Constant),
     Local(LocalId),
-    Assign(LocalId, Box<Spanned<Self>>),
     IntIntrinsic(IntIntrinsic, IntSign, IntWidth),
     BoolIntrinsic(BoolIntrinsic),
     Call(ItemId, Vec<Spanned<Self>>),
@@ -197,7 +206,6 @@ impl Display for Expr {
         match self {
             Self::Constant(c) => write!(f, "{c}"),
             Self::Local(l) => write!(f, "{l}"),
-            Self::Assign(l, e) => write!(f, "{l} = {e}"),
             Self::IntIntrinsic(i, sign, width) => {
                 write!(f, "<{}{}>{i}", sign.type_name(), *width as usize)
             }
@@ -214,10 +222,14 @@ impl Display for Expr {
 #[derive(Clone, Debug)]
 pub enum Node {
     Expr(Spanned<Expr>),
-    // declare initialized with a constant (no alloca needed)
-    Declare(LocalId, Spanned<Constant>),
-    // initialize local
-    Init(LocalId),
+    // declare temporary register
+    Register(LocalId, Spanned<Expr>),
+    // initialize stack-allocated local (alloca)
+    // this is always done for mutable or late-init locals, and can usually be optimized away
+    // with the "memory to register promotion" pass.
+    Local(LocalId, Ty),
+    // store to local
+    Store(LocalId, Box<Spanned<Expr>>),
     // llvm: br label %block
     Jump(BlockId),
     // llvm: br i1 %cond, label %true, label %false
@@ -231,8 +243,9 @@ impl Display for Node {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Expr(e) => write!(f, "{e}"),
-            Self::Declare(l, c) => write!(f, "init {l} = {c}"),
-            Self::Init(l) => write!(f, "init {l}"),
+            Self::Register(l, e) => write!(f, "register {l} = {e}"),
+            Self::Local(l, ty) => write!(f, "alloca {l}: {ty}"),
+            Self::Store(l, e) => write!(f, "store {e} = {l}"),
             Self::Jump(b) => write!(f, "jump {b}"),
             Self::Branch(cond, then, els) => write!(f, "branch {cond} {then} {els}"),
             Self::Return(e) => write!(

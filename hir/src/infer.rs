@@ -269,7 +269,7 @@ impl TypeLowerer {
 
     pub fn lower_literal(lit: &Literal) -> Ty {
         match lit {
-            Literal::Void => Ty::Primitive(PrimitiveTy::Void),
+            Literal::Void => Ty::VOID,
             Literal::Bool(_) => Ty::Primitive(PrimitiveTy::Bool),
             Literal::Int(i) => {
                 // Fit the integer into the smallest possible type (at least 32 bits)
@@ -458,7 +458,7 @@ impl TypeLowerer {
                             right_ty
                         }
                     }
-                    None => Ty::Primitive(PrimitiveTy::Void),
+                    None => Ty::VOID,
                 };
                 TypedExpr(typed::Expr::If(Box::new(cond), left, right), ty)
             }
@@ -697,7 +697,7 @@ impl TypeLowerer {
                 let exit_ty = value
                     .as_ref()
                     .map(|value| value.value().1.clone())
-                    .unwrap_or(Ty::Primitive(PrimitiveTy::Void));
+                    .unwrap_or(Ty::VOID);
 
                 action = Some(match label {
                     Some(label) => ExitAction::FromBlock(Some(label), exit_ty, span),
@@ -710,7 +710,7 @@ impl TypeLowerer {
                 let exit_ty = value
                     .as_ref()
                     .map(|value| value.value().1.clone())
-                    .unwrap_or(Ty::Primitive(PrimitiveTy::Void));
+                    .unwrap_or(Ty::VOID);
                 action = Some(ExitAction::FromFunc(exit_ty, span));
 
                 Node::Return(value)
@@ -832,10 +832,10 @@ impl TypeLowerer {
             crate::Scope::new(scope.module_id, scope.label, lowered.spanned(full_span)),
         );
         let exit_action = exit_action.unwrap_or_else(|| {
-            self.unify_scope(scope_id, Ty::Primitive(PrimitiveTy::Void), full_span);
+            self.unify_scope(scope_id, Ty::VOID, full_span);
             match kind {
                 ScopeKind::Loop => ExitAction::NeverReturn,
-                _ => ExitAction::FromBlock(None, Ty::Primitive(PrimitiveTy::Void), full_span),
+                _ => ExitAction::FromBlock(None, Ty::VOID, full_span),
             }
         });
 

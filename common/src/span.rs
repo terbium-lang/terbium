@@ -223,6 +223,13 @@ impl<T> Spanned<T> {
         Ok(Spanned(f(self.0)?, self.1))
     }
 
+    /// Nests the span into the inner value.
+    #[must_use]
+    pub fn nest<U>(self, f: impl FnOnce(Self) -> U) -> Spanned<U> {
+        let span = self.span();
+        Spanned(f(self), span)
+    }
+
     /// Returns a tuple (value, span).
     #[must_use]
     #[allow(clippy::missing_const_for_fn, reason = "destructors can't be const")]
