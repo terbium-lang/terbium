@@ -245,7 +245,7 @@ impl Display for Node {
             Self::Expr(e) => write!(f, "{e}"),
             Self::Register(l, e) => write!(f, "register {l} = {e}"),
             Self::Local(l, ty) => write!(f, "alloca {l}: {ty}"),
-            Self::Store(l, e) => write!(f, "store {e} = {l}"),
+            Self::Store(l, e) => write!(f, "store {l} = {e}"),
             Self::Jump(b) => write!(f, "jump {b}"),
             Self::Branch(cond, then, els) => write!(f, "branch {cond} {then} {els}"),
             Self::Return(e) => write!(
