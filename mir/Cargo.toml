@@ -9,3 +9,4 @@ edition = "2021"
 common = { path = "../common" }
 diagnostics = { path = "../diagnostics" }
 hir = { path = "../hir" }
+indexmap = "^1.9"

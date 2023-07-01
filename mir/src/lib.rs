@@ -28,6 +28,7 @@ use hir::{
     typed::{BinaryIntIntrinsic, LocalEnv, Ty, UnaryIntIntrinsic},
     FloatWidth, Ident, IntSign, IntWidth, ItemId, ScopeId,
 };
+use indexmap::IndexMap;
 use std::{
     collections::HashMap,
     fmt::{self, Display, Formatter},
@@ -46,6 +47,7 @@ fn write_comma_sep<T: Display>(f: &mut Formatter, iter: impl Iterator<Item = T>)
 }
 
 pub type TypedHir = hir::Hir<hir::infer::InferMetadata>;
+pub type BlockMap = IndexMap<BlockId, Vec<Spanned<Node>>>;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct BlockId(pub Ident);
@@ -70,8 +72,6 @@ impl Display for LocalId {
         write!(f, "%{}.{}", self.1, self.0)
     }
 }
-
-pub type BlockMap = HashMap<BlockId, Vec<Spanned<Node>>>;
 
 /// The MIR representation of a Terbium program.
 #[derive(Clone, Debug, Default)]

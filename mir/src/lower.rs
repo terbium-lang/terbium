@@ -30,9 +30,7 @@ pub struct Ctx<'a> {
 impl<'a> Ctx<'a> {
     /// Move the context to start writing in the given block.
     pub(crate) fn move_to(&mut self, block_id: BlockId) {
-        self.current = unsafe { &mut *self.blocks }
-            .try_insert(block_id, Vec::new())
-            .expect("block already exists");
+        self.current = unsafe { &mut *self.blocks }.entry(block_id).or_default();
         self.track = block_id;
     }
 }
@@ -164,7 +162,8 @@ impl Lowerer {
                 let block_id = BlockId::from(scope);
                 let cont_id = BlockId(format!("_bb{}.after", scope.0).into());
                 // Create the temporary result local
-                let result_local = LocalId(format!("result{}", scope.0).into(), LocalEnv::Internal);
+                let result_local =
+                    LocalId(format!("result.{}", scope.0).into(), LocalEnv::Internal);
                 ctx.current.extend([
                     Node::Local(result_local, ty).spanned(span),
                     // Jump to the block that will assign the result
@@ -213,12 +212,11 @@ impl Lowerer {
             }
             // Since if-else-expressions may diverge, this will also store a temporary result local
             HirExpr::If(cond, then, Some(els)) => {
-                let then_id = BlockId::from(then);
-                let else_id = BlockId::from(els);
-                let cont_id = BlockId(format!("_bb{}.after", then.0).into());
+                let then_id = BlockId(format!("if.{}.then", then.0).into());
+                let else_id = BlockId(format!("if.{}.else", then.0).into());
+                let cont_id = BlockId(format!("if.{}.after", then.0).into());
                 // Create the temporary result local
-                let result_local =
-                    LocalId(format!("result{}", then_id.0).into(), LocalEnv::Internal);
+                let result_local = LocalId(format!("result.{}", then.0).into(), LocalEnv::Internal);
 
                 let cond = self.lower_expr(ctx, *cond);
                 ctx.current.extend([
@@ -260,8 +258,7 @@ impl Lowerer {
                 let body_id = BlockId::from(body);
                 let cont_id = BlockId(format!("_bb{}.after", body.0).into());
                 // Create the temporary result local
-                let result_local =
-                    LocalId(format!("result{}", body_id.0).into(), LocalEnv::Internal);
+                let result_local = LocalId(format!("result.{}", body.0).into(), LocalEnv::Internal);
 
                 ctx.current.extend([
                     Node::Local(result_local, ty).spanned(span),
@@ -305,8 +302,8 @@ impl Lowerer {
 
         // SAFETY: the blocks pointer is valid for the lifetime of the function
         let entry = unsafe { &mut *blocks }
-            .try_insert(entry_id, Vec::with_capacity(scope.children.value().len()))
-            .expect("block already exists");
+            .entry(entry_id)
+            .or_insert_with(|| Vec::with_capacity(scope.children.value().len()));
 
         let mut ctx = Ctx {
             blocks,
