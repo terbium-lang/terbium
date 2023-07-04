@@ -110,3 +110,38 @@ func example(n: uint) =
         .reduce { $0 + $1 } // Shorthand for .map(\x, y do x + y)
         |> println; // Pipeline operator 
 ```
+
+### Subtyping with composition
+
+```swift
+// A `struct` defines a type that is composed of many values called "fields", 
+// which are all stored in a contiguous block of memory. 
+// Each field is given a name and a type.
+struct Rectangle {
+    width: int,
+    height: int,
+}
+
+// Explicit nominal subtyping with traits.
+//
+// A `trait` defines a set of functions that a type must implement.
+// It is similar to an interface in object-oriented languages.
+trait Shape {
+    // A shape must have an `area` method that returns an `int`.
+    func area(self) -> int;
+}
+
+// A `extend` block extends a type's functionality with a trait.
+// The type must implement all functions defined in the trait.
+extend Shape for Rectangle {
+    func area(self) = self.width * self.height;
+}
+
+func main() {
+    // Create a new rectangle using a struct-literal.
+    let rect = Rectangle { width: 10, height: 5 };
+    
+    // Call the `area` method on the rectangle.
+    println(rect.area()); // 50
+}
+```
