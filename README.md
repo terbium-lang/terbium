@@ -50,15 +50,16 @@ func main() {
 ### Optional values
 
 ```swift
-// Optional values are of type T? and can be either .some(value) or .none
-// Any `value` of type T can coerce into T? by .some(value).
+// Optional values are of type T? and can be either some(value) or none
+// Any `value` of type T can coerce into T? by some(value).
 
-func maybe_five() -> int? = .none;
+func maybe_five() -> int? = none;
 
 func main() {
     println(maybe_five() else 10); // 10
 }
 ```
+
 ### Error handling
 
 ```swift
@@ -75,10 +76,10 @@ func fallible() -> throws Error {
     let mut out = stdout();
     out.write("This might fail")!; // use ! to propagate the error to the function
 
-    // implied return value of `void` is coerced to `.ok(void)`
-    // in fact, any `value` of type T can be coerced to `T throws _` as `.ok(value)`
+    // implied return value of `void` is coerced to `ok(void)`
+    // in fact, any `value` of type T can be coerced to `T throws _` as `ok(value)`
     //
-    // this explicit type cast will result in `.ok(5)`:
+    // this explicit type cast will result in `ok(5)`:
     // let x = 5 to /* `to` is the cast operator */ int throws Error;
 }
 
@@ -96,4 +97,16 @@ func main() {
     // You can also use `.unwrap()` to panic with no message:
     fallible().unwrap();
 }
+```
+
+### Functional programming
+
+```swift
+/// Calculate double the sum of all multiples of 3 which are <= n
+func example(n: uint) =
+    (0..=n)
+        .filter(\x do x % 3 == 0) // Lambda expressions
+        .map { _ * 2 } // Shorthand for .map(\x do x * 2)
+        .reduce { $0 + $1 } // Shorthand for .map(\x, y do x + y)
+        |> println; // Pipeline operator 
 ```
