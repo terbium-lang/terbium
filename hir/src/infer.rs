@@ -5,8 +5,8 @@ use crate::{
         UnificationTable,
     },
     warning::Warning,
-    Expr, FloatWidth, Hir, Ident, IntSign, IntWidth, ItemId, Literal, LogicalOp, Metadata,
-    ModuleId, Node, Pattern, PrimitiveTy, ScopeId, TyParam,
+    Expr, FloatWidth, Func, FuncHeader, FuncParam, Hir, Ident, IntSign, IntWidth, ItemId, Literal,
+    LogicalOp, Metadata, ModuleId, Node, Pattern, PrimitiveTy, ScopeId, TyParam,
 };
 use common::span::{Span, Spanned, SpannedExt};
 use std::{borrow::Cow, collections::HashMap};
@@ -121,8 +121,9 @@ pub struct Scope {
     id: ScopeId,
     module_id: ModuleId,
     kind: ScopeKind,
-    ty_params: Vec<TyParam>,
+    ty_params: Vec<TyParam<Ty>>,
     locals: HashMap<(Ident, LocalEnv), Local>,
+    funcs: HashMap<ItemId, FuncHeader<InferMetadata>>,
     label: Option<Spanned<Ident>>,
     resolution: Ty,
     exited: Option<ExitAction>,
@@ -192,7 +193,7 @@ impl TypeLowerer {
         scope_id: ScopeId,
         module: ModuleId,
         kind: ScopeKind,
-        ty_params: Vec<TyParam>,
+        ty_params: Vec<TyParam<Ty>>,
         label: Option<Spanned<Ident>>,
     ) -> Ty {
         let resolution = self.table.new_unknown();
@@ -202,6 +203,7 @@ impl TypeLowerer {
             kind,
             ty_params,
             locals: HashMap::new(),
+            funcs: HashMap::new(),
             label,
             resolution: resolution.clone(),
             exited: None,
@@ -792,6 +794,52 @@ impl TypeLowerer {
         Ok(())
     }
 
+    /// Runs type inference over a function.
+    ///
+    /// TODO: run type inference over parameters and return type
+    pub fn lower_func(&mut self, func: Func) -> Result<Func<InferMetadata>> {
+        let header = func.header;
+        let header = FuncHeader {
+            name: header.name,
+            ty_params: header
+                .ty_params
+                .into_iter()
+                .map(|param| {
+                    Ok(TyParam {
+                        name: param.name,
+                        infer: param.infer,
+                        bound: param
+                            .bound
+                            .map(|bound| self.lower_hir_ty(*bound))
+                            .map(Box::new),
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?,
+            params: header
+                .params
+                .into_iter()
+                .map(|param| {
+                    Ok(FuncParam {
+                        pat: param.pat,
+                        ty: self.lower_hir_ty(param.ty),
+                        default: param
+                            .default
+                            .map(|expr| self.lower_expr(expr))
+                            .transpose()?,
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?,
+            ret_ty: self.lower_hir_ty(header.ret_ty),
+        };
+
+        self.lower_scope(func.body, ScopeKind::Func, header.ty_params.clone(), true)?;
+        Ok(Func {
+            vis: func.vis,
+            header,
+            body: func.body,
+        })
+    }
+
     /// Runs type inference over a scope.
     /// *Moves* the scope into the new typed HIR and returns a tuple
     /// (ScopeId, exit type of the scope).
@@ -802,13 +850,19 @@ impl TypeLowerer {
         &mut self,
         scope_id: ScopeId,
         kind: ScopeKind,
-        ty_params: Vec<TyParam>,
+        ty_params: Vec<TyParam<Ty>>,
         divergent: bool,
     ) -> Result<ExitAction> {
         let mut scope = self.hir.scopes.remove(&scope_id).expect("scope not found");
         let label = std::mem::replace(&mut scope.label, None);
         self.enter_scope(scope_id, scope.module_id, kind, ty_params, label);
 
+        let mut funcs = HashMap::new();
+        for (name, func) in scope.funcs.drain() {
+            let func = self.lower_func(func)?;
+            self.scope_mut().funcs.insert(name, func.header.clone());
+            funcs.insert(name, func);
+        }
         let mut exit_action = None;
         let full_span = scope.children.span();
         let mut lowered = Vec::with_capacity(scope.children.value().len());
@@ -829,7 +883,16 @@ impl TypeLowerer {
         }
         self.thir.scopes.insert(
             scope_id,
-            crate::Scope::new(scope.module_id, scope.label, lowered.spanned(full_span)),
+            crate::Scope {
+                module_id: scope.module_id,
+                label: scope.label,
+                children: lowered.spanned(full_span),
+                funcs,
+                aliases: HashMap::new(),
+                consts: HashMap::new(),
+                structs: HashMap::new(),
+                types: HashMap::new(),
+            },
         );
         let exit_action = exit_action.unwrap_or_else(|| {
             self.unify_scope(scope_id, Ty::VOID, full_span);
@@ -867,10 +930,6 @@ impl TypeLowerer {
         self.exit_scope_if_exists();
         self.thir.modules.insert(module_id, scope_id);
 
-        println!("{}", self.thir);
-        for (n, ty) in self.resolution_lookup.iter_mut() {
-            println!("{n:?} <- {}", ty)
-        }
         Ok(())
     }
 }

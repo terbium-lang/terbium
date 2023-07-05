@@ -377,7 +377,7 @@ pub struct FuncHeader<M: Metadata = LowerMetadata> {
     /// The parameters of the function.
     pub params: Vec<FuncParam<M>>,
     /// The return type of the function.
-    pub ret_ty: Ty,
+    pub ret_ty: M::Ty,
 }
 
 /// HIR of a top-level function.
@@ -417,6 +417,10 @@ pub enum IntSign {
 }
 
 impl IntSign {
+    pub const fn is_signed(self) -> bool {
+        matches!(self, Self::Signed)
+    }
+
     pub const fn type_name(&self) -> &str {
         match self {
             Self::Signed => "int",

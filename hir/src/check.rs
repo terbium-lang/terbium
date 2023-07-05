@@ -200,11 +200,12 @@ impl<'a> TypeChecker<'a> {
             Op::BitAnd => Intrinsic::BitAnd,
             Op::BitOr => Intrinsic::BitOr,
             Op::BitXor => Intrinsic::BitXor,
+            Op::Eq => Intrinsic::Eq,
+            Op::Ne => Intrinsic::Ne,
             Op::Lt => Intrinsic::Lt,
             Op::Gt => Intrinsic::Gt,
             Op::Le => Intrinsic::Le,
             Op::Ge => Intrinsic::Ge,
-            Op::Eq => Intrinsic::Eq,
             _ => return None,
         })
     }
@@ -224,7 +225,7 @@ impl<'a> TypeChecker<'a> {
 
         let arg1_ty = arg1.as_ref().map(|arg| &arg.value().1);
         match (op, int_intrinsic, &target.value().1, arg1_ty) {
-            // int logical_op int -> bool
+            // int cmp_op int -> bool
             // int op int -> (widest, least specific) int
             (_, Some(intr), P(Int(lsign, lw)), Some(P(Int(rsign, rw)))) => {
                 let sign = match (lsign, rsign) {
@@ -237,7 +238,7 @@ impl<'a> TypeChecker<'a> {
                     sign,
                     width,
                 );
-                *ty = if matches!(op, Op::Lt | Op::Gt | Op::Le | Op::Ge | Op::Eq) {
+                *ty = if matches!(op, Op::Lt | Op::Gt | Op::Le | Op::Ge | Op::Eq | Op::Ne) {
                     BOOL
                 } else {
                     P(Int(sign, width))
@@ -432,6 +433,12 @@ impl<'a> TypeChecker<'a> {
             .remove(&scope_id)
             .expect("scope not found");
 
+        // Substitute over all functions in the scope
+        for (_, func) in &mut scope.funcs {
+            self.substitute_scope(module, func.body, table);
+        }
+
+        // Substitute over the scope
         for child in scope.children.0.iter_mut() {
             match child.value_mut() {
                 Node::Expr(expr)

@@ -1,8 +1,8 @@
 //! Lowers a typed HIR to MIR.
 
 use crate::{
-    BlockId, BlockMap, BoolIntrinsic, Constant, Expr, Func, IntIntrinsic, LocalId, Mir, Node,
-    TypedHir,
+    BlockId, BlockMap, BoolIntrinsic, Constant, Expr, Func, HirFunc, IntIntrinsic, LocalId, Mir,
+    Node, TypedHir,
 };
 use common::span::{Spanned, SpannedExt};
 use hir::{
@@ -175,7 +175,7 @@ impl Lowerer {
                     ctx.bctx,
                     scope,
                     block_id,
-                    |slf, value, ctx| {
+                    move |slf, value, ctx| {
                         let expr = slf.lower_expr(ctx, value);
                         // Assign the result to the temporary local
                         Node::Store(result_local, Box::new(expr))
@@ -226,7 +226,7 @@ impl Lowerer {
                 bctx.store_label(self, then, then_id, cont_id, Some(result_local));
                 bctx.store_label(self, els, else_id, cont_id, Some(result_local));
 
-                let implicit_return = |slf: &mut Self, value: Spanned<_>, ctx: &mut Ctx| {
+                let implicit_return = move |slf: &mut Self, value: Spanned<_>, ctx: &mut Ctx| {
                     let expr = slf.lower_expr(ctx, value);
                     // Assign the result to the temporary local
                     Node::Store(result_local, Box::new(expr))
@@ -288,17 +288,24 @@ impl Lowerer {
 
     /// Lowers the scope and returns the entrypoint block.
     pub fn lower_scope<'a, F>(
-        &'a mut self,
+        &mut self,
         blocks: *mut BlockMap,
-        bctx: *mut BlockCtx,
+        bctx: *mut BlockCtx<'a>,
         scope: ScopeId,
         entry_id: BlockId,
         mut on_implicit_return: F,
         exit_node: Option<Spanned<Node>>,
-    ) where
+    ) -> Spanned<&'a mut Vec<Spanned<Node>>>
+    where
         F: FnMut(&mut Self, Spanned<TypedExpr>, &mut Ctx) -> Node + 'a,
     {
         let scope = self.thir.scopes.remove(&scope).expect("no such scope");
+
+        // First, lower all static items in the scope
+        for (id, func) in scope.funcs {
+            let func = self.lower_func(id, func);
+            self.mir.functions.insert(id, func);
+        }
 
         // SAFETY: the blocks pointer is valid for the lifetime of the function
         let entry = unsafe { &mut *blocks }
@@ -313,7 +320,8 @@ impl Lowerer {
         };
         let bctx = unsafe { &*bctx };
 
-        for Spanned(node, span) in scope.children.into_value() {
+        let Spanned(children, span) = scope.children;
+        for Spanned(node, span) in children {
             let node = match node {
                 hir::Node::Expr(expr) => Node::Expr(self.lower_expr(&mut ctx, expr)),
                 hir::Node::ImplicitReturn(value) => on_implicit_return(self, value, &mut ctx),
@@ -350,21 +358,23 @@ impl Lowerer {
                             },
                             _,
                         ),
+                    ty,
                     value: Some(value),
                     ..
                 } => {
                     let value = self.lower_expr(&mut ctx, value);
                     let local = LocalId(*ident.value(), LocalEnv::Standard);
-                    Node::Register(local, value)
+                    Node::Register(local, value, ty)
                 }
                 _ => todo!(),
             };
             ctx.current.push(Spanned(node, span));
         }
         ctx.current.extend(exit_node);
+        ctx.current.spanned(span)
     }
 
-    pub fn lower_map(&mut self, scope_id: ScopeId) -> BlockMap {
+    pub fn lower_map(&mut self, scope_id: ScopeId, terminate: bool) -> BlockMap {
         let mut blocks = BlockMap::default();
         let entry_id = BlockId("entry".into());
 
@@ -376,7 +386,7 @@ impl Lowerer {
             label_continue_map: &mut lcm,
             label_break_map: &mut lbm,
         };
-        self.lower_scope(
+        let Spanned(current, span) = self.lower_scope(
             &mut blocks,
             &mut bctx,
             scope_id,
@@ -387,13 +397,32 @@ impl Lowerer {
             },
             None,
         );
+        // Does it terminate?
+        if terminate
+            && !current
+                .last()
+                .map(|node| matches!(node.value(), Node::Return(_)))
+                .unwrap_or(false)
+        {
+            // If it doesn't, we need to add a return to void
+            current.push(Node::Return(None).spanned(span));
+        }
         blocks
+    }
+
+    pub fn lower_func(&mut self, item_id: ItemId, HirFunc { header, body, .. }: HirFunc) -> Func {
+        Func {
+            name: item_id,
+            params: Vec::new(), // TODO
+            ret_ty: header.ret_ty,
+            blocks: self.lower_map(body, true),
+        }
     }
 
     pub fn lower_module(&mut self, module: ModuleId) {
         let scope_id = self.thir.modules.get(&module).expect("no such module");
-        let blocks = self.lower_map(*scope_id);
-        let name = ItemId(module, "root".into());
+        let blocks = self.lower_map(*scope_id, true);
+        let name = ItemId(module, "__root".into());
         self.mir.functions.insert(
             name,
             Func {

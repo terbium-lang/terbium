@@ -33,7 +33,7 @@ pub enum DebugInfo {
 }
 
 /// Compiler configuration.
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 pub struct CompileOptions {
     /// Compilation target.
     pub target: Target,

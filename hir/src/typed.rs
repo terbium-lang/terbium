@@ -62,6 +62,7 @@ pub enum BinaryIntIntrinsic {
     Shl,
     Shr,
     Eq,
+    Ne,
     Lt,
     Le,
     Gt,
@@ -82,11 +83,26 @@ impl Display for BinaryIntIntrinsic {
             BinaryIntIntrinsic::Shl => write!(f, "<<"),
             BinaryIntIntrinsic::Shr => write!(f, ">>"),
             BinaryIntIntrinsic::Eq => write!(f, "=="),
+            BinaryIntIntrinsic::Ne => write!(f, "!="),
             BinaryIntIntrinsic::Lt => write!(f, "<"),
             BinaryIntIntrinsic::Le => write!(f, "<="),
             BinaryIntIntrinsic::Gt => write!(f, ">"),
             BinaryIntIntrinsic::Ge => write!(f, ">="),
         }
+    }
+}
+
+impl BinaryIntIntrinsic {
+    pub const fn is_cmp(self) -> bool {
+        matches!(
+            self,
+            BinaryIntIntrinsic::Eq
+                | BinaryIntIntrinsic::Ne
+                | BinaryIntIntrinsic::Lt
+                | BinaryIntIntrinsic::Le
+                | BinaryIntIntrinsic::Gt
+                | BinaryIntIntrinsic::Ge
+        )
     }
 }
 
@@ -312,10 +328,10 @@ impl TyConst {
         }
     }
 
-    pub fn to_usize(self) -> usize {
+    pub fn to_usize(&self) -> usize {
         match self.value {
-            Literal::UInt(value) => value as usize,
-            Literal::Int(value) => value as usize,
+            Literal::UInt(ref value) => *value as usize,
+            Literal::Int(ref value) => *value as usize,
             _ => panic!("expected usize literal"),
         }
     }
@@ -400,6 +416,19 @@ impl Display for Ty {
 impl Ty {
     /// The `void` type.
     pub const VOID: Self = Self::Primitive(PrimitiveTy::Void);
+
+    /// Whether this type is a zero-sized type.
+    #[inline]
+    pub fn is_zst(&self) -> bool {
+        match self {
+            Self::Primitive(PrimitiveTy::Void) => true,
+            Self::Tuple(tys) => tys.iter().all(Self::is_zst),
+            Self::Array(ty, len) => len
+                .as_ref()
+                .is_some_and(|len| Self::is_zst(ty) || len.is_const_int_and(|len| len == 0)),
+            _ => false,
+        }
+    }
 
     /// Example: `u32` is a subtype of `u64` because they coerce.
     pub fn relation_to(&self, other: &Self) -> Relation {
@@ -599,6 +628,14 @@ impl Ty {
                     .collect(),
                 Box::new(Self::from_ty(*ret, table)),
             ),
+        }
+    }
+
+    fn is_const_int_and(&self, f: impl FnOnce(usize) -> bool) -> bool {
+        if let Self::Const(c) = self {
+            f(c.to_usize())
+        } else {
+            false
         }
     }
 }

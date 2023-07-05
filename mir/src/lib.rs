@@ -21,13 +21,17 @@
 
 mod lower;
 
+pub use hir::{
+    typed::{
+        BinaryIntIntrinsic, LocalEnv, Ty, /* TODO: monomorphize types */
+        UnaryIntIntrinsic,
+    },
+    IntSign, IntWidth, ModuleId, PrimitiveTy,
+};
 pub use lower::Lowerer;
 
 use common::span::Spanned;
-use hir::{
-    typed::{BinaryIntIntrinsic, LocalEnv, Ty, UnaryIntIntrinsic},
-    FloatWidth, Ident, IntSign, IntWidth, ItemId, ScopeId,
-};
+use hir::{FloatWidth, Ident, ItemId, ScopeId};
 use indexmap::IndexMap;
 use std::{
     collections::HashMap,
@@ -47,10 +51,18 @@ fn write_comma_sep<T: Display>(f: &mut Formatter, iter: impl Iterator<Item = T>)
 }
 
 pub type TypedHir = hir::Hir<hir::infer::InferMetadata>;
+pub type HirFunc = hir::Func<hir::infer::InferMetadata>;
 pub type BlockMap = IndexMap<BlockId, Vec<Spanned<Node>>>;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct BlockId(pub Ident);
+
+impl BlockId {
+    /// The entry block of a function.
+    pub fn entry() -> Self {
+        Self("entry".into())
+    }
+}
 
 impl Display for BlockId {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -70,6 +82,12 @@ pub struct LocalId(pub Ident, pub LocalEnv);
 impl Display for LocalId {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "%{}.{}", self.1, self.0)
+    }
+}
+
+impl LocalId {
+    pub fn name(&self) -> String {
+        format!("{}.{}", self.1, self.0)
     }
 }
 
@@ -143,7 +161,7 @@ impl Display for Constant {
                 }
             }
             Self::Bool(b) => write!(f, "{b}"),
-            Self::Char(c) => write!(f, "c'{c}'"),
+            Self::Char(c) => write!(f, "c{c:?}"),
             Self::Tuple(t) => {
                 write!(f, "(")?;
                 write_comma_sep(f, t.iter())?;
@@ -158,7 +176,7 @@ impl Display for Constant {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum IntIntrinsic {
     Unary(UnaryIntIntrinsic, Box<Spanned<Expr>>),
     Binary(BinaryIntIntrinsic, Box<Spanned<Expr>>, Box<Spanned<Expr>>),
@@ -173,7 +191,7 @@ impl Display for IntIntrinsic {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BoolIntrinsic {
     Not(Box<Spanned<Expr>>),
     And(Box<Spanned<Expr>>, Box<Spanned<Expr>>),
@@ -192,7 +210,7 @@ impl Display for BoolIntrinsic {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Expr {
     Constant(Constant),
     Local(LocalId),
@@ -223,7 +241,7 @@ impl Display for Expr {
 pub enum Node {
     Expr(Spanned<Expr>),
     // declare temporary register
-    Register(LocalId, Spanned<Expr>),
+    Register(LocalId, Spanned<Expr>, Ty),
     // initialize stack-allocated local (alloca)
     // this is always done for mutable or late-init locals, and can usually be optimized away
     // with the "memory to register promotion" pass.
@@ -243,7 +261,7 @@ impl Display for Node {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Expr(e) => write!(f, "{e}"),
-            Self::Register(l, e) => write!(f, "register {l} = {e}"),
+            Self::Register(l, e, ty) => write!(f, "register {l}: {ty} = {e}"),
             Self::Local(l, ty) => write!(f, "alloca {l}: {ty}"),
             Self::Store(l, e) => write!(f, "store {l} = {e}"),
             Self::Jump(b) => write!(f, "jump {b}"),

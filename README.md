@@ -21,7 +21,7 @@ Terbium is designed to be:
 * **Concise**. Write less code wherever possible. High-level constructs and language features make Terbium elegant to write.
 * **Readable**. Being explicit and unambiguous in the code where needed while still being concise.
 * **Simple**. Complexity is abstracted away from the developer when writing a Terbium program, but low-level features are still accessable whenever needed.
-* **Performant**. With LLVM, Terbium can compile to optimized native machine code, so your high-level code won't compromise runtime performance.
+* **Performant**. With LLVM, Terbium can compile to optimized native machine code, so your high-level code won't compromise runtime performance. All abstractions in Terbium incur zero runtime overhead.
 * **Robust**. Write error-free code with Terbium. Null is a concept that does not exist in Terbium, and all errors must explicitly be handled. Mutability is explicit and memory is automatically freed.
 * **Rapid**. Rapid-prototyping and developer experience is just as important as runtime performance. A *debug mode* compiles semi-optimized code that compiles fast and suppresses pedantic errors as warnings.
 * **Typed**. A comprehensive type system allows Terbium to infer the types of most values and functions at compile-time. If a type cannot be inferred, it must be explicitly specified.
@@ -134,6 +134,7 @@ trait Shape {
 // A `extend` block extends a type's functionality with a trait.
 // The type must implement all functions defined in the trait.
 extend Shape for Rectangle {
+    /// Calculate the area of the rectangle.
     func area(self) = self.width * self.height;
 }
 

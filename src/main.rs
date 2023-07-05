@@ -1,3 +1,4 @@
+use codegen::compile_llvm;
 use common::span::{Span, Src};
 use diagnostics::write::DiagnosticWriter;
 use grammar::parser::Parser;
@@ -97,6 +98,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     start.elapsed(),
                                     mir_lowerer.mir
                                 );
+
+                                let start = std::time::Instant::now();
+
+                                let ctx = codegen::Context::create();
+                                let module = compile_llvm(&ctx, &mir_lowerer.mir, ModuleId::root());
+
+                                println!("=== [ LLVM IR ({:?} to compile) ] ===", start.elapsed());
+                                println!("{}", module.to_string());
                             }
                             Err(error) => {
                                 dwriter.write_diagnostic(
