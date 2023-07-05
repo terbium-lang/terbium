@@ -257,6 +257,13 @@ pub enum Node {
     Return(Option<Spanned<Expr>>),
 }
 
+impl Node {
+    #[inline]
+    pub const fn is_terminator(&self) -> bool {
+        matches!(self, Self::Jump(_) | Self::Branch(..) | Self::Return(_))
+    }
+}
+
 impl Display for Node {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {

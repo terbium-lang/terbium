@@ -401,11 +401,18 @@ impl Lowerer {
         if terminate
             && !current
                 .last()
-                .map(|node| matches!(node.value(), Node::Return(_)))
+                .map(|node| node.value().is_terminator())
                 .unwrap_or(false)
         {
             // If it doesn't, we need to add a return to void
             current.push(Node::Return(None).spanned(span));
+        }
+        // Cleanup input by removing all unreachable terminators in each block
+        for block in blocks.values_mut() {
+            let first_term = block.iter().position(|node| node.value().is_terminator());
+            if let Some(first_term) = first_term {
+                block.truncate(first_term + 1);
+            }
         }
         blocks
     }
