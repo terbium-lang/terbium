@@ -1,5 +1,7 @@
 # Installing Terbium
 
+*This page has moved to [the Terbium Documentation](https://terbium-lilac.vercel.app/docs/quickstart#install-terbium).*
+
 https://github.com/terbium-lang/terbium/releases/tag/nightly, install the build for your operating system:
 
 * aarch-64-apple-darwin for Apple Silicon macOS devices,
