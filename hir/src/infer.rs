@@ -791,7 +791,7 @@ impl TypeLowerer {
 
     /// Runs type inference over a function.
     ///
-    /// TODO: run type inference over parameters and return type
+    /// TODO: run type inference over parameters
     pub fn lower_func(&mut self, func: Func) -> Result<Func<InferMetadata>> {
         let header = func.header;
         let mut header = FuncHeader::<InferMetadata> {

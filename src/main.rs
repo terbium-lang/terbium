@@ -118,6 +118,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 println!("=== [ LLVM IR ({:?} to compile) ] ===", start.elapsed());
                                 println!("{}", module.to_string());
 
+                                module.write_bitcode_to_path(&*PathBuf::from("out.bc"));
+
                                 //let engine = module.create_execution_engine()?;
                                 //let entrypoint = module.get_function("__root").unwrap();
 

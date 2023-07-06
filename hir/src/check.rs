@@ -440,6 +440,7 @@ impl<'a> TypeChecker<'a> {
         // Substitute over all functions in the scope
         for (_, func) in &mut scope.funcs {
             self.substitute_scope(module, func.body, table);
+            func.header.ret_ty.apply(&table.substitutions);
         }
 
         // Substitute over the scope
