@@ -421,7 +421,7 @@ impl Ty {
     #[inline]
     pub fn is_zst(&self) -> bool {
         match self {
-            Self::Primitive(PrimitiveTy::Void) => true,
+            Self::Primitive(PrimitiveTy::Void) | Self::Invalid(_) | Self::Exit(_) => true,
             Self::Tuple(tys) => tys.iter().all(Self::is_zst),
             Self::Array(ty, len) => len
                 .as_ref()

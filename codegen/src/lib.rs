@@ -2,7 +2,13 @@
 
 mod aot;
 
-pub use inkwell::{context::Context, module::Module, values::FunctionValue};
+pub use inkwell::{
+    context::Context,
+    module::Module,
+    targets::{CodeModel, FileType, InitializationConfig, RelocMode, Target, TargetMachine},
+    values::FunctionValue,
+    OptimizationLevel,
+};
 
 use inkwell::passes::PassManager;
 use mir::{Mir, ModuleId};

@@ -378,6 +378,8 @@ pub struct FuncHeader<M: Metadata = LowerMetadata> {
     pub params: Vec<FuncParam<M>>,
     /// The return type of the function.
     pub ret_ty: M::Ty,
+    /// The span of the return type. `None` if the return type was not specified.
+    pub ret_ty_span: Option<Span>,
 }
 
 /// HIR of a top-level function.

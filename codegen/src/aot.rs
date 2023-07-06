@@ -15,7 +15,9 @@ use mir::{
     PrimitiveTy, Ty, UnaryIntIntrinsic,
 };
 use std::{collections::HashMap, mem::MaybeUninit, ops::Not};
+use inkwell::values::BasicValue;
 
+#[derive(Copy, Clone)]
 struct Local<'ctx> {
     value: PointerValue<'ctx>,
     ty: BasicTypeEnum<'ctx>,
@@ -29,7 +31,7 @@ pub struct Compiler<'a, 'ctx> {
     pub module: &'a Module<'ctx>,
     pub func: &'a Func,
 
-    locals: HashMap<LocalId, Local<'ctx>>,
+    locals: HashMap<LocalId, Option<Local<'ctx>>>,
     blocks: HashMap<BlockId, BasicBlock<'ctx>>,
     fn_value: MaybeUninit<FunctionValue<'ctx>>,
     increment: usize,
@@ -88,11 +90,11 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         &mut self,
         intr: IntIntrinsic,
         sign: IntSign,
-    ) -> BasicValueEnum<'ctx> {
-        match intr {
+    ) -> Option<BasicValueEnum<'ctx>> {
+        Some(match intr {
             IntIntrinsic::Unary(op, val) => {
                 let next = self.next_increment();
-                let val = self.lower_expr(*val).into_int_value();
+                let val = self.lower_expr(*val)?.into_int_value();
                 BasicValueEnum::IntValue(match op {
                     UnaryIntIntrinsic::Neg => self.builder.build_int_neg(val, &next),
                     UnaryIntIntrinsic::BitNot => self.builder.build_not(val, &next),
@@ -101,8 +103,8 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             IntIntrinsic::Binary(op, lhs, rhs) => {
                 use mir::BinaryIntIntrinsic as B;
 
-                let lhs = self.lower_expr(*lhs).into_int_value();
-                let rhs = self.lower_expr(*rhs).into_int_value();
+                let lhs = self.lower_expr(*lhs)?.into_int_value();
+                let rhs = self.lower_expr(*rhs)?.into_int_value();
                 let next = self.next_increment();
                 let int_value = match op {
                     B::Add => self.builder.build_int_add(lhs, rhs, &next),
@@ -144,25 +146,25 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                 };
                 BasicValueEnum::IntValue(int_value)
             }
-        }
+        })
     }
 
     /// Lowers an expression.
-    pub fn lower_expr(&mut self, expr: Spanned<Expr>) -> BasicValueEnum<'ctx> {
-        match expr.into_value() {
+    pub fn lower_expr(&mut self, expr: Spanned<Expr>) -> Option<BasicValueEnum<'ctx>> {
+        Some(match expr.into_value() {
             Expr::Local(id) => {
-                let ptr = &self.locals[&id];
+                let ptr = self.locals[&id]?;
                 self.builder
                     .build_load(ptr.ty, ptr.value, &self.next_increment())
             }
             Expr::Constant(c) => self.lower_constant(c),
-            Expr::IntIntrinsic(intr, sign, _) => self.lower_int_intrinsic(intr, sign),
+            Expr::IntIntrinsic(intr, sign, _) => self.lower_int_intrinsic(intr, sign)?,
             Expr::BoolIntrinsic(intr) => {
                 use mir::BoolIntrinsic as B;
 
                 macro_rules! lower {
                     ($($tgt:ident),+ => $e:expr) => {{
-                        $(let $tgt = self.lower_expr(*$tgt).into_int_value();)+
+                        $(let $tgt = self.lower_expr(*$tgt)?.into_int_value();)+
                         $e
                     }}
                 }
@@ -177,31 +179,33 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                 BasicValueEnum::IntValue(bool_value)
             }
             _ => todo!(),
-        }
+        })
     }
 
     /// Lowers a MIR node.
     pub fn lower_node(&mut self, node: Spanned<Node>) {
         match node.into_value() {
             Node::Store(loc, val) => {
-                let val = self.lower_expr(*val);
-                let loc = self.locals[&loc].value;
+                let Some(val) = self.lower_expr(*val) else { return };
+                let loc = self.locals[&loc].as_ref().unwrap().value;
                 self.builder.build_store(loc, val);
             }
             Node::Register(loc, expr, ty) => {
-                let ty = self.lower_ty(&ty);
-                let ptr = self.builder.build_alloca(ty, &loc.name());
-                let expr = self.lower_expr(expr);
-                self.builder.build_store(ptr, expr);
+                let local = self.lower_expr(expr).map(|expr| {
+                    let ty = self.lower_ty(&ty);
+                    let ptr = self.builder.build_alloca(ty, &loc.name());
+                    self.builder.build_store(ptr, expr);
 
-                let local = Local { value: ptr, ty };
+                    Local { value: ptr, ty }
+                });
                 self.locals.insert(loc, local);
             }
             Node::Local(id, ty) => {
-                let ty = self.lower_ty(&ty);
-                let ptr = self.builder.build_alloca(ty, &id.name());
-
-                let local = Local { value: ptr, ty };
+                let local = ty.is_zst().not().then(|| {
+                    let ty = self.lower_ty(&ty);
+                    let ptr = self.builder.build_alloca(ty, &id.name());
+                    Local { value: ptr, ty }
+                });
                 self.locals.insert(id, local);
             }
             Node::Return(None | Some(Spanned(VOID, _))) => {
@@ -209,14 +213,14 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             }
             Node::Return(Some(expr)) => {
                 let expr = self.lower_expr(expr);
-                self.builder.build_return(Some(&expr));
+                self.builder.build_return(expr.as_ref().map(|expr| expr as &dyn BasicValue));
             }
             Node::Jump(block) => {
                 let block = *self.blocks.get(&block).unwrap();
                 self.builder.build_unconditional_branch(block);
             }
             Node::Branch(cond, then_block, else_block) => {
-                let cond = self.lower_expr(cond).into_int_value();
+                let cond = self.lower_expr(cond).unwrap().into_int_value();
                 let then_block = *self.blocks.get(&then_block).unwrap();
                 let else_block = *self.blocks.get(&else_block).unwrap();
                 self.builder
@@ -314,7 +318,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                 ty: param.get_type(),
             };
             self.locals
-                .insert(LocalId(ident, LocalEnv::Standard), local);
+                .insert(LocalId(ident, LocalEnv::Standard), Some(local));
         }
 
         // Compile body

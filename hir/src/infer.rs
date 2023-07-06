@@ -125,7 +125,6 @@ pub struct Scope {
     locals: HashMap<(Ident, LocalEnv), Local>,
     funcs: HashMap<ItemId, FuncHeader<InferMetadata>>,
     label: Option<Spanned<Ident>>,
-    resolution: Ty,
     exited: Option<ExitAction>,
 }
 
@@ -136,18 +135,17 @@ impl Metadata for InferMetadata {
     type Ty = Ty;
 }
 
+/// Type resolution of a scope
+pub type ScopeResolution = (Ty, Option<Span>);
+
 /// Lowers types of expressions and performs type inference and one pass of typeck.
 #[derive(Debug)]
 pub struct TypeLowerer {
     local_env: LocalEnv,
     pub(crate) scopes: Vec<Scope>,
     pub(crate) table: UnificationTable,
-    // raw pointers are used here because:
-    // 1. it can be guaranteed that the pointers are valid for the lifetime of the type lowerer
-    // 2. it's faster
-    raw_resolution_lookup: HashMap<ScopeId, *mut Ty>,
     /// Scope resolution lookup.
-    pub(crate) resolution_lookup: HashMap<ScopeId, Ty>,
+    pub(crate) resolution_lookup: HashMap<ScopeId, ScopeResolution>,
     /// The HIR that is being lowered.
     pub hir: Hir,
     /// The HIR that is being generated.
@@ -165,7 +163,6 @@ impl TypeLowerer {
             local_env: LocalEnv::Standard,
             scopes: Vec::new(),
             table: UnificationTable::default(),
-            raw_resolution_lookup: HashMap::new(),
             resolution_lookup: HashMap::new(),
             hir,
             thir: Hir::default(),
@@ -195,8 +192,10 @@ impl TypeLowerer {
         kind: ScopeKind,
         ty_params: Vec<TyParam<Ty>>,
         label: Option<Spanned<Ident>>,
-    ) -> Ty {
-        let resolution = self.table.new_unknown();
+        resolution: Option<ScopeResolution>,
+    ) {
+        let resolution =
+            resolution.unwrap_or_else(|| (self.table.new_unknown(), None));
         let scope = Scope {
             id: scope_id,
             module_id: module,
@@ -205,22 +204,14 @@ impl TypeLowerer {
             locals: HashMap::new(),
             funcs: HashMap::new(),
             label,
-            resolution: resolution.clone(),
             exited: None,
         };
         self.scopes.push(scope);
-        // SAFETY: the scope has just been pushed
-        self.raw_resolution_lookup.insert(scope_id, unsafe {
-            let last_index = self.scopes.len() - 1;
-            std::ptr::addr_of_mut!(self.scopes.get_unchecked_mut(last_index).resolution)
-        });
-        resolution
+        self.resolution_lookup.insert(scope_id, resolution);
     }
 
     pub fn exit_scope_if_exists(&mut self) -> Option<Scope> {
         let mut scope = self.scopes.pop()?;
-        self.resolution_lookup
-            .insert(scope.id, scope.resolution.clone());
 
         for ((ident, env), local) in &mut scope.locals {
             // Only check locals in the current environment
@@ -358,7 +349,7 @@ impl TypeLowerer {
     fn lower_exit_in_context(&mut self, scope_id: ScopeId, divergent: bool) -> Result<Ty> {
         let label = self.hir.scopes.get(&scope_id).unwrap().label.clone();
         Ok(
-            match self.lower_scope(scope_id, ScopeKind::Block, Vec::new(), divergent)? {
+            match self.lower_scope(scope_id, ScopeKind::Block, Vec::new(), divergent, None)? {
                 // Does it exit *just* itself? If so, return the type of the expression
                 ExitAction::FromBlock(None, ty, _) => ty,
                 ExitAction::FromBlock(Some(lbl), ty, _)
@@ -541,15 +532,18 @@ impl TypeLowerer {
             }
             Expr::Loop(scope_id) => {
                 let label = self.hir.scopes.get(&scope_id).unwrap().label.clone();
-                let ty = match self.lower_scope(scope_id, ScopeKind::Loop, Vec::new(), true)? {
-                    // Are we exiting from just the loop?
-                    ExitAction::FromBlock(Some(lbl), ty, _) if label.is_some_and(|l| l == lbl) => {
-                        ty
-                    }
-                    ExitAction::FromNearestLoop(ty, _) => ty,
-                    // Otherwise we are exiting further out from the loop.
-                    r => Ty::Exit(Box::new(r)),
-                };
+                let ty =
+                    match self.lower_scope(scope_id, ScopeKind::Loop, Vec::new(), true, None)? {
+                        // Are we exiting from just the loop?
+                        ExitAction::FromBlock(Some(lbl), ty, _)
+                            if label.is_some_and(|l| l == lbl) =>
+                        {
+                            ty
+                        }
+                        ExitAction::FromNearestLoop(ty, _) => ty,
+                        // Otherwise we are exiting further out from the loop.
+                        r => Ty::Exit(Box::new(r)),
+                    };
                 TypedExpr(typed::Expr::Loop(scope_id), ty)
             }
             Expr::CallOp(op, lhs, rhs) => TypedExpr(
@@ -724,22 +718,24 @@ impl TypeLowerer {
     /// Unifies the resolution type of a scope with a given type.
     #[inline]
     fn unify_scope(&mut self, scope_id: ScopeId, ty: Ty, span: Span) {
-        let Some(tgt) = self.raw_resolution_lookup.get(&scope_id) else { return };
-        // SAFETY: raw resolution guarantees all pointers are self-referential
-        // and non-dropping, so we can safely dereference them as long as `self` is alive
-        let tgt = unsafe { &mut **tgt };
+        let Some((mut tgt, tgt_span)) = self.resolution_lookup.remove(&scope_id) else { return };
+
         // unify the return type of the function with the type of the return expression
         self.table
             .constraints
-            .push_back(Constraint(ty.clone(), tgt.clone()));
+            .push_back(Constraint(tgt.clone(), ty.clone()));
+
         if let Some(conflict) = self.table.unify_all() {
             self.err_nonfatal(Error::TypeConflict {
-                expected: (tgt.clone().into(), None),
+                expected: (tgt.clone().into(), tgt_span.clone()),
                 actual: Spanned(ty.into(), span),
                 constraint: conflict,
             });
         }
         tgt.apply(&self.table.substitutions);
+
+        // insert the unified type back into the resolution lookup
+        self.resolution_lookup.insert(scope_id, (tgt, tgt_span));
     }
 
     fn handle_exit(&mut self, et: &ExitAction, divergent: bool) -> Result<()> {
@@ -799,7 +795,7 @@ impl TypeLowerer {
     /// TODO: run type inference over parameters and return type
     pub fn lower_func(&mut self, func: Func) -> Result<Func<InferMetadata>> {
         let header = func.header;
-        let header = FuncHeader {
+        let mut header = FuncHeader::<InferMetadata> {
             name: header.name,
             ty_params: header
                 .ty_params
@@ -830,9 +826,18 @@ impl TypeLowerer {
                 })
                 .collect::<Result<Vec<_>>>()?,
             ret_ty: self.lower_hir_ty(header.ret_ty),
+            ret_ty_span: header.ret_ty_span,
         };
 
-        self.lower_scope(func.body, ScopeKind::Func, header.ty_params.clone(), true)?;
+        self.lower_scope(
+            func.body,
+            ScopeKind::Func,
+            header.ty_params.clone(),
+            true,
+            Some((header.ret_ty.clone(), header.ret_ty_span)),
+        )?;
+        header.ret_ty = self.resolution_lookup[&func.body].0.clone();
+
         Ok(Func {
             vis: func.vis,
             header,
@@ -852,10 +857,18 @@ impl TypeLowerer {
         kind: ScopeKind,
         ty_params: Vec<TyParam<Ty>>,
         divergent: bool,
+        resolution: Option<ScopeResolution>,
     ) -> Result<ExitAction> {
         let mut scope = self.hir.scopes.remove(&scope_id).expect("scope not found");
         let label = std::mem::replace(&mut scope.label, None);
-        self.enter_scope(scope_id, scope.module_id, kind, ty_params, label);
+        self.enter_scope(
+            scope_id,
+            scope.module_id,
+            kind,
+            ty_params,
+            label,
+            resolution,
+        );
 
         let mut funcs = HashMap::new();
         for (name, func) in scope.funcs.drain() {
@@ -885,7 +898,7 @@ impl TypeLowerer {
             scope_id,
             crate::Scope {
                 module_id: scope.module_id,
-                label: scope.label,
+                label,
                 children: lowered.spanned(full_span),
                 funcs,
                 aliases: HashMap::new(),
@@ -896,6 +909,7 @@ impl TypeLowerer {
         );
         let exit_action = exit_action.unwrap_or_else(|| {
             self.unify_scope(scope_id, Ty::VOID, full_span);
+            self.exit_scope();
             match kind {
                 ScopeKind::Loop => ExitAction::NeverReturn,
                 _ => ExitAction::FromBlock(None, Ty::VOID, full_span),
@@ -924,7 +938,7 @@ impl TypeLowerer {
         let scope_id = *self.hir.modules.get(&module_id).unwrap();
 
         // TODO: exit action can be non-standard in things like REPLs
-        match self.lower_scope(scope_id, ScopeKind::Block, Vec::new(), true)? {
+        match self.lower_scope(scope_id, ScopeKind::Block, Vec::new(), true, None)? {
             _ => (), // TODO: For packaged code, check exit type is void
         }
         self.exit_scope_if_exists();

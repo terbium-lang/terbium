@@ -111,7 +111,7 @@ func example(n: uint) =
         |> println; // Pipeline operator 
 ```
 
-### Subtyping with composition
+### Subtyping
 
 ```swift
 // A `struct` defines a type that is composed of many values called "fields", 
@@ -131,7 +131,7 @@ trait Shape {
     func area(self) -> int;
 }
 
-// A `extend` block extends a type's functionality with a trait.
+// A `extend` block can extend a type's functionality with a trait.
 // The type must implement all functions defined in the trait.
 extend Shape for Rectangle {
     /// Calculate the area of the rectangle.

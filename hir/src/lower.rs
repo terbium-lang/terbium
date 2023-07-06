@@ -279,7 +279,7 @@ impl AstLowerer {
                 let cnst = Const {
                     vis,
                     name: ident,
-                    ty: self.lower_ty_or_infer(&ctx, ty)?,
+                    ty: self.lower_ty_or_infer(&ctx, ty.map(Spanned::into_value))?,
                     value: self.lower_expr(&ctx, value)?,
                 };
                 let item = ItemId(module, *ident.value());
@@ -424,9 +424,9 @@ impl AstLowerer {
     }
 
     #[inline]
-    fn lower_ty_or_infer(&self, ctx: &Ctx, ty: Option<Spanned<TypeExpr>>) -> Result<Ty> {
+    fn lower_ty_or_infer(&self, ctx: &Ctx, ty: Option<TypeExpr>) -> Result<Ty> {
         if let Some(ty) = ty {
-            self.lower_ty(ctx, ty.into_value())
+            self.lower_ty(ctx, ty)
         } else {
             Ok(Ty::Unknown)
         }
@@ -582,7 +582,8 @@ impl AstLowerer {
                             })
                         })
                         .collect::<Result<Vec<_>>>()?,
-                    ret_ty: self.lower_ty_or_infer(&ctx, ret)?,
+                    ret_ty_span: ret.as_ref().map(|ret| ret.span()),
+                    ret_ty: self.lower_ty_or_infer(&ctx, ret.map(Spanned::into_value))?,
                 };
                 let func = Func {
                     vis,
@@ -633,7 +634,7 @@ impl AstLowerer {
                 let ty_span = ty.as_ref().map(|ty| ty.span());
                 Node::Let {
                     pat: self.lower_pat(pat),
-                    ty: self.lower_ty_or_infer(ctx, ty)?,
+                    ty: self.lower_ty_or_infer(ctx, ty.map(Spanned::into_value))?,
                     ty_span,
                     value: value.map(|value| self.lower_expr(ctx, value)).transpose()?,
                 }

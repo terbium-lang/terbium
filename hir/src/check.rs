@@ -289,11 +289,11 @@ impl<'a> TypeChecker<'a> {
                 let then_span = scopes.get(then_id).expect("missing scope").children.span();
                 let els_span = scopes.get(else_id).expect("missing scope").children.span();
 
-                let Some(mut then) = self
+                let Some((mut then, tr_span)) = self
                     .lower
                     .resolution_lookup
                     .remove(then_id) else { return };
-                let Some(mut els) = self
+                let Some((mut els, er_span)) = self
                     .lower
                     .resolution_lookup
                     .remove(else_id) else { return };
@@ -323,8 +323,8 @@ impl<'a> TypeChecker<'a> {
                     }
                 }
                 // Replace the then and else scopes with the new types
-                self.lower.resolution_lookup.insert(*then_id, then);
-                self.lower.resolution_lookup.insert(*else_id, els);
+                self.lower.resolution_lookup.insert(*then_id, (then, tr_span));
+                self.lower.resolution_lookup.insert(*else_id, (els, er_span));
             }
             Expr::CallOp(op, target, args) => {
                 Self::lower_op(*op, (**target).clone(), args.first().cloned(), expr, ty);
@@ -456,7 +456,7 @@ impl<'a> TypeChecker<'a> {
                 _ => (),
             }
         }
-        if let Some(ty) = self.lower.resolution_lookup.get_mut(&scope_id) {
+        if let Some((ty, _)) = self.lower.resolution_lookup.get_mut(&scope_id) {
             ty.apply(&table.substitutions);
         }
         // Put the scope back into THIR
