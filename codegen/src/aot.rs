@@ -1,5 +1,6 @@
 use common::span::Spanned;
 use common::CompileOptions;
+use inkwell::values::BasicValue;
 use inkwell::{
     basic_block::BasicBlock,
     builder::Builder,
@@ -15,7 +16,6 @@ use mir::{
     PrimitiveTy, Ty, UnaryIntIntrinsic,
 };
 use std::{collections::HashMap, mem::MaybeUninit, ops::Not};
-use inkwell::values::BasicValue;
 
 #[derive(Copy, Clone)]
 struct Local<'ctx> {
@@ -213,7 +213,8 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             }
             Node::Return(Some(expr)) => {
                 let expr = self.lower_expr(expr);
-                self.builder.build_return(expr.as_ref().map(|expr| expr as &dyn BasicValue));
+                self.builder
+                    .build_return(expr.as_ref().map(|expr| expr as &dyn BasicValue));
             }
             Node::Jump(block) => {
                 let block = *self.blocks.get(&block).unwrap();

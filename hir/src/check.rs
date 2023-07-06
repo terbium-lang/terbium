@@ -323,8 +323,12 @@ impl<'a> TypeChecker<'a> {
                     }
                 }
                 // Replace the then and else scopes with the new types
-                self.lower.resolution_lookup.insert(*then_id, (then, tr_span));
-                self.lower.resolution_lookup.insert(*else_id, (els, er_span));
+                self.lower
+                    .resolution_lookup
+                    .insert(*then_id, (then, tr_span));
+                self.lower
+                    .resolution_lookup
+                    .insert(*else_id, (els, er_span));
             }
             Expr::CallOp(op, target, args) => {
                 Self::lower_op(*op, (**target).clone(), args.first().cloned(), expr, ty);

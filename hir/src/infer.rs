@@ -194,8 +194,7 @@ impl TypeLowerer {
         label: Option<Spanned<Ident>>,
         resolution: Option<ScopeResolution>,
     ) {
-        let resolution =
-            resolution.unwrap_or_else(|| (self.table.new_unknown(), None));
+        let resolution = resolution.unwrap_or_else(|| (self.table.new_unknown(), None));
         let scope = Scope {
             id: scope_id,
             module_id: module,
