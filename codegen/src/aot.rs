@@ -1,6 +1,4 @@
 use common::span::Spanned;
-use common::CompileOptions;
-use inkwell::values::BasicValue;
 use inkwell::{
     basic_block::BasicBlock,
     builder::Builder,
@@ -8,7 +6,7 @@ use inkwell::{
     module::Module,
     passes::PassManager,
     types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, IntType, StringRadix},
-    values::{AnyValue, BasicValueEnum, FunctionValue, PointerValue},
+    values::{AnyValue, BasicValue, BasicValueEnum, FunctionValue, PointerValue},
     IntPredicate,
 };
 use mir::{

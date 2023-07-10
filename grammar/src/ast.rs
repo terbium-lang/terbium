@@ -3,7 +3,7 @@
 use crate::{
     error::Error,
     span::{Span, Spanned},
-    token::{IntLiteralInfo, TokenInfo},
+    token::{IntLiteralInfo, Token},
 };
 use std::fmt::{self, Debug, Display, Formatter};
 
@@ -138,23 +138,23 @@ impl Delimiter {
 
     /// Returns the opening delimiter as a token.
     #[must_use]
-    pub const fn open_token(self) -> TokenInfo {
+    pub const fn open_token(self) -> Token {
         match self {
-            Self::Paren => TokenInfo::LeftParen,
-            Self::Bracket => TokenInfo::LeftBracket,
-            Self::Brace => TokenInfo::LeftBrace,
-            Self::Angle => TokenInfo::Lt,
+            Self::Paren => Token::LeftParen,
+            Self::Bracket => Token::LeftBracket,
+            Self::Brace => Token::LeftBrace,
+            Self::Angle => Token::Lt,
         }
     }
 
     /// Returns the closing delimiter as a token.
     #[must_use]
-    pub const fn close_token(self) -> TokenInfo {
+    pub const fn close_token(self) -> Token {
         match self {
-            Self::Paren => TokenInfo::RightParen,
-            Self::Bracket => TokenInfo::RightBracket,
-            Self::Brace => TokenInfo::RightBrace,
-            Self::Angle => TokenInfo::Gt,
+            Self::Paren => Token::RightParen,
+            Self::Bracket => Token::RightBracket,
+            Self::Brace => Token::RightBrace,
+            Self::Angle => Token::Gt,
         }
     }
 }
@@ -704,13 +704,13 @@ pub enum Pattern {
     /// This is useful for binding to a pattern match while also binding to the pattern match's
     /// value.
     As(Box<Spanned<Self>>, Box<Spanned<Self>>),
-    /// The wildcard pattern `*`, which matches anything. An optional pattern can be provided after
+    /// The wildcard pattern `..`, which matches anything. An optional pattern can be provided after
     /// to the wildcard to bind further.
     ///
-    /// For example, `let (a, *) = (1, 2, 3)` binds `a` to `1` and ignores the rest of the tuple.
+    /// For example, `let (a, ..) = (1, 2, 3)` binds `a` to `1` and ignores the rest of the tuple.
     /// `let (a, *b) = (1, 2, 3)` binds `a` to `1` and `b` to `(2, 3)`.
     ///
-    /// `let (a, *(b, c)) = (1, 2, 3)` is the equivalent of `let (a, b, c) = (1, 2, 3)` because
+    /// `let (a, ..(b, c)) = (1, 2, 3)` is the equivalent of `let (a, b, c) = (1, 2, 3)` because
     /// `(b, c)` is binded to the rest of the tuple `(2, 3)`.
     ///
     /// Wildcard patterns are only supported in tuple, array, and field patterns.
@@ -775,7 +775,7 @@ impl Display for Pattern {
             }
             Self::As(lhs, rhs) => write!(f, "{lhs} as {rhs}"),
             Self::Wildcard(pat) => {
-                f.write_str("*")?;
+                f.write_str("..")?;
                 pat.as_ref().map_or(Ok(()), |pat| write!(f, "{pat}"))
             }
         }
@@ -1343,6 +1343,60 @@ impl Display for StructDef {
     }
 }
 
+/// A token tree with balanced delimiters.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TokenTree {
+    /// A token.
+    Token(Token),
+    /// A delimited sequence of token trees.
+    Delimited(Delimiter, Vec<Spanned<Self>>),
+}
+
+impl Display for TokenTree {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Token(token) => write!(f, "{token}"),
+            Self::Delimited(delimiter, tokens) => {
+                write!(f, "{}", delimiter.open())?;
+                for token in tokens {
+                    write!(f, "{token}")?;
+                }
+                write!(f, "{}", delimiter.close())
+            }
+        }
+    }
+}
+
+/// A decorator that modifies or adds attributes to an item.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Decorator {
+    /// The path of the decorator.
+    pub path: Spanned<Vec<Spanned<String>>>,
+    /// The arguments passed to the decorator.
+    pub args: Option<Spanned<Vec<Spanned<TokenTree>>>>,
+}
+
+impl Display for Decorator {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            self.path
+                .value()
+                .iter()
+                .map(|p| p.value().as_str())
+                .collect::<Vec<_>>()
+                .join(".")
+        )?;
+        if let Some(Spanned(tokens, _)) = &self.args {
+            for token in tokens {
+                write!(f, "{token}")?;
+            }
+        }
+        Ok(())
+    }
+}
+
 /// A node in the abstract syntax tree.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Node {
@@ -1439,6 +1493,10 @@ pub enum Node {
     },
     /// A struct declaration.
     Struct(StructDef),
+    /// Decorator on an item.
+    OuterDecorator(Decorator),
+    /// Inner decorator on an item.
+    InnerDecorator(Decorator),
 }
 
 impl Display for Node {
@@ -1541,6 +1599,8 @@ impl Display for Node {
                 f.write_str("}")
             }
             Self::Struct(s) => write!(f, "{s}"),
+            Self::OuterDecorator(d) => write!(f, "@{d}"),
+            Self::InnerDecorator(d) => write!(f, "@!{d}"),
         }
     }
 }

@@ -13,6 +13,12 @@ use hir::Expr::Ident;
 use hir::{Hir, ItemId, ModuleId};
 use std::path::PathBuf;
 
+fn test<T>()
+where
+    T: Copy,
+{
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::panic::set_hook(Box::new(|info| {
         eprintln!("{}", info);

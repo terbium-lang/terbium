@@ -25,6 +25,7 @@ diagnostics = { path = "diagnostics" }
 grammar = { path = "grammar" }
 hir = { path = "hir" }
 mir = { path = "mir" }
+indicatif = "0.17"
 
 [profile.dev]
 opt-level = 0

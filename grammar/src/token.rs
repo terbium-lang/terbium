@@ -144,7 +144,7 @@ impl Keyword {
 
 /// Represents information about a lexical token in the source code.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum TokenInfo {
+pub enum Token {
     /// An invalid token.
     Invalid(Error),
     /// Any sequence of whitespace.
@@ -230,6 +230,8 @@ pub enum TokenInfo {
     Modulus,
     /// Tilde, `~`.
     Tilde,
+    /// At, `@`.
+    At,
 }
 
 #[inline]
@@ -243,7 +245,7 @@ fn write_str_literal_flags(f: &mut fmt::Formatter, flags: StringLiteralFlags) ->
     Ok(())
 }
 
-impl fmt::Display for TokenInfo {
+impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Invalid(_) => Ok(()),
@@ -294,12 +296,10 @@ impl fmt::Display for TokenInfo {
             Self::Or => f.write_str("|"),
             Self::Modulus => f.write_str("%"),
             Self::Tilde => f.write_str("~"),
+            Self::At => f.write_str("@"),
         }
     }
 }
-
-/// Represents a lexical token in the source code.
-pub type Token = Spanned<TokenInfo>;
 
 /// Information about a tokenization error.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -478,7 +478,7 @@ impl<'a> TokenReader<'a> {
 
     /// Consumes a division token or a comment. Returns Some if a division token or doc comment was
     /// found, and None if a normal comment was found.
-    fn consume_comment_or_divide(&mut self) -> Option<Token> {
+    fn consume_comment_or_divide(&mut self) -> Option<Spanned<Token>> {
         // Assume the cursor is on the first '/'
         let start = self.cursor.pos();
 
@@ -490,7 +490,7 @@ impl<'a> TokenReader<'a> {
                     self.cursor.advance();
                     let line = self.consume_line();
                     Some(Spanned(
-                        TokenInfo::DocComment {
+                        Token::DocComment {
                             content: line,
                             is_inner: c == '!',
                         },
@@ -506,7 +506,7 @@ impl<'a> TokenReader<'a> {
                 self.discard_block_comment();
                 None
             }
-            _ => Some(Spanned(TokenInfo::Divide, Span::single(self.src, start))),
+            _ => Some(Spanned(Token::Divide, Span::single(self.src, start))),
         }
     }
 
@@ -556,7 +556,7 @@ impl<'a> TokenReader<'a> {
     }
 
     /// Possibly consumes a character literal. Returns None if no character was found.
-    fn consume_char_literal(&mut self) -> Option<Token> {
+    fn consume_char_literal(&mut self) -> Option<Spanned<Token>> {
         if self.cursor.peek()? != 'c' && self.cursor.peek_second()? != '\'' {
             return None;
         }
@@ -571,13 +571,13 @@ impl<'a> TokenReader<'a> {
             return None;
         };
         Some(Spanned(
-            TokenInfo::CharLiteral(content, content_span),
+            Token::CharLiteral(content, content_span),
             Span::new(self.src, start, self.pos()),
         ))
     }
 
     /// Possibly consumes a string literal. Returns None if no string was found.
-    fn consume_string_literal(&mut self) -> Option<Token> {
+    fn consume_string_literal(&mut self) -> Option<Spanned<Token>> {
         let next = self.cursor.peek()?;
         if !matches!(next, '"' | '\'' | '$' | '~' | '#') {
             return None;
@@ -630,7 +630,7 @@ impl<'a> TokenReader<'a> {
         }
 
         Some(Spanned(
-            TokenInfo::StringLiteral(content, flags, content_span),
+            Token::StringLiteral(content, flags, content_span),
             Span::new(self.src, start, self.pos()),
         ))
     }
@@ -638,7 +638,7 @@ impl<'a> TokenReader<'a> {
     /// Consumes a number (integer/float literal), returning None if no number was found.
     /// This assumes the cursor is before the first digit.
     #[allow(clippy::cognitive_complexity)]
-    fn consume_number(&mut self) -> Option<Token> {
+    fn consume_number(&mut self) -> Option<Spanned<Token>> {
         let next = self.cursor.peek()?;
         // For now, let's not allow float literals to start with . due to ambiguities. Allowing .
         // to come first will result in weird ambiguities during tokenizing, even though the syntax
@@ -763,12 +763,12 @@ impl<'a> TokenReader<'a> {
 
         Some(if is_float {
             Spanned(
-                TokenInfo::FloatLiteral(content),
+                Token::FloatLiteral(content),
                 Span::new(self.src, start, self.pos()),
             )
         } else {
             Spanned(
-                TokenInfo::IntLiteral(
+                Token::IntLiteral(
                     content,
                     IntLiteralInfo {
                         radix,
@@ -782,7 +782,7 @@ impl<'a> TokenReader<'a> {
 
     /// Consumes the next raw identifier and returns it as a token, but returns None if no raw
     /// identifier was found immediately after the cursor.
-    fn consume_raw_ident(&mut self) -> Option<Token> {
+    fn consume_raw_ident(&mut self) -> Option<Spanned<Token>> {
         if self.cursor.peek()? != '`' {
             return None;
         }
@@ -794,7 +794,7 @@ impl<'a> TokenReader<'a> {
         while let Some(c) = self.cursor.advance() {
             if c == '\n' {
                 return Some(Spanned(
-                    TokenInfo::Invalid(Error::NewlineInRawIdentifier),
+                    Token::Invalid(Error::NewlineInRawIdentifier),
                     Span::single(self.src, self.pos()),
                 ));
             } else if c == '\\' {
@@ -803,13 +803,13 @@ impl<'a> TokenReader<'a> {
                     content.push(escape);
                 } else {
                     return Some(Spanned(
-                        TokenInfo::Invalid(Error::InvalidEscapeSequenceInRawIdentifier(escape)),
+                        Token::Invalid(Error::InvalidEscapeSequenceInRawIdentifier(escape)),
                         Span::new(self.src, self.pos() - 2, self.pos()),
                     ));
                 }
             } else if c == '`' {
                 return Some(Spanned(
-                    TokenInfo::Ident(content, true),
+                    Token::Ident(content, true),
                     Span::new(self.src, start, self.pos()),
                 ));
             } else {
@@ -822,7 +822,7 @@ impl<'a> TokenReader<'a> {
 
     /// Consumes the next identifier and returns it as a token, but returns None if no identifier
     /// was found immediately after the cursor.
-    fn consume_ident(&mut self) -> Option<Token> {
+    fn consume_ident(&mut self) -> Option<Spanned<Token>> {
         if !is_ident_start(self.cursor.peek()?) {
             return None;
         }
@@ -840,23 +840,23 @@ impl<'a> TokenReader<'a> {
         }
 
         let token = if let Some(kw) = Keyword::get(&content) {
-            TokenInfo::Keyword(kw)
+            Token::Keyword(kw)
         } else {
-            TokenInfo::Ident(content, false)
+            Token::Ident(content, false)
         };
         Some(Spanned(token, Span::new(self.src, start, self.pos())))
     }
 }
 
 impl Iterator for TokenReader<'_> {
-    type Item = Token;
+    type Item = Spanned<Token>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let start = self.pos();
 
         if self.consume_whitespace() {
             return Some(Spanned(
-                TokenInfo::Whitespace,
+                Token::Whitespace,
                 Span::new(self.src, start, self.pos()),
             ));
         }
@@ -882,33 +882,34 @@ impl Iterator for TokenReader<'_> {
         }
 
         let info = match self.cursor.advance()? {
-            '(' => TokenInfo::LeftParen,
-            ')' => TokenInfo::RightParen,
-            '[' => TokenInfo::LeftBracket,
-            ']' => TokenInfo::RightBracket,
-            '{' => TokenInfo::LeftBrace,
-            '}' => TokenInfo::RightBrace,
-            ',' => TokenInfo::Comma,
-            ';' => TokenInfo::Semicolon,
-            ':' => TokenInfo::Colon,
-            '.' => TokenInfo::Dot,
-            '<' => TokenInfo::Lt,
-            '>' => TokenInfo::Gt,
-            '=' => TokenInfo::Equals,
-            '!' => TokenInfo::Not,
-            '+' => TokenInfo::Plus,
-            '-' => TokenInfo::Minus,
-            '*' => TokenInfo::Asterisk,
+            '(' => Token::LeftParen,
+            ')' => Token::RightParen,
+            '[' => Token::LeftBracket,
+            ']' => Token::RightBracket,
+            '{' => Token::LeftBrace,
+            '}' => Token::RightBrace,
+            ',' => Token::Comma,
+            ';' => Token::Semicolon,
+            ':' => Token::Colon,
+            '.' => Token::Dot,
+            '<' => Token::Lt,
+            '>' => Token::Gt,
+            '=' => Token::Equals,
+            '!' => Token::Not,
+            '+' => Token::Plus,
+            '-' => Token::Minus,
+            '*' => Token::Asterisk,
             '/' => return self.consume_comment_or_divide().or_else(|| self.next()),
-            '\\' => TokenInfo::Backslash,
-            '^' => TokenInfo::Caret,
-            '&' => TokenInfo::And,
-            '|' => TokenInfo::Or,
-            '%' => TokenInfo::Modulus,
-            '~' => TokenInfo::Tilde,
+            '\\' => Token::Backslash,
+            '^' => Token::Caret,
+            '&' => Token::And,
+            '|' => Token::Or,
+            '%' => Token::Modulus,
+            '~' => Token::Tilde,
+            '@' => Token::At,
             c => {
                 return Some(Spanned(
-                    TokenInfo::Invalid(Error::UnexpectedCharacter(c)),
+                    Token::Invalid(Error::UnexpectedCharacter(c)),
                     Span::new(self.src, start, self.pos()),
                 ))
             }
@@ -918,11 +919,11 @@ impl Iterator for TokenReader<'_> {
     }
 }
 
-/// Streams (`TokenInfo`, `Span`) instead of Spanned<Token> into [`chumsky::Stream`].
+/// Streams (`Token`, `Span`) instead of Spanned<Token> into [`chumsky::Stream`].
 pub struct ChumskyTokenStreamer<'a>(pub TokenReader<'a>);
 
 impl Iterator for ChumskyTokenStreamer<'_> {
-    type Item = (TokenInfo, Span);
+    type Item = (Token, Span);
 
     fn next(&mut self) -> Option<Self::Item> {
         self.0.next().map(|Spanned(token, span)| (token, span))

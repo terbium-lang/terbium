@@ -1,7 +1,7 @@
 use crate::{
     ast::Delimiter,
     span::{Span, Spanned},
-    token::{Error as TokenizationError, TokenInfo},
+    token::{Error as TokenizationError, Token},
 };
 use common::span::Src;
 use diagnostics::{Action, Diagnostic, Fix, Section, Severity};
@@ -14,7 +14,7 @@ use std::{
 pub enum TargetKind {
     Nothing,
     Char(char),
-    Token(TokenInfo),
+    Token(Token),
     Keyword(&'static str),
     OpeningDelimiter(Delimiter),
     ClosingDelimiter(Delimiter),
@@ -32,7 +32,7 @@ impl TargetKind {
         match self {
             Self::Nothing => String::new(),
             Self::Char(c) => c.to_string(),
-            Self::Token(TokenInfo::Whitespace) => "whitespace".to_string(),
+            Self::Token(Token::Whitespace) => "whitespace".to_string(),
             Self::Token(token) => token.to_string(),
             Self::Keyword(k) => (*k).to_string(),
             Self::OpeningDelimiter(d) => d.open().to_string(),
@@ -53,8 +53,8 @@ impl From<char> for TargetKind {
     }
 }
 
-impl From<TokenInfo> for TargetKind {
-    fn from(t: TokenInfo) -> Self {
+impl From<Token> for TargetKind {
+    fn from(t: Token) -> Self {
         macro_rules! delim {
             ($variant:ident $delim:ident) => {{
                 Self::$variant(Delimiter::$delim)
@@ -62,12 +62,12 @@ impl From<TokenInfo> for TargetKind {
         }
 
         match t {
-            TokenInfo::LeftParen => delim!(OpeningDelimiter Paren),
-            TokenInfo::RightParen => delim!(ClosingDelimiter Paren),
-            TokenInfo::LeftBrace => delim!(OpeningDelimiter Brace),
-            TokenInfo::RightBrace => delim!(ClosingDelimiter Brace),
-            TokenInfo::LeftBracket => delim!(OpeningDelimiter Bracket),
-            TokenInfo::RightBracket => delim!(ClosingDelimiter Bracket),
+            Token::LeftParen => delim!(OpeningDelimiter Paren),
+            Token::RightParen => delim!(ClosingDelimiter Paren),
+            Token::LeftBrace => delim!(OpeningDelimiter Brace),
+            Token::RightBrace => delim!(ClosingDelimiter Brace),
+            Token::LeftBracket => delim!(OpeningDelimiter Bracket),
+            Token::RightBracket => delim!(ClosingDelimiter Bracket),
             _ => Self::Token(t),
         }
     }

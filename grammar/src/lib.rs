@@ -33,6 +33,7 @@
 #![feature(never_type)]
 #![feature(let_chains)]
 #![feature(trait_alias)]
+#![feature(lazy_cell)]
 
 pub mod ast;
 pub mod error;

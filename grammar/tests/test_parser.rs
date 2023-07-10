@@ -75,7 +75,7 @@ fn test_expr_parser() {
                                         Expr::Atom(Atom::Int("3".to_string(), NORMAL)),
                                         span(27, 28),
                                     ),
-                                ],),
+                                ]),
                                 span(23, 29),
                             ),
                         ],

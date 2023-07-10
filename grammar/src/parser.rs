@@ -1,46 +1,40 @@
-use crate::ast::{
-    StructDef, StructField, TyParam, TypeApplication, TypeConst, TypePath, TypePathSeg, While,
-};
 use crate::{
     ast::{
-        expr_as_block, AssignmentOperator, AssignmentTarget, Atom, BinaryOp, Delimiter, Expr,
-        FieldVisibility, FuncParam, ItemVisibility, MemberVisibility, Node, Pattern, TypeExpr,
-        UnaryOp,
+        expr_as_block, AssignmentOperator, AssignmentTarget, Atom, BinaryOp, Decorator, Delimiter,
+        Expr, FieldVisibility, FuncParam, ItemVisibility, MemberVisibility, Node, Pattern,
+        StructDef, StructField, TokenTree, TyParam, TypeApplication, TypeConst, TypeExpr, TypePath,
+        TypePathSeg, UnaryOp, While,
     },
     error::Error,
-    span::{Provider, Span, Spanned},
-    token::{ChumskyTokenStreamer, Keyword, StringLiteralFlags, TokenInfo, TokenReader},
+    token::{ChumskyTokenStreamer, Keyword, StringLiteralFlags, Token, TokenReader},
 };
 use chumsky::{
     combinator::{DelimitedBy, IgnoreThen, Repeated, ThenIgnore},
     error::Error as _,
     prelude::{
-        choice, end, filter_map, just, recursive, select, Parser as ChumskyParser, Recursive,
+        any, choice, end, filter_map, just, none_of, recursive, select, Parser as ChumskyParser,
+        Recursive,
     },
     primitive::Just,
     stream::Stream,
 };
-use std::result::Result as StdResult;
+use common::span::{Provider, Span, Spanned, SpannedExt};
+use std::{cell::LazyCell, result::Result as StdResult};
 
 pub type Result<T> = StdResult<T, Error>;
-pub type RecursiveParser<'a, T> = Recursive<'a, TokenInfo, T, Error>;
-type RecursiveDef<'a, T> = Recursive<'a, TokenInfo, T, Error>;
+pub type RecursiveParser<'a, T> = Recursive<'a, Token, T, Error>;
+type RecursiveDef<'a, T> = Recursive<'a, Token, T, Error>;
 
-type JustToken = Just<TokenInfo, TokenInfo, Error>;
+type JustToken = Just<Token, Token, Error>;
 type RepeatedToken = Repeated<JustToken>;
 
-type ThenWsTy<T, O> = ThenIgnore<T, RepeatedToken, O, Vec<TokenInfo>>;
-type WsThenTy<T, O> = IgnoreThen<RepeatedToken, T, Vec<TokenInfo>, O>;
+type ThenWsTy<T, O> = ThenIgnore<T, RepeatedToken, O, Vec<Token>>;
+type WsThenTy<T, O> = IgnoreThen<RepeatedToken, T, Vec<Token>, O>;
 type PadWsTy<T, O> = ThenWsTy<WsThenTy<T, O>, O>;
-type DelimitedTy<A> = DelimitedBy<
-    A,
-    ThenWsTy<JustToken, TokenInfo>,
-    WsThenTy<JustToken, TokenInfo>,
-    TokenInfo,
-    TokenInfo,
->;
+type DelimitedTy<A> =
+    DelimitedBy<A, ThenWsTy<JustToken, Token>, WsThenTy<JustToken, Token>, Token, Token>;
 
-pub trait TokenParser<O> = ChumskyParser<TokenInfo, O, Error = Error>;
+pub trait TokenParser<O> = ChumskyParser<Token, O, Error = Error>;
 
 trait WsPadExt<T, O> {
     fn then_ws(self) -> ThenWsTy<T, O>;
@@ -51,20 +45,20 @@ trait WsPadExt<T, O> {
         Self: Sized;
 }
 
-impl<O, T: ChumskyParser<TokenInfo, O, Error = Error>> WsPadExt<T, O> for T {
+impl<O, T: ChumskyParser<Token, O, Error = Error>> WsPadExt<T, O> for T {
     #[inline]
     fn then_ws(self) -> ThenWsTy<T, O> {
-        self.then_ignore(just(TokenInfo::Whitespace).repeated())
+        self.then_ignore(just(Token::Whitespace).repeated())
     }
 
     #[inline]
     fn ws_then(self) -> WsThenTy<T, O> {
-        just(TokenInfo::Whitespace).repeated().ignore_then(self)
+        just(Token::Whitespace).repeated().ignore_then(self)
     }
 
     #[inline] // Maybe inline is a bad idea
     fn pad_ws(self) -> PadWsTy<T, O> {
-        self.padded_by(just(TokenInfo::Whitespace).repeated())
+        self.padded_by(just(Token::Whitespace).repeated())
     }
 
     #[inline]
@@ -81,10 +75,10 @@ impl<O, T: ChumskyParser<TokenInfo, O, Error = Error>> WsPadExt<T, O> for T {
 
 macro_rules! kw {
     (@single $kw:literal) => {{
-        TokenInfo::Ident($kw.to_string(), false)
+        Token::Ident($kw.to_string(), false)
     }};
     (@single $kw:ident) => {{
-        TokenInfo::Keyword(Keyword::$kw)
+        Token::Keyword(Keyword::$kw)
     }};
     (@pad $kw:tt) => {{
         kw!($kw).pad_ws()
@@ -237,7 +231,7 @@ pub fn field_vis_parser<'a>() -> impl TokenParser<Spanned<FieldVisibility>> + Cl
         .map(|get| (get, FALLBACK))
         .or(set_vis.clone().map(|set| (FALLBACK, set)));
     let combo = get_vis
-        .then_ignore(just(TokenInfo::Comma).pad_ws())
+        .then_ignore(just(Token::Comma).pad_ws())
         .then(set_vis);
 
     let unexpanded = member_vis_parser().map(|vis| {
@@ -256,18 +250,75 @@ pub fn field_vis_parser<'a>() -> impl TokenParser<Spanned<FieldVisibility>> + Cl
     expanded.or(unexpanded).then_ws()
 }
 
+/// Parses a token tree that has all delimiters balanced
+pub fn token_tree<'a>() -> RecursiveParser<'a, Spanned<TokenTree>> {
+    recursive(|tt| {
+        let delim_parser = |delimiter| {
+            tt.clone()
+                .repeated()
+                .delimited(delimiter)
+                .map(move |v| TokenTree::Delimited(delimiter, v))
+        };
+        let delim_tt = delim_parser(Delimiter::Paren)
+            .or(delim_parser(Delimiter::Brace))
+            .or(delim_parser(Delimiter::Bracket))
+            .boxed();
+
+        none_of([
+            Token::LeftParen,
+            Token::RightParen,
+            Token::LeftBrace,
+            Token::RightBrace,
+            Token::LeftBracket,
+            Token::RightBracket,
+        ])
+        .map(TokenTree::Token)
+        .or(delim_tt)
+        .map_with_span(Spanned)
+    })
+}
+
+/// Parses either an outer or inner decorator
+pub fn decorator_parser<'a>() -> impl TokenParser<Spanned<Node>> + Clone + 'a {
+    just(Token::At)
+        .ignore_then(just(Token::Not).or_not().map(|v| v.is_some()))
+        .then(
+            select!(Token::Ident(name, _) => name)
+                .map_with_span(Spanned)
+                .separated_by(just(Token::Dot))
+                .at_least(1)
+                .map_with_span(Spanned),
+        )
+        .then(
+            token_tree()
+                .repeated()
+                .delimited(Delimiter::Paren)
+                .map_with_span(Spanned)
+                .or_not(),
+        )
+        .map_with_span(|((is_inner, path), args), span| {
+            let decorator = Decorator { path, args };
+            let node = if is_inner {
+                Node::InnerDecorator(decorator)
+            } else {
+                Node::OuterDecorator(decorator)
+            };
+            node.spanned(span)
+        })
+}
+
 pub fn type_expr_parser<'a>() -> RecursiveParser<'a, Spanned<TypeExpr>> {
     recursive::<_, Spanned<_>, _, _, _>(|ty| {
-        let infer_ty = select!(TokenInfo::Ident(i, false) if i == "_" => TypeExpr::Infer)
+        let infer_ty = select!(Token::Ident(i, false) if i == "_" => TypeExpr::Infer)
             .map_with_span(Spanned)
             .pad_ws();
 
-        let ty_application = select!(TokenInfo::Ident(name, _) => name)
+        let ty_application = select!(Token::Ident(name, _) => name)
             .map_with_span(Spanned)
-            .then_ignore(just(TokenInfo::Equals).pad_ws())
+            .then_ignore(just(Token::Equals).pad_ws())
             .or_not()
             .then(ty.clone())
-            .separated_by(just(TokenInfo::Comma).pad_ws())
+            .separated_by(just(Token::Comma).pad_ws())
             .at_least(1)
             .allow_trailing()
             .delimited(Delimiter::Angle)
@@ -297,12 +348,12 @@ pub fn type_expr_parser<'a>() -> RecursiveParser<'a, Spanned<TypeExpr>> {
             .or_not();
 
         let path = select! { |span|
-            TokenInfo::Ident(name, _) => Spanned(name, span),
+            Token::Ident(name, _) => Spanned(name, span),
         }
         .then(ty_application)
         .map(|(ident, app)| TypePathSeg(ident, app))
         .map_with_span(Spanned)
-        .separated_by(just(TokenInfo::Dot).pad_ws())
+        .separated_by(just(Token::Dot).pad_ws())
         .at_least(1)
         .map(TypePath)
         .map_with_span(Spanned)
@@ -312,7 +363,7 @@ pub fn type_expr_parser<'a>() -> RecursiveParser<'a, Spanned<TypeExpr>> {
 
         let tuple = ty
             .clone()
-            .separated_by(just(TokenInfo::Comma).pad_ws())
+            .separated_by(just(Token::Comma).pad_ws())
             .allow_trailing()
             .delimited(Delimiter::Paren)
             .map(TypeExpr::Tuple)
@@ -323,11 +374,11 @@ pub fn type_expr_parser<'a>() -> RecursiveParser<'a, Spanned<TypeExpr>> {
         let array = ty
             .clone()
             .map(Box::new)
-            .then_ignore(just(TokenInfo::Semicolon).pad_ws())
+            .then_ignore(just(Token::Semicolon).pad_ws())
             .then(
                 select! {
-                    TokenInfo::IntLiteral(value, info) => TypeConst::Int(value, info),
-                    TokenInfo::Ident(name, _) => TypeConst::Ident(name),
+                    Token::IntLiteral(value, info) => TypeConst::Int(value, info),
+                    Token::Ident(name, _) => TypeConst::Ident(name),
                 }
                 .map_with_span(Spanned)
                 .or_not(),
@@ -352,8 +403,8 @@ pub fn type_expr_parser<'a>() -> RecursiveParser<'a, Spanned<TypeExpr>> {
 
 /// A block label, e.g. `:a`
 pub fn block_label<'a>() -> impl TokenParser<Spanned<String>> + Clone + 'a {
-    just(TokenInfo::Colon)
-        .ignore_then(select!(TokenInfo::Ident(name, _) => name))
+    just(Token::Colon)
+        .ignore_then(select!(Token::Ident(name, _) => name))
         .map_with_span(Spanned)
         .labelled("block label")
 }
@@ -364,7 +415,7 @@ pub fn pat_parser<'a>() -> RecursiveParser<'a, Spanned<Pattern>> {
         let ident = kw!(Mut)
             .then_ws()
             .or_not()
-            .then(select!(TokenInfo::Ident(name, _) => name).map_with_span(Spanned))
+            .then(select!(Token::Ident(name, _) => name).map_with_span(Spanned))
             .map_with_span(|(mut_kw, ident), span| {
                 Spanned(
                     Pattern::Ident {
@@ -379,7 +430,7 @@ pub fn pat_parser<'a>() -> RecursiveParser<'a, Spanned<Pattern>> {
 
         let tuple = pat
             .clone()
-            .separated_by(just(TokenInfo::Comma).pad_ws())
+            .separated_by(just(Token::Comma).pad_ws())
             .allow_trailing()
             .delimited(Delimiter::Paren)
             .map(|pats| Pattern::Tuple(Vec::new(), pats))
@@ -454,12 +505,13 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
     let block_label = block_label().pad_ws().or_not();
     let item_vis = item_vis_parser();
     let field_vis = field_vis_parser();
+    let decorator = decorator_parser();
 
     recursive(move |body: RecursiveDef<Vec<Spanned<Node>>>| {
         let expr = expr_parser(body.clone());
 
         let ident = select! {
-            TokenInfo::Ident(name, _) => name,
+            Token::Ident(name, _) => name,
         }
         .map_with_span(Spanned)
         .pad_ws();
@@ -467,11 +519,11 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
         // Expression as a statement, i.e. `f();`;
         let expression = expr
             .clone()
-            .then_ignore(just(TokenInfo::Semicolon).pad_ws())
+            .then_ignore(just(Token::Semicolon).pad_ws())
             .or(brace_ending_expr(expr.clone(), body.clone()).then_ignore(
                 // FIXME: is this the best way to disambiguate?
                 //  there may be a better way with lazy parsing
-                just(TokenInfo::RightBrace)
+                just(Token::RightBrace)
                     .pad_ws()
                     .ignored()
                     .or(end())
@@ -487,19 +539,14 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
             .map_with_span(|_, span| span)
             .then_ws()
             .then(pat.clone())
+            .then(just(Token::Colon).pad_ws().ignore_then(ty.clone()).or_not())
             .then(
-                just(TokenInfo::Colon)
-                    .pad_ws()
-                    .ignore_then(ty.clone())
-                    .or_not(),
-            )
-            .then(
-                just(TokenInfo::Equals)
+                just(Token::Equals)
                     .pad_ws()
                     .ignore_then(expr.clone())
                     .or_not(),
             )
-            .then_ignore(just(TokenInfo::Semicolon))
+            .then_ignore(just(Token::Semicolon))
             .map_with_span(|(((kw_span, pat), ty), value), span| {
                 Spanned(
                     Node::Let {
@@ -519,14 +566,9 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
             .clone()
             .then(kw!(Const).map_with_span(|_, span| span))
             .then(ident.clone())
-            .then(
-                just(TokenInfo::Colon)
-                    .pad_ws()
-                    .ignore_then(ty.clone())
-                    .or_not(),
-            )
-            .then(just(TokenInfo::Equals).pad_ws().ignore_then(expr.clone()))
-            .then_ignore(just(TokenInfo::Semicolon))
+            .then(just(Token::Colon).pad_ws().ignore_then(ty.clone()).or_not())
+            .then(just(Token::Equals).pad_ws().ignore_then(expr.clone()))
+            .then_ignore(just(Token::Semicolon))
             .map_with_span(|((((vis, kw_span), name), ty), value), span| {
                 Spanned(
                     Node::Const {
@@ -544,10 +586,10 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
 
         // Single function parameter
         let func_param = pat
-            .then_ignore(just(TokenInfo::Colon).then_ws())
+            .then_ignore(just(Token::Colon).then_ws())
             .then(ty.clone())
             .then(
-                just(TokenInfo::Equals)
+                just(Token::Equals)
                     .pad_ws()
                     .ignore_then(expr.clone())
                     .or_not(),
@@ -558,14 +600,9 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
 
         let type_params = ident
             .clone()
-            .then(
-                just(TokenInfo::Colon)
-                    .pad_ws()
-                    .ignore_then(ty.clone())
-                    .or_not(),
-            )
+            .then(just(Token::Colon).pad_ws().ignore_then(ty.clone()).or_not())
             .map(|(name, bound)| TyParam { name, bound })
-            .separated_by(just(TokenInfo::Comma).pad_ws())
+            .separated_by(just(Token::Comma).pad_ws())
             .allow_trailing()
             .delimited(Delimiter::Angle)
             .pad_ws()
@@ -576,15 +613,15 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
             .ignore_then(ident.clone())
             .then(type_params.clone())
             .then(
-                just(TokenInfo::Asterisk)
+                just(Token::Asterisk)
                     .map_with_span(|_, span| FuncParamOrSep::Sep(span))
                     .or(func_param.map(FuncParamOrSep::FuncParam))
-                    .separated_by(just(TokenInfo::Comma).pad_ws())
+                    .separated_by(just(Token::Comma).pad_ws())
                     .allow_trailing()
                     .delimited(Delimiter::Paren),
             )
             .then(
-                just([TokenInfo::Minus, TokenInfo::Gt])
+                just([Token::Minus, Token::Gt])
                     .pad_ws()
                     .ignore_then(ty.clone())
                     .or_not(),
@@ -608,11 +645,11 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
                 body.delimited(Delimiter::Brace)
                     .map_with_span(Spanned)
                     .pad_ws()
-                    .then_ignore(just(TokenInfo::Semicolon).or_not())
-                    .or(just(TokenInfo::Equals)
+                    .then_ignore(just(Token::Semicolon).or_not())
+                    .or(just(Token::Equals)
                         .pad_ws()
                         .ignore_then(expr.clone())
-                        .then_ignore(just(TokenInfo::Semicolon))
+                        .then_ignore(just(Token::Semicolon))
                         .map(expr_as_block)
                         .pad_ws()),
             )
@@ -656,7 +693,7 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
             .then(block_label.clone())
             .then(expr.clone().or_not())
             .then(control_flow_if_stmt.clone())
-            .then_ignore(just(TokenInfo::Semicolon))
+            .then_ignore(just(Token::Semicolon))
             .map_with_span(|(((kw, label), value), cond), span| {
                 Spanned(
                     Node::Break {
@@ -676,7 +713,7 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
         let continue_stmt = kw!(Continue)
             .then(block_label.clone())
             .then(control_flow_if_stmt.clone())
-            .then_ignore(just(TokenInfo::Semicolon))
+            .then_ignore(just(Token::Semicolon))
             .map_with_span(|((kw, label), cond), span| {
                 Spanned(
                     Node::Continue {
@@ -696,7 +733,7 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
             .then_ws()
             .then(expr.clone().or_not())
             .then(control_flow_if_stmt.clone())
-            .then_ignore(just(TokenInfo::Semicolon))
+            .then_ignore(just(Token::Semicolon))
             .map_with_span(|((kw, value), cond), span| {
                 Spanned(
                     Node::Return {
@@ -713,10 +750,10 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
 
         let struct_field = field_vis
             .then(ident.clone())
-            .then_ignore(just(TokenInfo::Colon).then_ws())
+            .then_ignore(just(Token::Colon).then_ws())
             .then(ty.clone())
             .then(
-                just(TokenInfo::Equals)
+                just(Token::Equals)
                     .pad_ws()
                     .ignore_then(expr.clone())
                     .or_not(),
@@ -737,19 +774,14 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
         let struct_decl = item_vis
             .then(kw!("struct").then_ws().ignore_then(ident.clone()))
             .then(type_params)
-            .then(
-                just(TokenInfo::Colon)
-                    .pad_ws()
-                    .ignore_then(ty.clone())
-                    .or_not(),
-            )
+            .then(just(Token::Colon).pad_ws().ignore_then(ty.clone()).or_not())
             .then(
                 struct_field
-                    .separated_by(just(TokenInfo::Comma).pad_ws())
+                    .separated_by(just(Token::Comma).pad_ws())
                     .allow_trailing()
                     .delimited(Delimiter::Brace),
             )
-            .then_ignore(just(TokenInfo::Semicolon).or_not())
+            .then_ignore(just(Token::Semicolon).or_not())
             .map_with_span(|((((vis, name), ty_params), extends), fields), span| {
                 Spanned(
                     Node::Struct(StructDef {
@@ -774,6 +806,7 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
             break_stmt,
             continue_stmt,
             return_stmt,
+            decorator,
             expression,
         ))
         .pad_ws()
@@ -797,7 +830,7 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
 pub fn brace_ending_expr<'a>(
     expr: RecursiveDef<'a, Spanned<Expr>>,
     body: RecursiveDef<'a, Vec<Spanned<Node>>>,
-) -> impl ChumskyParser<TokenInfo, Spanned<Expr>, Error = Error> + Clone + 'a {
+) -> impl ChumskyParser<Token, Spanned<Expr>, Error = Error> + Clone + 'a {
     type BlockFn = fn(Option<Spanned<String>>, Spanned<Vec<Spanned<Node>>>) -> Expr;
 
     let braced_body = body
@@ -806,7 +839,7 @@ pub fn brace_ending_expr<'a>(
         .pad_ws();
 
     let block_label = block_label()
-        .then_ignore(just(TokenInfo::Whitespace).repeated())
+        .then_ignore(just(Token::Whitespace).repeated())
         .or_not();
 
     // Braced if-statement, i.e. if cond { ... }
@@ -929,17 +962,17 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
             }
             Ok(Spanned(
                 Expr::Atom(match token {
-                    TokenInfo::IntLiteral(val, info) => Atom::Int(val, info),
-                    TokenInfo::FloatLiteral(val) => Atom::Float(val),
-                    TokenInfo::StringLiteral(content, flags, inner_span) => {
+                    Token::IntLiteral(val, info) => Atom::Int(val, info),
+                    Token::FloatLiteral(val) => Atom::Float(val),
+                    Token::StringLiteral(content, flags, inner_span) => {
                         Atom::String(resolve_string(content, flags, inner_span)?)
                     }
                     // FIXME: this needs to raise an error whenever a char literal has more than one character
-                    TokenInfo::CharLiteral(content, inner_span) => {
+                    Token::CharLiteral(content, inner_span) => {
                         let content = resolve_string(content, StringLiteralFlags(0), inner_span)?;
                         Atom::Char(content.chars().next().unwrap())
                     }
-                    TokenInfo::Ident(ref name, _) => match name.as_str() {
+                    Token::Ident(ref name, _) => match name.as_str() {
                         "true" => Atom::Bool(true),
                         "false" => Atom::Bool(false),
                         "void" => Atom::Void,
@@ -953,11 +986,11 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
         .labelled("atom");
 
         // An identifier, e.g. `foo`, which may optionally have a type application.
-        let ident = select!(|span| TokenInfo::Ident(name, _) => Spanned(name, span))
+        let ident = select!(|span| Token::Ident(name, _) => Spanned(name, span))
             .then(
                 // Type application, e.g. `foo<int>`
                 ty.clone()
-                    .separated_by(just(TokenInfo::Comma).pad_ws())
+                    .separated_by(just(Token::Comma).pad_ws())
                     .allow_trailing()
                     .delimited(Delimiter::Angle)
                     .map_with_span(Spanned)
@@ -969,7 +1002,7 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
         // Intermediate parser to consume comma-separated sequences, e.g. 1, 2, 3
         let comma_separated = expr
             .clone()
-            .separated_by(just(TokenInfo::Comma).pad_ws())
+            .separated_by(just(Token::Comma).pad_ws())
             .allow_trailing();
 
         // Parses expressions that do not have to be orderly disambiguated against
@@ -991,19 +1024,19 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
         .pad_ws()
         .boxed();
 
-        let raw_ident = select!(TokenInfo::Ident(ident, _) => ident);
+        let raw_ident = select!(Token::Ident(ident, _) => ident);
 
-        let attr = just(TokenInfo::Dot)
+        let attr = just(Token::Dot)
             .map_with_span(|_, span: Span| span)
             .then(raw_ident.map_with_span(Spanned))
             .map(|(dot, attr)| ChainKind::Attr(dot, attr));
 
         let call_args = raw_ident
-            .then_ignore(just(TokenInfo::Colon))
+            .then_ignore(just(Token::Colon))
             .or_not()
             .pad_ws()
             .then(expr.clone())
-            .separated_by(just(TokenInfo::Comma).pad_ws())
+            .separated_by(just(Token::Comma).pad_ws())
             .allow_trailing()
             .delimited(Delimiter::Paren)
             .map_with_span(ChainKind::Call)
@@ -1012,8 +1045,8 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
         let index = expr
             .clone()
             .delimited_by(
-                just(TokenInfo::LeftBracket).pad_ws(),
-                just(TokenInfo::RightBracket).pad_ws(),
+                just(Token::LeftBracket).pad_ws(),
+                just(Token::RightBracket).pad_ws(),
             )
             .map(ChainKind::Index);
 
@@ -1082,10 +1115,10 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
             .boxed();
 
         // Prefix unary operators: -a, +a, !a
-        let unary = just(TokenInfo::Minus)
+        let unary = just(Token::Minus)
             .to(UnaryOp::Minus)
-            .or(just(TokenInfo::Plus).to(UnaryOp::Plus))
-            .or(just(TokenInfo::Not).to(UnaryOp::Not))
+            .or(just(Token::Plus).to(UnaryOp::Plus))
+            .or(just(Token::Not).to(UnaryOp::Not))
             .map_with_span(Spanned)
             .pad_ws()
             .repeated()
@@ -1127,7 +1160,7 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
         let pow = cast
             .clone()
             .then(
-                just([TokenInfo::Asterisk, TokenInfo::Asterisk])
+                just([Token::Asterisk, Token::Asterisk])
                     .to(BinaryOp::Pow)
                     .map_with_span(Spanned)
                     .map(Some)
@@ -1163,10 +1196,10 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
         let prod = pow
             .clone()
             .then(
-                just(TokenInfo::Asterisk)
+                just(Token::Asterisk)
                     .to(BinaryOp::Mul)
-                    .or(just(TokenInfo::Divide).to(BinaryOp::Div))
-                    .or(just(TokenInfo::Modulus).to(BinaryOp::Mod))
+                    .or(just(Token::Divide).to(BinaryOp::Div))
+                    .or(just(Token::Modulus).to(BinaryOp::Mod))
                     .map_with_span(Spanned)
                     .pad_ws()
                     .then(pow)
@@ -1180,9 +1213,9 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
         let sum = prod
             .clone()
             .then(
-                just(TokenInfo::Plus)
+                just(Token::Plus)
                     .to(BinaryOp::Add)
-                    .or(just(TokenInfo::Minus).to(BinaryOp::Sub))
+                    .or(just(Token::Minus).to(BinaryOp::Sub))
                     .pad_ws()
                     .map_with_span(Spanned)
                     .then(prod)
@@ -1194,8 +1227,8 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
 
         macro_rules! compound {
             ($ident1:ident $ident2:ident => $to:expr) => {{
-                just(TokenInfo::$ident1)
-                    .ignore_then(just(TokenInfo::$ident2))
+                just(Token::$ident1)
+                    .ignore_then(just(Token::$ident2))
                     .to($to)
             }};
         }
@@ -1208,8 +1241,8 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
                     .or(compound!(Not Equals => BinaryOp::Ne))
                     .or(compound!(Lt Equals => BinaryOp::Le))
                     .or(compound!(Gt Equals => BinaryOp::Ge))
-                    .or(just(TokenInfo::Lt).to(BinaryOp::Lt))
-                    .or(just(TokenInfo::Gt).to(BinaryOp::Gt))
+                    .or(just(Token::Lt).to(BinaryOp::Lt))
+                    .or(just(Token::Gt).to(BinaryOp::Gt))
                     .map_with_span(Spanned)
                     .pad_ws()
                     .then(sum)
@@ -1251,10 +1284,10 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
         let bitwise = logical_or
             .clone()
             .then(
-                just(TokenInfo::And)
+                just(Token::And)
                     .to(BinaryOp::BitAnd)
-                    .or(just(TokenInfo::Or).to(BinaryOp::BitOr))
-                    .or(just(TokenInfo::Caret).to(BinaryOp::BitXor))
+                    .or(just(Token::Or).to(BinaryOp::BitOr))
+                    .or(just(Token::Caret).to(BinaryOp::BitXor))
                     .map_with_span(Spanned)
                     .pad_ws()
                     .then(logical_or)
@@ -1298,7 +1331,7 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
 
         macro_rules! op {
             ($($token:ident)+ => $to:ident) => {{
-                just([$(TokenInfo::$token),+]).to(AssignmentOperator::$to)
+                just([$(Token::$token),+]).to(AssignmentOperator::$to)
             }};
         }
 
@@ -1320,7 +1353,7 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
             op!(Caret Equals => BitXorAssign),
             // Ensure that no equals sign is present after the oeprator to remove ambiguity
             // with the == operator.
-            op!(Equals => Assign).then_ignore(just(TokenInfo::Equals).not().rewind()),
+            op!(Equals => Assign).then_ignore(just(Token::Equals).not().rewind()),
         ))
         .map_with_span(Spanned)
         .pad_ws();
@@ -1343,7 +1376,7 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
                 pat.value().assert_immutable_bindings()?;
                 Ok(pat.map(AssignmentTarget::Pattern))
             }),
-            just(TokenInfo::Asterisk)
+            just(Token::Asterisk)
                 .then_ws()
                 .ignore_then(expr)
                 .map_with_span(|expr, span| {
@@ -1373,43 +1406,52 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
     })
 }
 
+type ExprParser<'a> = RecursiveParser<'a, Spanned<Expr>>;
+
 /// Parses a token stream into an AST.
 #[must_use = "parser will only parse if you call its provided methods"]
 pub struct Parser<'a> {
     tokens: ChumskyTokenStreamer<'a>,
     eof: Span,
+    body_parser: RecursiveParser<'a, Vec<Spanned<Node>>>,
+    expr_parser: LazyCell<ExprParser<'a>, Box<dyn FnOnce() -> ExprParser<'a> + 'a>>,
 }
 
 impl<'a> Parser<'a> {
     /// Creates a new parser over the provided source provider.
     pub fn from_provider(provider: &'a Provider<'a>) -> Self {
+        let body_parser = body_parser();
         Self {
             tokens: ChumskyTokenStreamer(TokenReader::new(provider)),
             eof: provider.eof(),
+            body_parser: body_parser.clone(),
+            expr_parser: LazyCell::new(Box::new(|| expr_parser(body_parser))),
         }
     }
 
     #[inline]
-    fn stream(&mut self) -> Stream<TokenInfo, Span, &mut ChumskyTokenStreamer<'a>> {
+    fn stream(&mut self) -> Stream<Token, Span, &mut ChumskyTokenStreamer<'a>> {
         Stream::from_iter(self.eof, &mut self.tokens)
     }
 
     /// Consumes the next expression in the token stream.
     pub fn next_expr(&mut self) -> StdResult<Spanned<Expr>, Vec<Error>> {
-        let body_parser = body_parser();
-        expr_parser(body_parser).parse(self.stream())
+        self.expr_parser.clone().parse(self.stream())
     }
 
     /// Consumes the entire token tree as an expression.
     pub fn consume_expr_until_end(&mut self) -> StdResult<Spanned<Expr>, Vec<Error>> {
-        let body_parser = body_parser();
-        expr_parser(body_parser)
+        self.expr_parser
+            .clone()
             .then_ignore(end())
             .parse(self.stream())
     }
 
     /// Consumes the entire token tree as a body.
     pub fn consume_body_until_end(&mut self) -> StdResult<Vec<Spanned<Node>>, Vec<Error>> {
-        body_parser().then_ignore(end()).parse(self.stream())
+        self.body_parser
+            .clone()
+            .then_ignore(end())
+            .parse(self.stream())
     }
 }
