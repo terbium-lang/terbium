@@ -1,4 +1,5 @@
 use common::span::Spanned;
+use inkwell::attributes::{Attribute, AttributeLoc};
 use inkwell::{
     basic_block::BasicBlock,
     builder::Builder,
@@ -270,6 +271,12 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         }
 
         builder.build_alloca(ty, name)
+    }
+
+    #[inline]
+    fn get_simple_attribute(&self, attr: &str) -> Attribute {
+        self.context
+            .create_enum_attribute(Attribute::get_named_enum_kind_id(attr), 0)
     }
 
     /// Compiles the specified function into an LLVM `FunctionValue`.

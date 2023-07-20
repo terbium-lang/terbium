@@ -5,6 +5,7 @@ use crate::{
     span::{Span, Spanned},
     token::{IntLiteralInfo, Token},
 };
+use common::span::SpannedExt;
 use std::fmt::{self, Debug, Display, Formatter};
 
 /// An enumeration of possible unary operators.
@@ -1349,14 +1350,27 @@ pub enum TokenTree {
     /// A token.
     Token(Token),
     /// A delimited sequence of token trees.
-    Delimited(Delimiter, Vec<Spanned<Self>>),
+    Delimited(Delimiter, Span, Span, Vec<Spanned<Self>>),
+}
+
+/// Flattens the token tree into just tokens.
+pub fn flatten_spanned_tt(tt: Spanned<TokenTree>) -> Box<dyn Iterator<Item = Spanned<Token>>> {
+    let Spanned(tt, span) = tt;
+    match tt {
+        TokenTree::Token(tok) => Box::new(std::iter::once(tok.spanned(span))),
+        TokenTree::Delimited(delim, open, close, inner) => Box::new(
+            std::iter::once(delim.open_token().spanned(open))
+                .chain(inner.into_iter().flat_map(flatten_spanned_tt))
+                .chain(std::iter::once(delim.close_token().spanned(close))),
+        ),
+    }
 }
 
 impl Display for TokenTree {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Token(token) => write!(f, "{token}"),
-            Self::Delimited(delimiter, tokens) => {
+            Self::Delimited(delimiter, _, _, tokens) => {
                 write!(f, "{}", delimiter.open())?;
                 for token in tokens {
                     write!(f, "{token}")?;

@@ -1,0 +1,37 @@
+package core
+version 0.1.0
+terbium 0.1.0
+author jay3332
+license MIT
+repository "https://github.com/terbium-lang/terbium"
+description Core library and language internals for Terbium.
+
+dependencies
+- std // no version means latest stable version
+- unstable_dependency unstable // "unstable" means latest version, stable or not
+- optional_dependency? >=2, <2.4 // optional dependency
+- other_dependency ^0.1.0 + feature1, feature2 // dependency with features
+- another_dependency + ! // "!" means "no default features", "!feature" means "without <feature>"
+
+@dev dependencies // the @dev decorator marks a section as only being respected in dev environments
+- dev_dependency ^2, !2.3
+- from_github @ github:terbium-lang/terbium#master as custom_name
+
+// define features that can be enabled
+feature sample_feature
+
+feature sample_feature_with_deps
+- some_dependency ^0.1.0
+- other_dependency inherit + feature3 // enable extra features
+
+feature enable_optional_dependency
+- optional_dependency inherit // enable optional dependency
+
+feature enable_other_features: sample_feature, sample_feature_with_deps
+
+// specify features that are automatically enabled
+default-features feature1, feature2
+
+// add required features, usually used with conditional compilation
+@cfg(unix) required-features feature3
+@dev required-features feature4

@@ -76,6 +76,11 @@ impl Warning {
         }
     }
 
+    /// Whether the specified warning code matches this warning.
+    pub fn is_code(&self, warning_code: &str) -> bool {
+        self.warning_code() == warning_code
+    }
+
     pub fn into_diagnostic(self) -> Diagnostic {
         let mut diagnostic =
             Diagnostic::new(Severity::Warning(self.warning_code()), self.message());

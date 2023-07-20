@@ -34,11 +34,14 @@
 #![feature(let_chains)]
 #![feature(trait_alias)]
 #![feature(lazy_cell)]
+#![feature(unboxed_closures)]
+#![feature(fn_traits)]
 
 pub mod ast;
 pub mod error;
 pub mod parser;
 pub mod token;
+pub mod tree;
 
 pub use common::span;
 pub use parser::Parser;

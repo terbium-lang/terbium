@@ -1,8 +1,8 @@
 use crate::{
     error::{Error, Result},
-    Const, Expr, FieldVisibility, FloatWidth, Func, FuncHeader, FuncParam, Hir, Ident, IntSign,
-    IntWidth, ItemId, Literal, LogicalOp, ModuleId, Node, Op, Pattern, PrimitiveTy, Scope, ScopeId,
-    StructField, StructTy, Ty, TyDef, TyParam,
+    Const, Decorator, Expr, FieldVisibility, FloatWidth, Func, FuncHeader, FuncParam, Hir, Ident,
+    IntSign, IntWidth, ItemId, Literal, LogicalOp, ModuleId, Node, Op, Pattern, PrimitiveTy, Scope,
+    ScopeId, StructField, StructTy, Ty, TyDef, TyParam,
 };
 use common::span::{Span, Spanned, SpannedExt};
 use grammar::{
@@ -25,6 +25,8 @@ pub struct AstLowerer {
     /// During the lowering of structs to typerefs, this keeps a list of structs that need to
     /// inherit fields.
     sty_needs_field_resolution: HashMap<ItemId, (Span, ItemId, Spanned<TypePath>, Vec<Ty>)>,
+    /// Build up outer decorators to apply to the next item.
+    outer_decorators: Vec<Spanned<Decorator>>,
     /// The HIR being constructed.
     pub hir: Hir,
     /// Non-fatal errors that occurred during lowering.
@@ -88,6 +90,7 @@ impl AstLowerer {
         Self {
             module_nodes: HashMap::from([(ModuleId::root(), root)]),
             sty_needs_field_resolution: HashMap::new(),
+            outer_decorators: Vec::new(),
             hir: Hir::default(),
             errors: Vec::new(),
         }
@@ -570,13 +573,11 @@ impl AstLowerer {
                     ty_params: ctx.ty_params.clone(),
                     params: params
                         .into_iter()
-                        .map(|param| {
+                        .map(|Spanned(ast::FuncParam { pat, ty, default }, _)| {
                             Ok(FuncParam {
-                                pat: self.lower_pat(param.0.pat),
-                                ty: self.lower_ty(&ctx, param.0.ty.0)?,
-                                default: param
-                                    .0
-                                    .default
+                                pat: self.lower_pat(pat),
+                                ty: self.lower_ty(&ctx, ty.0)?,
+                                default: default
                                     .map(|expr| self.lower_expr(&ctx, expr))
                                     .transpose()?,
                             })
@@ -662,9 +663,41 @@ impl AstLowerer {
                 self.desugar_conditional_ctrl(ctx, cond, Spanned(base, span))?
             }
             ast::Node::ImplicitReturn(expr) => Node::ImplicitReturn(self.lower_expr(ctx, expr)?),
+            ast::Node::OuterDecorator(decorator) => {
+                self.lower_decorator(decorator)
+                    .map(|decorator| self.outer_decorators.push(decorator.spanned(span)));
+                return Ok(None);
+            }
             _ => return Ok(None),
         };
         Ok(Some(Spanned(node, span)))
+    }
+
+    /// Lowers a decorator.
+    pub fn lower_decorator(&mut self, decorator: ast::Decorator) -> Option<Decorator> {
+        let Spanned(Some((name, loc)), path_span) = decorator.path.as_ref().map(|dec| dec.split_last()) else { return None };
+
+        let mut assert_no_args = |out: Decorator| {
+            if let Some(Spanned(_, span)) = &decorator.args {
+                self.err_nonfatal(Error::BareDecoratorWithArguments(
+                    name.value().clone().spanned(path_span),
+                    *span,
+                ));
+            }
+            Some(out)
+        };
+
+        match (loc, name.value().as_str()) {
+            // third-party decorators cannot be named any built-in decorators,
+            // so check for a built-in decorator first
+            ([], "inline") => assert_no_args(Decorator::Inline),
+            ([], "always_inline") => assert_no_args(Decorator::AlwaysInline),
+            ([], "never_inline") => assert_no_args(Decorator::NeverInline),
+            ([], "rarely_called") => assert_no_args(Decorator::RarelyCalled),
+            ([], "frequently_called") => assert_no_args(Decorator::FrequentlyCalled),
+            ([], "suppress") => todo!(),
+            _ => todo!(),
+        }
     }
 
     /// Lowers a pattern into an HIR pattern.

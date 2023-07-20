@@ -104,6 +104,8 @@ pub enum Error {
     LabelNotFound(Spanned<Ident>),
     /// Used a variable before it was initialized.
     UseOfUninitializedVariable(Span, Spanned<Ident>),
+    /// Provided arguments to a decorator that takes no arguments.
+    BareDecoratorWithArguments(Spanned<String>, Span),
 }
 
 impl Display for Error {
@@ -199,6 +201,9 @@ impl Display for Error {
             Self::UseOfUninitializedVariable(_, name) => {
                 write!(f, "use of uninitialized variable `{name}`")
             }
+            Self::BareDecoratorWithArguments(name, _) => {
+                write!(f, "bare decorator @{name} cannot have arguments")
+            }
         }
     }
 }
@@ -233,6 +238,7 @@ impl Error {
             Self::InvalidReturn(_) => "cannot return from this context",
             Self::LabelNotFound(_) => "cannot find label",
             Self::UseOfUninitializedVariable(..) => "use of potentially uninitialized variable",
+            Self::BareDecoratorWithArguments(..) => "decorator cannot have arguments",
         }
     }
 
@@ -263,6 +269,7 @@ impl Error {
             Self::InvalidReturn(_) => 119,
             Self::LabelNotFound(_) => 120,
             Self::UseOfUninitializedVariable(..) => 121,
+            Self::BareDecoratorWithArguments(..) => 122,
         }
     }
 
@@ -626,6 +633,19 @@ impl Error {
                         )
                     )
                     .with_help(format!("make sure `{def}` is initialized with a value before using it"))
+            }
+            Self::BareDecoratorWithArguments(name, span) => {
+                diagnostic
+                    .with_section(Section::new()
+                        .with_label(Label::at(span)
+                            .with_message(format!("provided arguments to @{name} here"))
+                            .with_context_span(name.span().merge(span))
+                        )
+                        .with_note(format!("@{name} takes no arguments"))
+                    )
+                    .with_fix(Fix::new(Action::Remove(span))
+                        .with_message(format!("remove the arguments passed into @{name}"))
+                    )
             }
         };
         diagnostic

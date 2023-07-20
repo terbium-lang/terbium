@@ -898,6 +898,7 @@ impl TypeLowerer {
             crate::Scope {
                 module_id: scope.module_id,
                 label,
+                decorators: scope.decorators,
                 children: lowered.spanned(full_span),
                 funcs,
                 aliases: HashMap::new(),

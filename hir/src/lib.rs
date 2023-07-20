@@ -181,6 +181,46 @@ where
     }
 }
 
+/// A decorator that may be applied to a scope.
+#[derive(Clone, Debug)]
+pub enum Decorator {
+    /// The `inline` function decorator, which indicates that the function should preferrably be
+    /// inlined. Equates to the `inlinehint` LLVM attribute.
+    Inline,
+    /// The `always_inline` function decorator, which indicates that the function should always be
+    /// inlined. Equates to the `alwaysinline` LLVM attribute.
+    AlwaysInline,
+    /// The `never_inline` function decorator, which indicates the the function should never be
+    /// inlined. Equates to the `noinline` LLVM attribute.
+    NeverInline,
+    /// The `rarely_called` function decorator, which indicates that the function is rarely
+    /// called and equates to the `cold` LLVM attribute.
+    RarelyCalled,
+    /// The `frequently_called` function decorator, which indicates that the function is frequently
+    /// called and equates to the `hot` LLVM attribute.
+    FrequentlyCalled,
+    /// The `suppress` scope decorator, which indicates that all warnings within the scope in
+    /// the specified category should be suppressed.
+    Suppress(Ident),
+    /// The `forbid` scope decorator, which indicates that all warnings within the scope in
+    /// the specified category should be turned into hard errors.
+    Forbid(Ident),
+}
+
+impl Display for Decorator {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Inline => write!(f, "inline"),
+            Self::AlwaysInline => write!(f, "always_inline"),
+            Self::NeverInline => write!(f, "never_inline"),
+            Self::RarelyCalled => write!(f, "rarely_called"),
+            Self::FrequentlyCalled => write!(f, "frequently_called"),
+            Self::Suppress(cat) => write!(f, "suppress({cat})"),
+            Self::Forbid(cat) => write!(f, "forbid({cat})"),
+        }
+    }
+}
+
 /// An HIR node.
 #[derive(Clone, Debug)]
 pub enum Node<M: Metadata = LowerMetadata> {
@@ -201,6 +241,8 @@ pub enum Node<M: Metadata = LowerMetadata> {
 pub struct Scope<M: Metadata = LowerMetadata> {
     /// The module in which this scope is defined.
     pub module_id: ModuleId,
+    /// Decorators that may modify the behavior of this scope.
+    pub decorators: Vec<Spanned<Decorator>>,
     /// The label of this scope.
     pub label: Option<Spanned<Ident>>,
     /// The children of this scope.
@@ -230,6 +272,7 @@ impl<M: Metadata> Scope<M> {
     ) -> Self {
         Self {
             module_id,
+            decorators: Vec::new(),
             label,
             children,
             funcs: HashMap::new(),
@@ -897,6 +940,9 @@ where
 
     pub fn write_block(&'a self, f: &mut Formatter, scope: &'a Scope<M>) -> fmt::Result {
         f.write_str("{\n")?;
+        for decorator in &scope.decorators {
+            format!("@!{decorator}").write_indent(f)?;
+        }
         for (item, func) in &scope.funcs {
             writeln!(f, "{item}:")?;
             WithHir(func, self).write_indent(f)?;

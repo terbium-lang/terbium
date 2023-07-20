@@ -12,7 +12,7 @@ use chumsky::{
     combinator::{DelimitedBy, IgnoreThen, Repeated, ThenIgnore},
     error::Error as _,
     prelude::{
-        any, choice, end, filter_map, just, none_of, recursive, select, Parser as ChumskyParser,
+        choice, end, filter_map, just, none_of, recursive, select, Parser as ChumskyParser,
         Recursive,
     },
     primitive::Just,
@@ -253,11 +253,12 @@ pub fn field_vis_parser<'a>() -> impl TokenParser<Spanned<FieldVisibility>> + Cl
 /// Parses a token tree that has all delimiters balanced
 pub fn token_tree<'a>() -> RecursiveParser<'a, Spanned<TokenTree>> {
     recursive(|tt| {
-        let delim_parser = |delimiter| {
-            tt.clone()
-                .repeated()
-                .delimited(delimiter)
-                .map(move |v| TokenTree::Delimited(delimiter, v))
+        let delim_parser = |delimiter: Delimiter| {
+            just(delimiter.open_token())
+                .map_with_span(|_, span| span)
+                .then(tt.clone().repeated())
+                .then(just(delimiter.close_token()).map_with_span(|_, span| span))
+                .map(move |((open, v), close)| TokenTree::Delimited(delimiter, open, close, v))
         };
         let delim_tt = delim_parser(Delimiter::Paren)
             .or(delim_parser(Delimiter::Brace))
@@ -1406,15 +1407,13 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
     })
 }
 
-type ExprParser<'a> = RecursiveParser<'a, Spanned<Expr>>;
-
 /// Parses a token stream into an AST.
 #[must_use = "parser will only parse if you call its provided methods"]
 pub struct Parser<'a> {
     tokens: ChumskyTokenStreamer<'a>,
     eof: Span,
     body_parser: RecursiveParser<'a, Vec<Spanned<Node>>>,
-    expr_parser: LazyCell<ExprParser<'a>, Box<dyn FnOnce() -> ExprParser<'a> + 'a>>,
+    expr_parser: RecursiveParser<'a, Spanned<Expr>>,
 }
 
 impl<'a> Parser<'a> {
@@ -1425,7 +1424,7 @@ impl<'a> Parser<'a> {
             tokens: ChumskyTokenStreamer(TokenReader::new(provider)),
             eof: provider.eof(),
             body_parser: body_parser.clone(),
-            expr_parser: LazyCell::new(Box::new(|| expr_parser(body_parser))),
+            expr_parser: expr_parser(body_parser),
         }
     }
 
