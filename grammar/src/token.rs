@@ -616,7 +616,8 @@ impl<'a> TokenReader<'a> {
             return None;
         }
 
-        let Some((content, content_span)) = self.consume_string_content(hashes, quote, is_raw) else {
+        let Some((content, content_span)) = self.consume_string_content(hashes, quote, is_raw)
+        else {
             self.cursor = original;
             return None;
         };
@@ -855,10 +856,7 @@ impl Iterator for TokenReader<'_> {
         let start = self.pos();
 
         if self.consume_whitespace() {
-            return Some(Spanned(
-                Token::Whitespace,
-                Span::new(self.src, start, self.pos()),
-            ));
+            return Some(Spanned(Token::Whitespace, Span::new(self.src, start, self.pos())));
         }
 
         macro_rules! consider {

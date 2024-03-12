@@ -629,7 +629,7 @@ impl Display for AssignmentOperator {
 pub enum AssignmentTarget {
     /// A pattern match target.
     Pattern(Pattern),
-    /// A dereference of a mutable reference, directing the reassignment to the pointee instead of
+    /// A dereferencing of a mutable reference, directing the reassignment to the pointee instead of
     /// the reference itself, e.g. `*x = 1;`.
     Pointer(Box<Spanned<Expr>>),
     /// An attribute access. Note that this overrides variant patterns such as `Enum.Variant`;

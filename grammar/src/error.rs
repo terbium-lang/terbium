@@ -443,10 +443,11 @@ impl Error {
     /// Generates a v2 diagnostic.
     pub fn into_diagnostic(self) -> Diagnostic {
         let context_span = self.info.inner_span().unwrap_or(self.span);
-        let span = match self.info {
-            ErrorInfo::UnexpectedEof => context_span.last_span(),
-            _ => context_span,
-        };
+        let span =
+            match self.info {
+                ErrorInfo::UnexpectedEof => context_span.last_span(),
+                _ => context_span,
+            };
         let mut diagnostic = Diagnostic::new(Severity::Error(self.info.code()), "invalid syntax")
             .with_section(
                 Section::new().with_label(
