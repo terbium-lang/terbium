@@ -231,12 +231,11 @@ pub enum Action {
 
 impl Action {
     pub const fn span(&self) -> Span {
-        match self {
-            Self::Replace(span, _) => *span,
-            Self::Remove(span) => *span,
-            Self::InsertBefore(span, _) => *span,
-            Self::InsertAfter(span, _) => *span,
-        }
+        let (Self::Replace(span, _)
+        | Self::Remove(span)
+        | Self::InsertBefore(span, _)
+        | Self::InsertAfter(span, _)) = self;
+        *span
     }
 }
 

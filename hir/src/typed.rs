@@ -127,14 +127,16 @@ pub enum BoolIntrinsic {
 pub enum Expr {
     Literal(Literal),
     Local(Spanned<Ident>, Option<Spanned<Vec<Ty>>>, LocalEnv),
+    Func(Spanned<Ident>, Option<Spanned<Vec<Ty>>>, ItemId),
     Type(Spanned<Ty>),
     Tuple(Vec<E>),
     Array(Vec<E>),
     IntIntrinsic(IntIntrinsic, IntSign, IntWidth),
     BoolIntrinsic(BoolIntrinsic),
     Intrinsic(Intrinsic, Vec<E>),
-    Call {
-        callee: Box<E>,
+    CallFunc {
+        func: ItemId,
+        parent: Option<Ty>,
         args: Vec<E>,
         kwargs: Vec<(Ident, E)>,
     },
@@ -162,7 +164,7 @@ impl Display for WithHir<'_, TypedExpr, InferMetadata> {
         write!(f, "({}) ", self.0 .1)?;
         match &self.0 .0 {
             Expr::Literal(l) => write!(f, "{l}"),
-            Expr::Local(i, args, _) => {
+            Expr::Local(i, args, _) | Expr::Func(i, args, _) => {
                 write!(f, "{i}")?;
                 if let Some(args) = args {
                     write!(
@@ -201,8 +203,9 @@ impl Display for WithHir<'_, TypedExpr, InferMetadata> {
             Expr::Intrinsic(intr, args) => {
                 write!(f, "{intr}({})", comma_sep(args))
             }
-            Expr::Call {
-                callee,
+            Expr::CallFunc {
+                func,
+                parent,
                 args,
                 kwargs,
             } => {
@@ -217,7 +220,13 @@ impl Display for WithHir<'_, TypedExpr, InferMetadata> {
                     .collect::<Vec<_>>()
                     .join(", ");
 
-                write!(f, "{}({args})", self.with(&**callee))
+                write!(
+                    f,
+                    "{}{func}({args})",
+                    parent
+                        .as_ref()
+                        .map_or_else(String::new, |ty| format!("{ty}."))
+                )
             }
             Expr::CallOp(op, slf, args) => {
                 write!(f, "{}.<{op}>({})", self.with(&**slf), comma_sep(args))

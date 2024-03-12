@@ -177,6 +177,19 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                 };
                 BasicValueEnum::IntValue(bool_value)
             }
+            Expr::Call(func, args) => {
+                let f = self.module.get_function(&func.to_string()).unwrap();
+                let args = args
+                    .into_iter()
+                    .map(|arg| self.lower_expr(arg).unwrap().into())
+                    .collect::<Vec<_>>();
+
+                self.builder
+                    .build_call(f, &args, &self.next_increment())
+                    .try_as_basic_value()
+                    .left()
+                    .unwrap()
+            }
             _ => todo!(),
         })
     }
@@ -185,7 +198,9 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
     pub fn lower_node(&mut self, node: Spanned<Node>) {
         match node.into_value() {
             Node::Store(loc, val) => {
-                let Some(val) = self.lower_expr(*val) else { return };
+                let Some(val) = self.lower_expr(*val) else {
+                    return;
+                };
                 let loc = self.locals[&loc].as_ref().unwrap().value;
                 self.builder.build_store(loc, val);
             }
@@ -298,7 +313,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         };
 
         // TODO: qualified name
-        let name = self.func.name.1.to_string();
+        let name = self.func.name.to_string();
         self.fn_value
             .write(self.module.add_function(&name, fn_ty, None));
 

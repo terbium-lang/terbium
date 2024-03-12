@@ -9,15 +9,8 @@ use grammar::span::Provider;
 use hir::check::TypeChecker;
 use hir::infer::TypeLowerer;
 use hir::lower::AstLowerer;
-use hir::Expr::Ident;
-use hir::{Hir, ItemId, ModuleId};
+use hir::ModuleId;
 use std::path::PathBuf;
-
-fn test<T>()
-where
-    T: Copy,
-{
-}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     std::panic::set_hook(Box::new(|info| {

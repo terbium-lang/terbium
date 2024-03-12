@@ -56,7 +56,9 @@ impl<'a> BlockCtx<'a> {
         cont: BlockId,
         result: Option<LocalId>,
     ) {
-        let Some(Spanned(label, _)) = lowerer.thir.scopes[&scope_id].label else { return };
+        let Some(Spanned(label, _)) = lowerer.thir.scopes[&scope_id].label else {
+            return;
+        };
 
         self.label_continue_map.insert(label, block);
         self.label_break_map.insert(label, (cont, result));
@@ -281,6 +283,13 @@ impl Lowerer {
                 ctx.move_to(cont_id);
                 Expr::Local(result_local)
             }
+            HirExpr::CallFunc { func, args, .. } => {
+                let args = args
+                    .into_iter()
+                    .map(|arg| self.lower_expr(ctx, arg))
+                    .collect();
+                Expr::Call(func, args)
+            }
             _ => todo!(),
         }
         .spanned(span)
@@ -312,12 +321,13 @@ impl Lowerer {
             .entry(entry_id)
             .or_insert_with(|| Vec::with_capacity(scope.children.value().len()));
 
-        let mut ctx = Ctx {
-            blocks,
-            current: entry,
-            track: entry_id,
-            bctx,
-        };
+        let mut ctx =
+            Ctx {
+                blocks,
+                current: entry,
+                track: entry_id,
+                bctx,
+            };
         let bctx = unsafe { &*bctx };
 
         let Spanned(children, span) = scope.children;
@@ -334,13 +344,14 @@ impl Lowerer {
                 }
                 hir::Node::Continue(None) => Node::Jump(bctx.continue_to.unwrap()),
                 hir::Node::Break(label, value) => {
-                    let (block, local) = match label {
-                        Some(Spanned(label, _)) => *bctx.label_break_map.get(&label).unwrap(),
-                        None => {
-                            let (block, local) = bctx.break_to.unwrap();
-                            (block, Some(local))
-                        }
-                    };
+                    let (block, local) =
+                        match label {
+                            Some(Spanned(label, _)) => *bctx.label_break_map.get(&label).unwrap(),
+                            None => {
+                                let (block, local) = bctx.break_to.unwrap();
+                                (block, Some(local))
+                            }
+                        };
                     if let (Some(value), Some(local)) = (value, local) {
                         let expr = self.lower_expr(&mut ctx, value);
                         ctx.current
@@ -420,7 +431,7 @@ impl Lowerer {
     pub fn lower_func(&mut self, item_id: ItemId, HirFunc { header, body, .. }: HirFunc) -> Func {
         Func {
             name: item_id,
-            params: Vec::new(), // TODO
+            params: Vec::new(),
             ret_ty: header.ret_ty,
             blocks: self.lower_map(body, true),
         }

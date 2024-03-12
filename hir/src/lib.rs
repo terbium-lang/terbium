@@ -555,12 +555,14 @@ impl SubstituteTyParams<Self> for Ty {
                     .map(|t| t.substitute(param, ty.clone()))
                     .collect(),
             ),
-            Self::Struct(item, tys) => Self::Struct(
-                item,
-                tys.into_iter()
-                    .map(|t| t.substitute(param, ty.clone()))
-                    .collect(),
-            ),
+            Self::Struct(item, tys) => {
+                Self::Struct(
+                    item,
+                    tys.into_iter()
+                        .map(|t| t.substitute(param, ty.clone()))
+                        .collect(),
+                )
+            }
             other => other,
         }
     }
@@ -1172,19 +1174,20 @@ where
     M::Ty: Display,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let ty_params = if self.0.ty_params.is_empty() {
-            String::new()
-        } else {
-            format!(
-                "<{}>",
-                self.0
-                    .ty_params
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )
-        };
+        let ty_params =
+            if self.0.ty_params.is_empty() {
+                String::new()
+            } else {
+                format!(
+                    "<{}>",
+                    self.0
+                        .ty_params
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            };
         write!(
             f,
             "{}{}({}) -> {}",

@@ -138,12 +138,7 @@ fn resolve_string(content: String, flags: StringLiteralFlags, span: Span) -> Res
                 'x' => hex_sequence!(2),
                 'u' => hex_sequence!(4),
                 'U' => hex_sequence!(8),
-                c => {
-                    return Err(Error::unknown_escape_sequence(
-                        c,
-                        span.get_span(pos - 1, pos + 1),
-                    ))
-                }
+                c => return Err(Error::unknown_escape_sequence(c, span.get_span(pos - 1, pos + 1))),
             };
         }
 
@@ -336,9 +331,9 @@ pub fn type_expr_parser<'a>() -> RecursiveParser<'a, Spanned<TypeExpr>> {
                         .into_iter()
                         .map(|(name, ty)| {
                             Ok((
-                                name.ok_or_else(|| {
-                                    Error::unexpected_positional_argument(ty.span())
-                                })?,
+                                name.ok_or_else(
+                                    || Error::unexpected_positional_argument(ty.span())
+                                )?,
                                 ty,
                             ))
                         })
@@ -595,9 +590,9 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
                     .ignore_then(expr.clone())
                     .or_not(),
             )
-            .map_with_span(|((pat, ty), default), span| {
-                Spanned(FuncParam { pat, ty, default }, span)
-            });
+            .map_with_span(
+                |((pat, ty), default), span| Spanned(FuncParam { pat, ty, default }, span)
+            );
 
         let type_params = ident
             .clone()
@@ -749,27 +744,28 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
             .labelled("return")
             .boxed();
 
-        let struct_field = field_vis
-            .then(ident.clone())
-            .then_ignore(just(Token::Colon).then_ws())
-            .then(ty.clone())
-            .then(
-                just(Token::Equals)
-                    .pad_ws()
-                    .ignore_then(expr.clone())
-                    .or_not(),
-            )
-            .map_with_span(|(((vis, name), ty), default), span| {
-                Spanned(
-                    StructField {
-                        vis,
-                        name,
-                        ty,
-                        default,
-                    },
-                    span,
+        let struct_field =
+            field_vis
+                .then(ident.clone())
+                .then_ignore(just(Token::Colon).then_ws())
+                .then(ty.clone())
+                .then(
+                    just(Token::Equals)
+                        .pad_ws()
+                        .ignore_then(expr.clone())
+                        .or_not(),
                 )
-            });
+                .map_with_span(|(((vis, name), ty), default), span| {
+                    Spanned(
+                        StructField {
+                            vis,
+                            name,
+                            ty,
+                            default,
+                        },
+                        span,
+                    )
+                });
 
         // Struct declaration, i.e. `struct Foo { ... }`
         let struct_decl = item_vis
@@ -878,46 +874,49 @@ pub fn brace_ending_expr<'a>(
         .boxed();
 
     // While-loop, i.e. while cond { ... }
-    let while_loop = block_label
-        .clone()
-        .then_ignore(kw!(While))
-        .then(expr)
-        .then(braced_body.clone())
-        .then(kw!(Else).ignore_then(braced_body.clone()).or_not())
-        .map_with_span(|(((label, cond), body), else_body), span| {
-            Spanned(
-                Expr::While(While {
-                    label,
-                    cond: Box::new(cond),
-                    body,
-                    else_body,
-                }),
-                span,
-            )
-        })
-        .pad_ws()
-        .labelled("while-loop")
-        .boxed();
+    let while_loop =
+        block_label
+            .clone()
+            .then_ignore(kw!(While))
+            .then(expr)
+            .then(braced_body.clone())
+            .then(kw!(Else).ignore_then(braced_body.clone()).or_not())
+            .map_with_span(|(((label, cond), body), else_body), span| {
+                Spanned(
+                    Expr::While(While {
+                        label,
+                        cond: Box::new(cond),
+                        body,
+                        else_body,
+                    }),
+                    span,
+                )
+            })
+            .pad_ws()
+            .labelled("while-loop")
+            .boxed();
 
     let simple_block = |f: BlockFn| move |(label, body), span| Spanned(f(label, body), span);
 
     // Loop-expression, i.e. loop { ... }
-    let loop_expr = block_label
-        .clone()
-        .then_ignore(kw!(Loop))
-        .then(braced_body.clone())
-        .map_with_span(simple_block(|label, body| Expr::Loop { label, body }))
-        .pad_ws()
-        .labelled("loop-expression")
-        .boxed();
+    let loop_expr =
+        block_label
+            .clone()
+            .then_ignore(kw!(Loop))
+            .then(braced_body.clone())
+            .map_with_span(simple_block(|label, body| Expr::Loop { label, body }))
+            .pad_ws()
+            .labelled("loop-expression")
+            .boxed();
 
     // Standard block, i.e. { ... }
-    let block_expr = block_label
-        .then(braced_body)
-        .map_with_span(simple_block(|label, body| Expr::Block { label, body }))
-        .pad_ws()
-        .labelled("block-expression")
-        .boxed();
+    let block_expr =
+        block_label
+            .then(braced_body)
+            .map_with_span(simple_block(|label, body| Expr::Block { label, body }))
+            .pad_ws()
+            .labelled("block-expression")
+            .boxed();
 
     choice((braced_if, while_loop, loop_expr, block_expr))
 }
@@ -1116,27 +1115,28 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
             .boxed();
 
         // Prefix unary operators: -a, +a, !a
-        let unary = just(Token::Minus)
-            .to(UnaryOp::Minus)
-            .or(just(Token::Plus).to(UnaryOp::Plus))
-            .or(just(Token::Not).to(UnaryOp::Not))
-            .map_with_span(Spanned)
-            .pad_ws()
-            .repeated()
-            .then(chain.clone())
-            .foldr(|op, expr| {
-                let span = op.span().merge(expr.span());
+        let unary =
+            just(Token::Minus)
+                .to(UnaryOp::Minus)
+                .or(just(Token::Plus).to(UnaryOp::Plus))
+                .or(just(Token::Not).to(UnaryOp::Not))
+                .map_with_span(Spanned)
+                .pad_ws()
+                .repeated()
+                .then(chain.clone())
+                .foldr(|op, expr| {
+                    let span = op.span().merge(expr.span());
 
-                Spanned(
-                    Expr::UnaryOp {
-                        op,
-                        expr: Box::new(expr),
-                    },
-                    span,
-                )
-            })
-            .labelled("unary expression")
-            .boxed();
+                    Spanned(
+                        Expr::UnaryOp {
+                            op,
+                            expr: Box::new(expr),
+                        },
+                        span,
+                    )
+                })
+                .labelled("unary expression")
+                .boxed();
 
         // Type cast, e.g. `a to b`
         let cast = unary
@@ -1352,7 +1352,7 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
             op!(Or Equals => BitOrAssign),
             op!(And Equals => BitAndAssign),
             op!(Caret Equals => BitXorAssign),
-            // Ensure that no equals sign is present after the oeprator to remove ambiguity
+            // Ensure that no equals sign is present after the operator to remove ambiguity
             // with the == operator.
             op!(Equals => Assign).then_ignore(just(Token::Equals).not().rewind()),
         ))
@@ -1380,9 +1380,9 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
             just(Token::Asterisk)
                 .then_ws()
                 .ignore_then(expr)
-                .map_with_span(|expr, span| {
-                    Spanned(AssignmentTarget::Pointer(Box::new(expr)), span)
-                }),
+                .map_with_span(
+                    |expr, span| Spanned(AssignmentTarget::Pointer(Box::new(expr)), span)
+                ),
         ));
 
         // Assignment expressions, i.e. a = b, a += b

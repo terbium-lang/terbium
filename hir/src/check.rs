@@ -99,37 +99,36 @@ impl<'a> TypeChecker<'a> {
         ));
         let then = self.anon_scope_from_expr(module, binding_expr);
         let els = self.anon_scope_from_expr(module, rhs);
-        let stmt = if is_or {
-            Expr::If(cond, then, Some(els))
-        } else {
-            Expr::If(cond, els, Some(then))
-        };
+        let stmt =
+            if is_or {
+                Expr::If(cond, then, Some(els))
+            } else {
+                Expr::If(cond, els, Some(then))
+            };
 
         let spanned = |node| Spanned(node, span);
-        let block = self.register_scope(Scope::new(
-            module,
-            None,
-            vec![
-                // Store the LHS in a temporary binding
-                spanned(Node::Let {
-                    pat: Spanned(
-                        Pattern::Ident {
-                            ident: binding,
-                            mut_kw: None,
-                        },
-                        lhs_span,
-                    ),
-                    ty: lhs_ty.clone(),
-                    ty_span: Some(lhs_span),
-                    value: Some(TypedExpr(lhs_expr, lhs_ty).spanned(lhs_span)),
-                }),
-                spanned(Node::ImplicitReturn(Spanned(
-                    TypedExpr(stmt, ty.clone()),
-                    span,
-                ))),
-            ]
-            .spanned(span),
-        ));
+        let block =
+            self.register_scope(Scope::new(
+                module,
+                None,
+                vec![
+                    // Store the LHS in a temporary binding
+                    spanned(Node::Let {
+                        pat: Spanned(
+                            Pattern::Ident {
+                                ident: binding,
+                                mut_kw: None,
+                            },
+                            lhs_span,
+                        ),
+                        ty: lhs_ty.clone(),
+                        ty_span: Some(lhs_span),
+                        value: Some(TypedExpr(lhs_expr, lhs_ty).spanned(lhs_span)),
+                    }),
+                    spanned(Node::ImplicitReturn(Spanned(TypedExpr(stmt, ty.clone()), span))),
+                ]
+                .spanned(span),
+            ));
         (Expr::Block(block), ty)
     }
 
@@ -160,18 +159,19 @@ impl<'a> TypeChecker<'a> {
         rhs_ty.apply(&table.substitutions);
 
         // Determine the diverging type
-        let ty = match lhs_ty.relation_to(&rhs_ty) {
-            // Favor the LHS type if it is less or equally as specific
-            Relation::Eq | Relation::Super => lhs_ty,
-            // Otherwise, favor the RHS type
-            Relation::Sub => rhs_ty,
-            // If the types are unrelated, this is a type error
-            Relation::Unrelated => {
-                // error: mismatched types
-                // Assume the RHS type
-                rhs_ty
-            }
-        };
+        let ty =
+            match lhs_ty.relation_to(&rhs_ty) {
+                // Favor the LHS type if it is less or equally as specific
+                Relation::Eq | Relation::Super => lhs_ty,
+                // Otherwise, favor the RHS type
+                Relation::Sub => rhs_ty,
+                // If the types are unrelated, this is a type error
+                Relation::Unrelated => {
+                    // error: mismatched types
+                    // Assume the RHS type
+                    rhs_ty
+                }
+            };
 
         if ty.relation_to(&BOOL).compatible() {
             let intrinsic = match is_or {
@@ -233,11 +233,12 @@ impl<'a> TypeChecker<'a> {
                     _ => IntSign::Signed,
                 };
                 let width = *lw.max(rw);
-                *expr = Expr::IntIntrinsic(
-                    IntIntrinsic::Binary(intr, Box::new(target), Box::new(arg1.unwrap())),
-                    sign,
-                    width,
-                );
+                *expr =
+                    Expr::IntIntrinsic(
+                        IntIntrinsic::Binary(intr, Box::new(target), Box::new(arg1.unwrap())),
+                        sign,
+                        width,
+                    );
                 *ty = if matches!(op, Op::Lt | Op::Gt | Op::Le | Op::Ge | Op::Eq | Op::Ne) {
                     BOOL
                 } else {
@@ -289,14 +290,12 @@ impl<'a> TypeChecker<'a> {
                 let then_span = scopes.get(then_id).expect("missing scope").children.span();
                 let els_span = scopes.get(else_id).expect("missing scope").children.span();
 
-                let Some((mut then, tr_span)) = self
-                    .lower
-                    .resolution_lookup
-                    .remove(then_id) else { return };
-                let Some((mut els, er_span)) = self
-                    .lower
-                    .resolution_lookup
-                    .remove(else_id) else { return };
+                let Some((mut then, tr_span)) = self.lower.resolution_lookup.remove(then_id) else {
+                    return;
+                };
+                let Some((mut els, er_span)) = self.lower.resolution_lookup.remove(else_id) else {
+                    return;
+                };
 
                 if let Some(conflict) =
                     table.unify_constraint(Constraint(then.clone(), els.clone()))
@@ -360,10 +359,21 @@ impl<'a> TypeChecker<'a> {
             Expr::Tuple(values) | Expr::Array(values) | Expr::Intrinsic(_, values) => values
                 .iter_mut()
                 .for_each(|value| self.pass_over_expr(module, value, table)),
-            Expr::Call { args, kwargs, .. } => args
-                .iter_mut()
-                .chain(kwargs.iter_mut().map(|(_, value)| value))
-                .for_each(|value| self.pass_over_expr(module, value, table)),
+            Expr::CallFunc {
+                parent,
+                args,
+                kwargs,
+                ..
+            } => {
+                args.iter_mut()
+                    .chain(kwargs.iter_mut().map(|(_, value)| value))
+                    .for_each(|value| self.pass_over_expr(module, value, table));
+
+                // Apply the substitutions to the parent type
+                if let Some(ty) = parent.as_mut() {
+                    ty.apply(&table.substitutions);
+                }
+            }
             Expr::CallOp(_, target, operands) => operands
                 .iter_mut()
                 .chain(std::iter::once(target.as_mut()))
@@ -391,10 +401,9 @@ impl<'a> TypeChecker<'a> {
 
                 let cond_ty = &cond.value().1;
                 if cond_ty != &BOOL {
-                    self.lower.err_nonfatal(Error::ConditionNotBool(Spanned(
-                        cond_ty.clone().into(),
-                        cond.span(),
-                    )));
+                    self.lower.err_nonfatal(
+                        Error::ConditionNotBool(Spanned(cond_ty.clone().into(), cond.span()))
+                    );
                 }
                 self.substitute_scope(module, *then, table);
                 if let Some(els) = els {

@@ -72,11 +72,18 @@ impl UnificationTable {
     }
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum BindingKind {
+    Var,
+    Func,
+}
+
 struct Binding {
     pub def_span: Span,
     pub ty: Ty,
     pub mutable: Option<Span>,
     pub initialized: bool,
+    pub kind: BindingKind,
 }
 
 #[derive(Clone, Debug)]
@@ -195,16 +202,17 @@ impl TypeLowerer {
         resolution: Option<ScopeResolution>,
     ) {
         let resolution = resolution.unwrap_or_else(|| (self.table.new_unknown(), None));
-        let scope = Scope {
-            id: scope_id,
-            module_id: module,
-            kind,
-            ty_params,
-            locals: HashMap::new(),
-            funcs: HashMap::new(),
-            label,
-            exited: None,
-        };
+        let scope =
+            Scope {
+                id: scope_id,
+                module_id: module,
+                kind,
+                ty_params,
+                locals: HashMap::new(),
+                funcs: HashMap::new(),
+                label,
+                exited: None,
+            };
         self.scopes.push(scope);
         self.resolution_lookup.insert(scope_id, resolution);
     }
@@ -221,13 +229,16 @@ impl TypeLowerer {
             local.ty.apply(&mut self.table.substitutions);
 
             if ident.to_string().chars().next() != Some('_') && !local.used {
-                self.warnings.push(Warning::UnusedVariable(Spanned(
-                    ident.to_string(),
-                    local.def_span,
-                )))
+                self.warnings
+                    .push(Warning::UnusedVariable(Spanned(ident.to_string(), local.def_span)))
             }
-            if !local.mutated && let Some(mutable) = local.mutable {
-                self.warnings.push(Warning::UnusedMut(Spanned(ident.to_string(), local.def_span), mutable))
+            if !local.mutated
+                && let Some(mutable) = local.mutable
+            {
+                self.warnings.push(Warning::UnusedMut(
+                    Spanned(ident.to_string(), local.def_span),
+                    mutable,
+                ))
             }
         }
         Some(scope)
@@ -250,7 +261,9 @@ impl TypeLowerer {
             .find_map(|(i, scope)| f(scope).then_some((i, scope.id, scope.kind)));
 
         let len = self.scopes.len();
-        if let Some(action) = action && let Some((i, ..)) = target_scope {
+        if let Some(action) = action
+            && let Some((i, ..)) = target_scope
+        {
             (1..=i + 1).for_each(|i| {
                 let _ = self.scopes[len - i].exited.insert(action.clone());
             });
@@ -322,6 +335,7 @@ impl TypeLowerer {
                 ty: local.ty.clone(),
                 mutable: local.mutable,
                 initialized: local.initialized,
+                kind: BindingKind::Var,
             });
         }
 
@@ -338,7 +352,28 @@ impl TypeLowerer {
                 ty: self.lower_hir_ty(cnst.ty.clone()),
                 mutable: None,
                 initialized: true,
+                kind: BindingKind::Var,
             });
+        }
+
+        // Does a function with this name exist?
+        for scope in self.scopes.iter().rev() {
+            if let Some(header) = scope.funcs.get(&item).cloned() {
+                return Ok(Binding {
+                    def_span: header.name.span(),
+                    ty: Ty::Func(
+                        header
+                            .params
+                            .into_iter()
+                            .map(|param| self.lower_hir_ty(param.ty.into()))
+                            .collect(),
+                        Box::new(self.lower_hir_ty(header.ret_ty.into())),
+                    ),
+                    mutable: None,
+                    initialized: true,
+                    kind: BindingKind::Func,
+                });
+            }
         }
 
         Err(Error::UnresolvedIdentifier(ident.map(|i| i.to_string())))
@@ -379,18 +414,19 @@ impl TypeLowerer {
                         Spanned(ident.0, binding.def_span),
                     ));
                 }
-                TypedExpr(
-                    typed::Expr::Local(
-                        ident,
-                        args.map(|args| {
-                            args.map(|args| {
-                                args.into_iter().map(|ty| self.lower_hir_ty(ty)).collect()
-                            })
-                        }),
-                        self.local_env,
+                let args = args.map(|args| {
+                    args.map(|args| args.into_iter().map(|ty| self.lower_hir_ty(ty)).collect())
+                });
+
+                match binding.kind {
+                    BindingKind::Var => {
+                        TypedExpr(typed::Expr::Local(ident, args, self.local_env), binding.ty)
+                    }
+                    BindingKind::Func => TypedExpr(
+                        typed::Expr::Func(ident, args, ItemId(self.scope().module_id, ident.0)),
+                        binding.ty,
                     ),
-                    binding.ty,
-                )
+                }
             }
             Expr::Tuple(exprs) => {
                 let exprs = exprs
@@ -431,27 +467,28 @@ impl TypeLowerer {
                 };
                 // "Evenness" check will be done at the typeck stage
                 let left_ty = self.lower_exit_in_context(left, false)?;
-                let ty = match right
-                    .map(|right| self.lower_exit_in_context(right, true))
-                    .transpose()?
-                {
-                    Some(right_ty) => {
-                        #[allow(unused_parens)]
-                        if !left_ty.known()
-                            || matches!(
-                                left_ty.relation_to(&right_ty),
-                                (Relation::Eq | Relation::Super)
-                            )
-                        {
-                            left_ty
-                        } else {
-                            // Again, if left_ty != right_ty, check at the typeck stage.
-                            // The types may still be incompatible, but we don't know that yet.
-                            right_ty
+                let ty =
+                    match right
+                        .map(|right| self.lower_exit_in_context(right, true))
+                        .transpose()?
+                    {
+                        Some(right_ty) => {
+                            #[allow(unused_parens)]
+                            if !left_ty.known()
+                                || matches!(
+                                    left_ty.relation_to(&right_ty),
+                                    (Relation::Eq | Relation::Super)
+                                )
+                            {
+                                left_ty
+                            } else {
+                                // Again, if left_ty != right_ty, check at the typeck stage.
+                                // The types may still be incompatible, but we don't know that yet.
+                                right_ty
+                            }
                         }
-                    }
-                    None => Ty::VOID,
-                };
+                        None => Ty::VOID,
+                    };
                 TypedExpr(typed::Expr::If(Box::new(cond), left, right), ty)
             }
             Expr::CallLogicalOp(op, lhs, rhs) => {
@@ -517,6 +554,7 @@ impl TypeLowerer {
                             ty: target.ty.clone(),
                             mutable: target.mutable,
                             initialized: std::mem::replace(&mut target.initialized, true),
+                            kind: BindingKind::Var,
                         }
                     };
                     if target.initialized && target.mutable.is_none() {
@@ -555,6 +593,79 @@ impl TypeLowerer {
                 ),
                 self.table.new_unknown(),
             ),
+            Expr::Call { callee, args, .. } => {
+                let callee = self.lower_expr(*callee)?;
+                let callee_ty = callee.value().1.clone();
+
+                let mut args = args
+                    .into_iter()
+                    .map(|expr| self.lower_expr(expr))
+                    .collect::<Result<Vec<_>>>()?;
+
+                let (arg_tys, return_ty) = match callee_ty {
+                    Ty::Func(args, ret_ty) => (Some(args), *ret_ty),
+                    Ty::Unknown(i) => {
+                        let arg_tys = args
+                            .iter()
+                            .map(|expr| expr.value().1.clone())
+                            .collect::<Vec<_>>();
+                        let return_ty = self.table.new_unknown();
+                        self.table
+                            .substitute(i, Ty::Func(arg_tys.clone(), Box::new(return_ty.clone())));
+                        (Some(arg_tys), return_ty)
+                    }
+                    _ => {
+                        self.err_nonfatal(Error::NotCallable(
+                            span,
+                            Spanned(callee_ty.into(), callee.span()),
+                        ));
+                        (None, self.table.new_unknown())
+                    }
+                };
+
+                // Unify arguments
+                if let Some(arg_tys) = arg_tys {
+                    if args.len() != arg_tys.len() {
+                        self.err_nonfatal(Error::IncorrectArgumentCount {
+                            span,
+                            expected: arg_tys.len(),
+                            actual: args.len(),
+                        });
+                    }
+
+                    for (arg, ty) in args.iter().zip(arg_tys) {
+                        self.table
+                            .constraints
+                            .push_back(Constraint(arg.value().1.clone(), ty.clone()));
+
+                        let conflict = self.table.unify_all();
+                        if let Some(conflict) = conflict {
+                            self.err_nonfatal(Error::TypeConflict {
+                                expected: (ty.into(), None),
+                                actual: arg.as_ref().map(|expr| expr.1.clone().into()),
+                                constraint: conflict,
+                            });
+                        }
+                    }
+
+                    for arg in &mut args {
+                        arg.value_mut().1.apply(&self.table.substitutions);
+                    }
+                }
+
+                // Deduce the type of call (is it an intrinsic, function/method call, or something else?)
+                let expr = match callee.value().0 {
+                    typed::Expr::Func(_, _, item) => typed::Expr::CallFunc {
+                        parent: None,
+                        func: item,
+                        args,
+                        kwargs: Vec::new(),
+                    },
+                    _ => unimplemented!(),
+                };
+
+                TypedExpr(expr, return_ty)
+            }
             _ => unimplemented!(),
         };
         Ok(Spanned(expr, span))
@@ -575,6 +686,7 @@ impl TypeLowerer {
                         ty,
                         mutable: mut_kw.clone(),
                         initialized: expr.is_some(),
+                        kind: BindingKind::Var,
                     },
                 ));
             }
@@ -717,7 +829,9 @@ impl TypeLowerer {
     /// Unifies the resolution type of a scope with a given type.
     #[inline]
     fn unify_scope(&mut self, scope_id: ScopeId, ty: Ty, span: Span) {
-        let Some((mut tgt, tgt_span)) = self.resolution_lookup.remove(&scope_id) else { return };
+        let Some((mut tgt, tgt_span)) = self.resolution_lookup.remove(&scope_id) else {
+            return;
+        };
 
         // unify the return type of the function with the type of the return expression
         self.table
@@ -875,6 +989,7 @@ impl TypeLowerer {
             self.scope_mut().funcs.insert(name, func.header.clone());
             funcs.insert(name, func);
         }
+
         let mut exit_action = None;
         let full_span = scope.children.span();
         let mut lowered = Vec::with_capacity(scope.children.value().len());
@@ -907,14 +1022,15 @@ impl TypeLowerer {
                 types: HashMap::new(),
             },
         );
-        let exit_action = exit_action.unwrap_or_else(|| {
-            self.unify_scope(scope_id, Ty::VOID, full_span);
-            self.exit_scope();
-            match kind {
-                ScopeKind::Loop => ExitAction::NeverReturn,
-                _ => ExitAction::FromBlock(None, Ty::VOID, full_span),
-            }
-        });
+        let exit_action =
+            exit_action.unwrap_or_else(|| {
+                self.unify_scope(scope_id, Ty::VOID, full_span);
+                self.exit_scope();
+                match kind {
+                    ScopeKind::Loop => ExitAction::NeverReturn,
+                    _ => ExitAction::FromBlock(None, Ty::VOID, full_span),
+                }
+            });
 
         let first_span = children.peek().map(|child| child.span());
         let mut last_span = first_span;

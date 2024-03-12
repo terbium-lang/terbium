@@ -300,8 +300,14 @@ impl DiagnosticWriter {
         for (line_num, line) in cached.lines {
             // If we're skipping lines, `:` could act as a "vertical ellipsis" to show that we are
             // in fact skipping lines.
-            if let Some(prev) = prev && line_num != prev + 1 {
-                writeln!(w, "{blanks}{}", self.color(DOTTED_VERTICAL).fg(MARGIN_COLOR))?;
+            if let Some(prev) = prev
+                && line_num != prev + 1
+            {
+                writeln!(
+                    w,
+                    "{blanks}{}",
+                    self.color(DOTTED_VERTICAL).fg(MARGIN_COLOR)
+                )?;
             }
             prev = Some(line_num);
 

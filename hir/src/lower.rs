@@ -127,13 +127,14 @@ impl AstLowerer {
         item: &ItemId,
         src: Spanned<String>,
     ) -> Result<()> {
-        let occupied = if let Some(occupied) = scope.structs.get(item) {
-            Some(occupied.name.span())
-        } else if let Some(occupied) = scope.consts.get(item) {
-            Some(occupied.name.span())
-        } else {
-            None
-        };
+        let occupied =
+            if let Some(occupied) = scope.structs.get(item) {
+                Some(occupied.name.span())
+            } else if let Some(occupied) = scope.consts.get(item) {
+                Some(occupied.name.span())
+            } else {
+                None
+            };
         if let Some(occupied) = occupied {
             return Err(Error::NameConflict(occupied, src));
         }
@@ -207,9 +208,10 @@ impl AstLowerer {
 
         // Do a pass over all structs to resolve parent fields
         while !sty_parents.is_empty() {
-            let mut seen = HashMap::<_, (Spanned<Ident>, Spanned<TypePath>, ItemId)>::with_capacity(
-                sty_parents.len(),
-            );
+            let mut seen =
+                HashMap::<_, (Spanned<Ident>, Spanned<TypePath>, ItemId)>::with_capacity(
+                    sty_parents.len(),
+                );
             // Grab the next struct item ID to resolve
             let mut key = unsafe {
                 // SAFETY: sty_parents is guaranteed to have elements
@@ -649,14 +651,16 @@ impl AstLowerer {
                 );
                 self.desugar_conditional_ctrl(ctx, cond, Spanned(base, span))?
             }
-            ast::Node::Continue { label, cond, .. } => self.desugar_conditional_ctrl(
-                ctx,
-                cond,
-                Spanned(
-                    Node::Continue(label.map(|label| label.map(get_ident))),
-                    span,
-                ),
-            )?,
+            ast::Node::Continue { label, cond, .. } => {
+                self.desugar_conditional_ctrl(
+                    ctx,
+                    cond,
+                    Spanned(
+                        Node::Continue(label.map(|label| label.map(get_ident))),
+                        span,
+                    ),
+                )?
+            }
             ast::Node::Return { value, cond, .. } => {
                 let base =
                     Node::Return(value.map(|value| self.lower_expr(ctx, value)).transpose()?);
@@ -675,17 +679,22 @@ impl AstLowerer {
 
     /// Lowers a decorator.
     pub fn lower_decorator(&mut self, decorator: ast::Decorator) -> Option<Decorator> {
-        let Spanned(Some((name, loc)), path_span) = decorator.path.as_ref().map(|dec| dec.split_last()) else { return None };
-
-        let mut assert_no_args = |out: Decorator| {
-            if let Some(Spanned(_, span)) = &decorator.args {
-                self.err_nonfatal(Error::BareDecoratorWithArguments(
-                    name.value().clone().spanned(path_span),
-                    *span,
-                ));
-            }
-            Some(out)
+        let Spanned(Some((name, loc)), path_span) =
+            decorator.path.as_ref().map(|dec| dec.split_last())
+        else {
+            return None;
         };
+
+        let mut assert_no_args =
+            |out: Decorator| {
+                if let Some(Spanned(_, span)) = &decorator.args {
+                    self.err_nonfatal(Error::BareDecoratorWithArguments(
+                        name.value().clone().spanned(path_span),
+                        *span,
+                    ));
+                }
+                Some(out)
+            };
 
         match (loc, name.value().as_str()) {
             // third-party decorators cannot be named any built-in decorators,
@@ -702,16 +711,17 @@ impl AstLowerer {
 
     /// Lowers a pattern into an HIR pattern.
     pub fn lower_pat(&mut self, Spanned(pat, span): Spanned<ast::Pattern>) -> Spanned<Pattern> {
-        let pat = match pat {
-            ast::Pattern::Ident { ident, mut_kw } => Pattern::Ident {
-                ident: ident.map(get_ident),
-                mut_kw,
-            },
-            ast::Pattern::Tuple(_variant, pats) => {
-                Pattern::Tuple(pats.into_iter().map(|pat| self.lower_pat(pat)).collect())
-            }
-            _ => todo!(),
-        };
+        let pat =
+            match pat {
+                ast::Pattern::Ident { ident, mut_kw } => Pattern::Ident {
+                    ident: ident.map(get_ident),
+                    mut_kw,
+                },
+                ast::Pattern::Tuple(_variant, pats) => {
+                    Pattern::Tuple(pats.into_iter().map(|pat| self.lower_pat(pat)).collect())
+                }
+                _ => todo!(),
+            };
         Spanned(pat, span)
     }
 
@@ -884,10 +894,12 @@ impl AstLowerer {
                     },
                 }
             }
-            E::Attr { subject, attr, .. } => Expr::GetAttr(
-                Box::new(self.lower_expr(ctx, *subject)?),
-                attr.map(get_ident),
-            ),
+            E::Attr { subject, attr, .. } => {
+                Expr::GetAttr(
+                    Box::new(self.lower_expr(ctx, *subject)?),
+                    attr.map(get_ident),
+                )
+            }
             E::Index { subject, index } => Expr::CallOp(
                 Op::Index.spanned(index.span()),
                 Box::new(self.lower_expr(ctx, *subject)?),
@@ -1060,17 +1072,18 @@ impl AstLowerer {
                 ))
             });
 
-        let scope_id = self.register_scope(Scope::new(
-            ctx.module(),
-            stmt.label
-                .as_ref()
-                .map(|l| l.as_ref().map(get_ident_from_ref)),
-            vec![
-                Node::Expr(Expr::If(Box::new(cond), then, Some(else_body)).spanned(body_span))
-                    .spanned(body_span),
-            ]
-            .spanned(body_span),
-        ));
+        let scope_id =
+            self.register_scope(Scope::new(
+                ctx.module(),
+                stmt.label
+                    .as_ref()
+                    .map(|l| l.as_ref().map(get_ident_from_ref)),
+                vec![Node::Expr(
+                    Expr::If(Box::new(cond), then, Some(else_body)).spanned(body_span),
+                )
+                .spanned(body_span)]
+                .spanned(body_span),
+            ));
         Ok(Expr::Loop(scope_id))
     }
 
@@ -1136,17 +1149,19 @@ impl AstLowerer {
         let (atom, span) = atom.into_inner();
         Ok(Spanned(
             match atom {
-                Atom::Int(int, IntLiteralInfo { unsigned, .. }) => Expr::Literal(if unsigned {
-                    Literal::UInt(
-                        int.parse()
-                            .map_err(|_| Error::IntegerLiteralOverflow(span, int))?,
-                    )
-                } else {
-                    Literal::Int(
-                        int.parse()
-                            .map_err(|_| Error::IntegerLiteralOverflow(span, int))?,
-                    )
-                }),
+                Atom::Int(int, IntLiteralInfo { unsigned, .. }) => {
+                    Expr::Literal(if unsigned {
+                        Literal::UInt(
+                            int.parse()
+                                .map_err(|_| Error::IntegerLiteralOverflow(span, int))?,
+                        )
+                    } else {
+                        Literal::Int(
+                            int.parse()
+                                .map_err(|_| Error::IntegerLiteralOverflow(span, int))?,
+                        )
+                    })
+                }
                 Atom::Float(f) => {
                     Expr::Literal(Literal::Float(f.parse::<f64>().unwrap().to_bits()))
                 }

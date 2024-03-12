@@ -75,6 +75,17 @@ pub enum Error {
         /// The constraint that caused the type conflict.
         constraint: Constraint,
     },
+    /// Attempted to call an uncallable object.
+    NotCallable(Span, Spanned<Ty>),
+    /// Provided incorrect number of arguments to a function call.
+    IncorrectArgumentCount {
+        /// The span of the function call.
+        span: Span,
+        /// The expected number of arguments.
+        expected: usize,
+        /// The actual number of arguments.
+        actual: usize,
+    },
     /// Explicit generic type arguments are not allowed in this context.
     ExplicitTypeArgumentsNotAllowed(Span),
     /// Unresolved identifier.
@@ -90,7 +101,7 @@ pub enum Error {
         /// The span of the value, if applicable.
         value_span: Option<Span>,
     },
-    /// Type of a condition is not `bool`.
+    /// The type of a condition is not `bool`.
     ConditionNotBool(Spanned<Ty>),
     /// Cannot reassign to an immutable variable. Represented as (reass_span, def)
     ReassignmentToImmutable(Span, Spanned<Ident>),
@@ -168,6 +179,17 @@ impl Display for Error {
             } => {
                 write!(f, "type mismatch, expected `{expected}`, found `{actual}`")
             }
+            Self::NotCallable(_, ty) => {
+                write!(f, "cannot call this object of type `{ty}`")
+            }
+            Self::IncorrectArgumentCount {
+                expected, actual, ..
+            } => {
+                write!(
+                    f,
+                    "incorrect number of arguments: expected {expected}, found {actual}"
+                )
+            }
             Self::ExplicitTypeArgumentsNotAllowed(_) => {
                 write!(
                     f,
@@ -226,6 +248,8 @@ impl Error {
             Self::InvalidAssignmentTarget(..) => "invalid assignment target",
             Self::CyclicTypeConstraint { .. } => "cannot solve cyclic type constraint",
             Self::TypeConflict { .. } => "type conflict",
+            Self::NotCallable(..) => "cannot call this object",
+            Self::IncorrectArgumentCount { .. } => "incorrect number of arguments",
             Self::ExplicitTypeArgumentsNotAllowed(..) => {
                 "explicit generic type arguments are not allowed in this context"
             }
@@ -259,6 +283,9 @@ impl Error {
             Self::InvalidAssignmentTarget(..) => 109,
             Self::CyclicTypeConstraint { .. } => 110,
             Self::TypeConflict { .. } => 111,
+            // NOTE: these were added after error code 122
+            Self::NotCallable(..) => 123,
+            Self::IncorrectArgumentCount { .. } => 124,
             Self::ExplicitTypeArgumentsNotAllowed(_) => 112,
             Self::UnresolvedIdentifier(..) => 113,
             Self::PatternMismatch { .. } => 114,
@@ -295,7 +322,7 @@ impl Error {
                             .with_message(format!("item with name `{src}` defined here"))
                         )
                         .with_label(Label::at(src.span())
-                            .with_message(format!("but it is also defined here"))
+                            .with_message("but it is also defined here".to_string())
                         )
                     )
                     .with_fix(
@@ -358,11 +385,9 @@ impl Error {
                             .with_message(format!("`{ty}` expects {expected} type {expected_args}, not {actual}"))
                         )
                     )
-                    .with_help(format!(
-                        "specify the required number of type arguments. \
+                    .with_help("specify the required number of type arguments. \
                         if you do not want to specify types in full, you can specify the \
-                        inference type `_` instead"
-                    ))
+                        inference type `_` instead".to_string())
             }
             Self::ScalarTypeWithArguments(ty, ty_span, app_span) => {
                 diagnostic
@@ -497,6 +522,25 @@ impl Error {
                         Ty::from(b),
                     ))
                     .with_help("try changing the value to match the expected type")
+            }
+            Self::NotCallable(span, ty) => {
+                diagnostic
+                    .with_section(Section::new()
+                        .with_label(Label::at(ty.span())
+                            .with_context_span(span)
+                            .with_message(format!("cannot call this object of type `{ty}`"))
+                        )
+                    )
+                    .with_note("only callable objects such as functions can be called")
+            }
+            Self::IncorrectArgumentCount { span, expected, actual } => {
+                let e_args = pluralize(expected, "argument", "arguments");
+                let a_args = pluralize(actual, "argument", "arguments");
+                diagnostic.with_section(Section::new()
+                    .with_label(Label::at(span)
+                        .with_message(format!("provided {actual} {a_args} here, but expected {expected} {e_args}"))
+                    )
+                )
             }
             Self::ExplicitTypeArgumentsNotAllowed(span) => {
                 diagnostic
