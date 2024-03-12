@@ -139,8 +139,8 @@ extend Shape for Rectangle {
 }
 
 func main() {
-    // Create a new rectangle using a struct-literal.
-    let rect = Rectangle { width: 10, height: 5 };
+    // Create a new rectangle using the generated constructor.
+    let rect = Rectangle(width: 10, height: 5);
     
     // Call the `area` method on the rectangle.
     println(rect.area()); // 50
