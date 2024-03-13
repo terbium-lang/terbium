@@ -6,6 +6,7 @@ use crate::{
 };
 use common::span::{Spanned, SpannedExt};
 use hir::{
+    pat_errors, typed,
     typed::{LocalEnv, Ty, TypedExpr},
     Ident, IntSign, ItemId, Literal, ModuleId, Pattern, PrimitiveTy, ScopeId,
 };
@@ -18,6 +19,8 @@ pub struct Lowerer {
     pub thir: TypedHir,
     /// The MIR being constructed.
     pub mir: Mir,
+    /// Non-fatal errors that occurred during lowering.
+    pub errors: Vec<hir::Error>,
 }
 
 pub struct Ctx<'a> {
@@ -70,6 +73,7 @@ impl Lowerer {
         Self {
             thir,
             mir: Mir::default(),
+            errors: Vec::new(),
         }
     }
 
@@ -284,6 +288,7 @@ impl Lowerer {
                 Expr::Local(result_local)
             }
             HirExpr::CallFunc { func, args, .. } => {
+                // TODO: flatten args
                 let args = args
                     .into_iter()
                     .map(|arg| self.lower_expr(ctx, arg))
@@ -429,9 +434,15 @@ impl Lowerer {
     }
 
     pub fn lower_func(&mut self, item_id: ItemId, HirFunc { header, body, .. }: HirFunc) -> Func {
+        let mut params = Vec::new();
+        for param in header.params {
+            if let Err(why) = flatten_param(&param.pat, header.ret_ty.clone(), &mut params) {
+                self.errors.push(why);
+            }
+        }
         Func {
             name: item_id,
-            params: Vec::new(),
+            params,
             ret_ty: header.ret_ty,
             blocks: self.lower_map(body, true),
         }
@@ -451,4 +462,80 @@ impl Lowerer {
             },
         );
     }
+}
+
+/// Flattens a pattern parameter into a list of bindings to prepare for MIR lowering.
+///
+/// # Example
+/// ```terbium
+/// func sum_tuple((a, b): (int, int)) = a + b;
+///
+/// // Lowered to:
+/// func sum_tuple(a: int, b: int) = a + b;
+/// ```
+pub fn flatten_param(
+    pat: &Spanned<Pattern>,
+    ty: Ty,
+    bindings: &mut Vec<(Ident, Ty)>,
+) -> hir::error::Result<()> {
+    match (pat.value(), ty) {
+        (Pattern::Ident { ident, .. }, ty) => bindings.push((ident.0, ty)),
+        (Pattern::Tuple(pats), Ty::Tuple(tys)) => {
+            if pats.len() != tys.len() {
+                return Err(
+                    pat_errors::tuple_len_mismatch(pats.len().spanned(pat.span()), tys.len(), None)
+                );
+            }
+            for (pat, ty) in pats.iter().zip(tys) {
+                flatten_param(pat, ty, bindings)?;
+            }
+        }
+        (Pattern::Tuple(_), ty) => {
+            return Err(pat_errors::tuple_mismatch(pat.span(), ty, None));
+        }
+    }
+    Ok(())
+}
+
+pub fn apply_arg(
+    pat: &Spanned<Pattern>,
+    arg: Spanned<TypedExpr>,
+    flattened: &mut Vec<Spanned<TypedExpr>>,
+) -> hir::error::Result<()> {
+    // NOTE: argument count and types have been checked at this point
+    match pat.value() {
+        Pattern::Ident { .. } => flattened.push(arg),
+        Pattern::Tuple(pats) => {
+            match arg.value().0 {
+                // if we can destruct the tuple, do so
+                typed::Expr::Tuple(ref exprs) => {
+                    debug_assert_eq!(pats.len(), exprs.len());
+                    for (pat, expr) in pats.iter().zip(exprs) {
+                        apply_arg(pat, expr.clone(), flattened)?;
+                    }
+                }
+                _ => {
+                    let Ty::Tuple(tys) = arg.value().1.clone() else {
+                        unreachable!();
+                    };
+                    for (i, (pat, ty)) in pats.iter().zip(tys).enumerate() {
+                        let Spanned(arg, span) = arg.clone();
+                        let expr = Spanned(
+                            TypedExpr(
+                                typed::Expr::GetField(
+                                    Box::new(arg.spanned(span)),
+                                    Ident::from(i.to_string()).spanned(span),
+                                ),
+                                ty,
+                            ),
+                            span,
+                        );
+                        apply_arg(pat, expr, flattened)?;
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
 }

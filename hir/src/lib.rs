@@ -23,8 +23,10 @@ pub mod typed;
 pub mod warning;
 
 use common::span::{Span, Spanned, Src};
+pub use error::Error;
 use grammar::ast::{self, Indent};
 pub use grammar::ast::{ItemVisibility, MemberVisibility};
+pub use infer::pat_errors;
 use internment::Intern;
 use std::{
     collections::HashMap,

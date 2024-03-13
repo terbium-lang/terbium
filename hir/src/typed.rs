@@ -143,8 +143,8 @@ pub enum Expr {
     CallOp(Spanned<Op>, Box<E>, Vec<E>),
     CallStaticOp(StaticOp, Ty, Vec<E>),
     Cast(Box<E>, Ty),
-    GetAttr(Box<E>, Spanned<Ident>),
-    SetAttr(Box<E>, Spanned<Ident>, Box<E>),
+    GetField(Box<E>, Spanned<Ident>),
+    SetField(Box<E>, Spanned<Ident>, Box<E>),
     Block(ScopeId),
     If(Box<E>, ScopeId, Option<ScopeId>),
     Loop(ScopeId),
@@ -237,10 +237,10 @@ impl Display for WithHir<'_, TypedExpr, InferMetadata> {
             Expr::Cast(expr, ty) => {
                 write!(f, "({} to {ty})", self.with(&**expr))
             }
-            Expr::GetAttr(expr, name) => {
+            Expr::GetField(expr, name) => {
                 write!(f, "({}.{name})", self.with(&**expr))
             }
-            Expr::SetAttr(expr, name, value) => {
+            Expr::SetField(expr, name, value) => {
                 write!(
                     f,
                     "({}.{name} = {})",

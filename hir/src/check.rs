@@ -388,10 +388,10 @@ impl<'a> TypeChecker<'a> {
                 self.pass_over_expr(module, value, table);
                 ty.apply(&table.substitutions);
             }
-            Expr::GetAttr(value, _) | Expr::Assign(_, value) => {
+            Expr::GetField(value, _) | Expr::Assign(_, value) => {
                 self.pass_over_expr(module, value, table);
             }
-            Expr::SetAttr(value, _, new_value) => {
+            Expr::SetField(value, _, new_value) => {
                 self.pass_over_expr(module, value, table);
                 self.pass_over_expr(module, new_value, table);
             }

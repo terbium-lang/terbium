@@ -75,6 +75,7 @@ impl UnificationTable {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum BindingKind {
     Var,
+    Param,
     Func,
 }
 
@@ -419,7 +420,7 @@ impl TypeLowerer {
                 });
 
                 match binding.kind {
-                    BindingKind::Var => {
+                    BindingKind::Var | BindingKind::Param => {
                         TypedExpr(typed::Expr::Local(ident, args, self.local_env), binding.ty)
                     }
                     BindingKind::Func => TypedExpr(
@@ -692,12 +693,11 @@ impl TypeLowerer {
             }
             (Pattern::Tuple(pats), Ty::Tuple(tys)) => {
                 if pats.len() != tys.len() {
-                    return Err(Error::PatternMismatch {
-                        pat: Cow::Owned(format!("{}-element tuple", pats.len())),
-                        pat_span: pat.span(),
-                        value: format!("{}-element tuple", tys.len()),
-                        value_span: expr.map(|expr| expr.span()),
-                    });
+                    return Err(pat_errors::tuple_len_mismatch(
+                        pats.len().spanned(pat.span()),
+                        tys.len(),
+                        expr.map(|expr| expr.span()),
+                    ));
                 }
                 // Can we destructure the tuple further?
                 if let Some(Spanned(TypedExpr(typed::Expr::Tuple(ref exprs), _), _)) = expr {
@@ -713,12 +713,9 @@ impl TypeLowerer {
             }
             // TODO: tuple structs/enum variants?
             (Pattern::Tuple(_), ty) => {
-                return Err(Error::PatternMismatch {
-                    pat: Cow::Borrowed("tuple"),
-                    pat_span: pat.span(),
-                    value: format!("value of type `{}`", crate::Ty::from(ty)),
-                    value_span: expr.map(|expr| expr.span()),
-                })
+                return Err(
+                    pat_errors::tuple_mismatch(pat.span(), ty, expr.map(|expr| expr.span()))
+                );
             }
         }
         Ok(())
@@ -1093,6 +1090,34 @@ impl ExitAction {
             | Self::ContinueLoop(_, span)
             | Self::FromNearestLoop(_, span) => Some(*span),
             Self::NeverReturn => None,
+        }
+    }
+}
+
+pub mod pat_errors {
+    use super::*;
+
+    #[inline]
+    pub fn tuple_len_mismatch(
+        pat_len: Spanned<usize>,
+        ty_len: usize,
+        ty_span: Option<Span>,
+    ) -> Error {
+        Error::PatternMismatch {
+            pat: Cow::Owned(format!("{}-element tuple", pat_len.value())),
+            pat_span: pat_len.span(),
+            value: format!("{}-element tuple", ty_len),
+            value_span: ty_span,
+        }
+    }
+
+    #[inline]
+    pub fn tuple_mismatch(pat_span: Span, ty: Ty, ty_span: Option<Span>) -> Error {
+        Error::PatternMismatch {
+            pat: Cow::Borrowed("tuple"),
+            pat_span,
+            value: format!("value of type `{}`", crate::Ty::from(ty)),
+            value_span: ty_span,
         }
     }
 }

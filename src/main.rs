@@ -107,6 +107,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     start.elapsed(),
                                     mir_lowerer.mir
                                 );
+                                for error in mir_lowerer.errors.drain(..) {
+                                    dwriter.write_diagnostic(
+                                        &mut std::io::stdout(),
+                                        error.into_diagnostic(),
+                                    )?;
+                                }
 
                                 let start = std::time::Instant::now();
 
