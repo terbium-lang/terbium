@@ -12,7 +12,7 @@ A semi-formal language specification can be found [here](https://jay3332.gitbook
 Terbium is still a work in progress. If you want to:
 
 * *contribute to Terbium*, you can clone this repository. See [CONTRIBUTING.md](https://github.com/terbium-lang/terbium/blob/main/CONTRIBUTING.md) for more information.
-* *use Terbium*, see [the quickstart guide](https://terbium-lilac.vercel.app/docs/quickstart) for more information.
+* *use Terbium*, see [the quickstart guide](https://terbium-lilac.vercel.app/guide/quickstart) for more information.
 
 ## Why Terbium?
 
