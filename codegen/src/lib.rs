@@ -11,14 +11,11 @@ pub use inkwell::{
 };
 
 use inkwell::passes::PassManager;
-use mir::{Mir, ModuleId};
+use mir::{Func, LookupId};
+use std::collections::HashMap;
 
-pub fn compile_llvm<'ctx>(
-    context: &'ctx Context,
-    mir: &Mir,
-    module_id: ModuleId, /*, options: CompileOptions*/
-) -> Module<'ctx> {
-    let module = context.create_module(&module_id.to_string());
+pub fn compile_llvm(context: &Context, functions: HashMap<LookupId, Func>) -> Module {
+    let module = context.create_module("root");
     let builder = context.create_builder();
 
     // Create FPM
@@ -33,12 +30,6 @@ pub fn compile_llvm<'ctx>(
     fpm.add_reassociate_pass();
     fpm.initialize();
 
-    for func in mir
-        .functions
-        .iter()
-        .filter_map(|(id, func)| id.0.eq(&module_id).then_some(func))
-    {
-        aot::Compiler::compile(&context, &builder, &fpm, &module, func);
-    }
+    aot::Compiler::compile(&context, &builder, &fpm, &module, functions);
     module
 }

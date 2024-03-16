@@ -1,2 +1,8 @@
-let x = 1;
-x = 2;
+func a(x: int32, y: int32) -> int32 {
+    x + y
+}
+
+func b() {
+    a(6, 5) + 10
+}
+

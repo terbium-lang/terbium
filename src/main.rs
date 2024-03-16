@@ -117,7 +117,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 let start = std::time::Instant::now();
 
                                 let ctx = codegen::Context::create();
-                                let module = compile_llvm(&ctx, &mir_lowerer.mir, ModuleId::root());
+                                let module = compile_llvm(&ctx, mir_lowerer.mir.functions);
 
                                 full += start.elapsed();
                                 println!("=== [ LLVM IR ({:?} to compile) ] ===", start.elapsed());

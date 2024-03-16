@@ -5,8 +5,9 @@ use crate::{
         UnificationTable,
     },
     warning::Warning,
-    Expr, FloatWidth, Func, FuncHeader, FuncParam, Hir, Ident, IntSign, IntWidth, ItemId, Literal,
-    LogicalOp, Metadata, ModuleId, Node, Pattern, PrimitiveTy, ScopeId, TyParam,
+    Expr, FloatWidth, Func, FuncHeader, FuncParam, Hir, Ident, IntSign, IntWidth, ItemId, ItemKind,
+    Literal, LogicalOp, Lookup, LookupId, Metadata, ModuleId, Node, Pattern, PrimitiveTy, ScopeId,
+    TyParam,
 };
 use common::span::{Span, Spanned, SpannedExt};
 use std::{borrow::Cow, collections::HashMap};
@@ -76,10 +77,10 @@ impl UnificationTable {
 pub enum BindingKind {
     Var,
     Param,
-    Func,
+    Func(LookupId),
 }
 
-struct Binding {
+pub struct Binding {
     pub def_span: Span,
     pub ty: Ty,
     pub mutable: Option<Span>,
@@ -131,7 +132,7 @@ pub struct Scope {
     kind: ScopeKind,
     ty_params: Vec<TyParam<Ty>>,
     locals: HashMap<(Ident, LocalEnv), Local>,
-    funcs: HashMap<ItemId, FuncHeader<InferMetadata>>,
+    funcs: HashMap<ItemId, (LookupId, FuncHeader<InferMetadata>)>,
     label: Option<Spanned<Ident>>,
     exited: Option<ExitAction>,
 }
@@ -198,6 +199,7 @@ impl TypeLowerer {
         scope_id: ScopeId,
         module: ModuleId,
         kind: ScopeKind,
+        bindings: Vec<(Ident, Binding)>,
         ty_params: Vec<TyParam<Ty>>,
         label: Option<Spanned<Ident>>,
         resolution: Option<ScopeResolution>,
@@ -209,7 +211,10 @@ impl TypeLowerer {
                 module_id: module,
                 kind,
                 ty_params,
-                locals: HashMap::new(),
+                locals: bindings
+                    .into_iter()
+                    .map(|(ident, binding)| ((ident, self.local_env), Local::from_binding(binding)))
+                    .collect(),
                 funcs: HashMap::new(),
                 label,
                 exited: None,
@@ -340,26 +345,25 @@ impl TypeLowerer {
             });
         }
 
-        // Does a constant with this name exist?
         let item = ItemId(self.scope().module_id, *ident.value());
-        if let Some(cnst) = self
-            .hir
-            .scopes
-            .get(&self.scope().id)
-            .and_then(|scope| scope.consts.get(&item))
-        {
-            return Ok(Binding {
-                def_span: cnst.name.span(),
-                ty: self.lower_hir_ty(cnst.ty.clone()),
-                mutable: None,
-                initialized: true,
-                kind: BindingKind::Var,
-            });
-        }
-
-        // Does a function with this name exist?
+        // Does an item with this name exist?
         for scope in self.scopes.iter().rev() {
-            if let Some(header) = scope.funcs.get(&item).cloned() {
+            if let Some(cnst) = self.hir.scopes.get(&scope.id).and_then(|scope| {
+                scope
+                    .items
+                    .get(&item)
+                    .and_then(|Lookup(_, id)| self.hir.consts.get(id))
+            }) {
+                return Ok(Binding {
+                    def_span: cnst.name.span(),
+                    ty: self.lower_hir_ty(cnst.ty.clone()),
+                    mutable: None,
+                    initialized: true,
+                    kind: BindingKind::Var,
+                });
+            }
+
+            if let Some((id, header)) = scope.funcs.get(&item).cloned() {
                 return Ok(Binding {
                     def_span: header.name.span(),
                     ty: Ty::Func(
@@ -372,7 +376,7 @@ impl TypeLowerer {
                     ),
                     mutable: None,
                     initialized: true,
-                    kind: BindingKind::Func,
+                    kind: BindingKind::Func(id),
                 });
             }
         }
@@ -384,7 +388,14 @@ impl TypeLowerer {
     fn lower_exit_in_context(&mut self, scope_id: ScopeId, divergent: bool) -> Result<Ty> {
         let label = self.hir.scopes.get(&scope_id).unwrap().label.clone();
         Ok(
-            match self.lower_scope(scope_id, ScopeKind::Block, Vec::new(), divergent, None)? {
+            match self.lower_scope(
+                scope_id,
+                ScopeKind::Block,
+                Vec::new(),
+                Vec::new(),
+                divergent,
+                None,
+            )? {
                 // Does it exit *just* itself? If so, return the type of the expression
                 ExitAction::FromBlock(None, ty, _) => ty,
                 ExitAction::FromBlock(Some(lbl), ty, _)
@@ -423,10 +434,9 @@ impl TypeLowerer {
                     BindingKind::Var | BindingKind::Param => {
                         TypedExpr(typed::Expr::Local(ident, args, self.local_env), binding.ty)
                     }
-                    BindingKind::Func => TypedExpr(
-                        typed::Expr::Func(ident, args, ItemId(self.scope().module_id, ident.0)),
-                        binding.ty,
-                    ),
+                    BindingKind::Func(id) => {
+                        TypedExpr(typed::Expr::Func(ident, args, id), binding.ty)
+                    }
                 }
             }
             Expr::Tuple(exprs) => {
@@ -570,18 +580,22 @@ impl TypeLowerer {
             }
             Expr::Loop(scope_id) => {
                 let label = self.hir.scopes.get(&scope_id).unwrap().label.clone();
-                let ty =
-                    match self.lower_scope(scope_id, ScopeKind::Loop, Vec::new(), true, None)? {
-                        // Are we exiting from just the loop?
-                        ExitAction::FromBlock(Some(lbl), ty, _)
-                            if label.is_some_and(|l| l == lbl) =>
-                        {
-                            ty
-                        }
-                        ExitAction::FromNearestLoop(ty, _) => ty,
-                        // Otherwise we are exiting further out from the loop.
-                        r => Ty::Exit(Box::new(r)),
-                    };
+                let ty = match self.lower_scope(
+                    scope_id,
+                    ScopeKind::Loop,
+                    Vec::new(),
+                    Vec::new(),
+                    true,
+                    None,
+                )? {
+                    // Are we exiting from just the loop?
+                    ExitAction::FromBlock(Some(lbl), ty, _) if label.is_some_and(|l| l == lbl) => {
+                        ty
+                    }
+                    ExitAction::FromNearestLoop(ty, _) => ty,
+                    // Otherwise we are exiting further out from the loop.
+                    r => Ty::Exit(Box::new(r)),
+                };
                 TypedExpr(typed::Expr::Loop(scope_id), ty)
             }
             Expr::CallOp(op, lhs, rhs) => TypedExpr(
@@ -603,7 +617,7 @@ impl TypeLowerer {
                     .map(|expr| self.lower_expr(expr))
                     .collect::<Result<Vec<_>>>()?;
 
-                let (arg_tys, return_ty) = match callee_ty {
+                let (arg_tys, mut return_ty) = match callee_ty {
                     Ty::Func(args, ret_ty) => (Some(args), *ret_ty),
                     Ty::Unknown(i) => {
                         let arg_tys = args
@@ -639,8 +653,7 @@ impl TypeLowerer {
                             .constraints
                             .push_back(Constraint(arg.value().1.clone(), ty.clone()));
 
-                        let conflict = self.table.unify_all();
-                        if let Some(conflict) = conflict {
+                        if let Some(conflict) = self.table.unify_all() {
                             self.err_nonfatal(Error::TypeConflict {
                                 expected: (ty.into(), None),
                                 actual: arg.as_ref().map(|expr| expr.1.clone().into()),
@@ -656,12 +669,27 @@ impl TypeLowerer {
 
                 // Deduce the type of call (is it an intrinsic, function/method call, or something else?)
                 let expr = match callee.value().0 {
-                    typed::Expr::Func(_, _, item) => typed::Expr::CallFunc {
-                        parent: None,
-                        func: item,
-                        args,
-                        kwargs: Vec::new(),
-                    },
+                    typed::Expr::Func(_, _, item) => {
+                        let header = &self.thir.funcs[&item].header;
+                        self.table
+                            .constraints
+                            .push_back(Constraint(header.ret_ty.clone(), return_ty.clone()));
+                        if let Some(conflict) = self.table.unify_all() {
+                            self.err_nonfatal(Error::TypeConflict {
+                                expected: (header.ret_ty.clone(), header.ret_ty_span),
+                                actual: Spanned(return_ty.clone().into(), span),
+                                constraint: conflict,
+                            });
+                        }
+                        return_ty.apply(&self.table.substitutions);
+
+                        typed::Expr::CallFunc {
+                            parent: None,
+                            func: item,
+                            args,
+                            kwargs: Vec::new(),
+                        }
+                    }
                     _ => unimplemented!(),
                 };
 
@@ -939,9 +967,16 @@ impl TypeLowerer {
             ret_ty_span: header.ret_ty_span,
         };
 
+        let mut bindings = Vec::new();
+        for param in &header.params {
+            if let Err(why) = flatten_param(&param.pat, param.ty.clone(), &mut bindings) {
+                self.err_nonfatal(why);
+            }
+        }
         self.lower_scope(
             func.body,
             ScopeKind::Func,
+            bindings,
             header.ty_params.clone(),
             true,
             Some((header.ret_ty.clone(), header.ret_ty_span)),
@@ -965,6 +1000,7 @@ impl TypeLowerer {
         &mut self,
         scope_id: ScopeId,
         kind: ScopeKind,
+        bindings: Vec<(Ident, Binding)>,
         ty_params: Vec<TyParam<Ty>>,
         divergent: bool,
         resolution: Option<ScopeResolution>,
@@ -975,16 +1011,22 @@ impl TypeLowerer {
             scope_id,
             scope.module_id,
             kind,
+            bindings,
             ty_params,
             label,
             resolution,
         );
 
-        let mut funcs = HashMap::new();
-        for (name, func) in scope.funcs.drain() {
+        let mut items = HashMap::new();
+        for (name, lookup @ Lookup(_, id)) in scope.items.extract_if(|_, l| l.0 == ItemKind::Func) {
+            let func = self.hir.funcs.remove(&id).expect("func not found");
             let func = self.lower_func(func)?;
-            self.scope_mut().funcs.insert(name, func.header.clone());
-            funcs.insert(name, func);
+            // register the function in the scope
+            self.scope_mut()
+                .funcs
+                .insert(name, (id, func.header.clone()));
+            self.thir.funcs.insert(id, func);
+            items.insert(name, lookup);
         }
 
         let mut exit_action = None;
@@ -1012,11 +1054,7 @@ impl TypeLowerer {
                 label,
                 decorators: scope.decorators,
                 children: lowered.spanned(full_span),
-                funcs,
-                aliases: HashMap::new(),
-                consts: HashMap::new(),
-                structs: HashMap::new(),
-                types: HashMap::new(),
+                items,
             },
         );
         let exit_action =
@@ -1051,7 +1089,14 @@ impl TypeLowerer {
         let scope_id = *self.hir.modules.get(&module_id).unwrap();
 
         // TODO: exit action can be non-standard in things like REPLs
-        match self.lower_scope(scope_id, ScopeKind::Block, Vec::new(), true, None)? {
+        match self.lower_scope(
+            scope_id,
+            ScopeKind::Block,
+            Vec::new(),
+            Vec::new(),
+            true,
+            None,
+        )? {
             _ => (), // TODO: For packaged code, check exit type is void
         }
         self.exit_scope_if_exists();
@@ -1092,6 +1137,48 @@ impl ExitAction {
             Self::NeverReturn => None,
         }
     }
+}
+
+/// Flattens a pattern parameter into a list of bindings to prepare for MIR lowering.
+///
+/// # Example
+/// ```terbium
+/// func sum_tuple((a, b): (int, int)) = a + b;
+///
+/// // Lowered to:
+/// func sum_tuple(a: int, b: int) = a + b;
+/// ```
+pub fn flatten_param(
+    pat: &Spanned<Pattern>,
+    ty: Ty,
+    bindings: &mut Vec<(Ident, Binding)>,
+) -> Result<()> {
+    match (pat.value(), ty) {
+        (Pattern::Ident { ident, mut_kw }, ty) => bindings.push((
+            ident.0,
+            Binding {
+                def_span: ident.1,
+                ty,
+                mutable: mut_kw.clone(),
+                initialized: true,
+                kind: BindingKind::Param,
+            },
+        )),
+        (Pattern::Tuple(pats), Ty::Tuple(tys)) => {
+            if pats.len() != tys.len() {
+                return Err(
+                    pat_errors::tuple_len_mismatch(pats.len().spanned(pat.span()), tys.len(), None)
+                );
+            }
+            for (pat, ty) in pats.iter().zip(tys) {
+                flatten_param(pat, ty, bindings)?;
+            }
+        }
+        (Pattern::Tuple(_), ty) => {
+            return Err(pat_errors::tuple_mismatch(pat.span(), ty, None));
+        }
+    }
+    Ok(())
 }
 
 pub mod pat_errors {

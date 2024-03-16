@@ -1,8 +1,8 @@
 use crate::{
     error::{Error, Result},
     Const, Decorator, Expr, FieldVisibility, FloatWidth, Func, FuncHeader, FuncParam, Hir, Ident,
-    IntSign, IntWidth, ItemId, Literal, LogicalOp, ModuleId, Node, Op, Pattern, PrimitiveTy, Scope,
-    ScopeId, StructField, StructTy, Ty, TyDef, TyParam,
+    IntSign, IntWidth, ItemId, ItemKind, Literal, LogicalOp, Lookup, LookupId, ModuleId, Node, Op,
+    Pattern, PrimitiveTy, Scope, ScopeId, StructField, StructTy, Ty, TyDef, TyParam,
 };
 use common::span::{Span, Spanned, SpannedExt};
 use grammar::{
@@ -27,6 +27,8 @@ pub struct AstLowerer {
     sty_needs_field_resolution: HashMap<ItemId, (Span, ItemId, Spanned<TypePath>, Vec<Ty>)>,
     /// Build up outer decorators to apply to the next item.
     outer_decorators: Vec<Spanned<Decorator>>,
+    /// Increment of global lookup ID.
+    lookup_id: usize,
     /// The HIR being constructed.
     pub hir: Hir,
     /// Non-fatal errors that occurred during lowering.
@@ -84,6 +86,14 @@ fn ty_params_into_unbounded_ty_param(ty_params: &[ast::TyParam]) -> Vec<TyParam>
         .collect()
 }
 
+macro_rules! insert_lookup {
+    ($self:ident, $target:ident, $kind:ident, $e:expr) => {{
+        let id = $self.next_lookup_id();
+        $self.hir.$target.insert(id, $e);
+        Lookup(ItemKind::$kind, id)
+    }};
+}
+
 impl AstLowerer {
     /// Creates a new AST lowerer.
     pub fn new(root: Vec<Spanned<ast::Node>>) -> Self {
@@ -91,6 +101,7 @@ impl AstLowerer {
             module_nodes: HashMap::from([(ModuleId::root(), root)]),
             sty_needs_field_resolution: HashMap::new(),
             outer_decorators: Vec::new(),
+            lookup_id: 0,
             hir: Hir::default(),
             errors: Vec::new(),
         }
@@ -119,6 +130,17 @@ impl AstLowerer {
         }
     }
 
+    #[inline]
+    fn get_item_name(&self, Lookup(kind, lookup): &Lookup) -> Option<Spanned<Ident>> {
+        match kind {
+            ItemKind::Func => self.hir.funcs.get(lookup).map(|func| func.header.name),
+            ItemKind::Alias => self.hir.aliases.get(lookup).map(|alias| alias.name),
+            ItemKind::Const => self.hir.consts.get(lookup).map(|cnst| cnst.name),
+            ItemKind::Struct => self.hir.structs.get(lookup).map(|sty| sty.name),
+            ItemKind::Type => self.hir.types.get(lookup).map(|ty| ty.name),
+        }
+    }
+
     /// Asserts the item ID is unique.
     #[inline]
     pub fn assert_item_unique(
@@ -127,16 +149,12 @@ impl AstLowerer {
         item: &ItemId,
         src: Spanned<String>,
     ) -> Result<()> {
-        let occupied =
-            if let Some(occupied) = scope.structs.get(item) {
-                Some(occupied.name.span())
-            } else if let Some(occupied) = scope.consts.get(item) {
-                Some(occupied.name.span())
-            } else {
-                None
-            };
-        if let Some(occupied) = occupied {
-            return Err(Error::NameConflict(occupied, src));
+        if let Some(occupied) = scope
+            .items
+            .get(item)
+            .and_then(|item| self.get_item_name(item))
+        {
+            return Err(Error::NameConflict(occupied.span(), src));
         }
         Ok(())
     }
@@ -152,6 +170,13 @@ impl AstLowerer {
     pub fn module_ctx(&self, module: ModuleId) -> Ctx {
         let scope_id = self.hir.modules.get(&module).unwrap();
         self.scope_ctx(*scope_id)
+    }
+
+    #[inline]
+    pub fn next_lookup_id(&mut self) -> LookupId {
+        let id = self.lookup_id;
+        self.lookup_id += 1;
+        LookupId(id)
     }
 
     /// Completely performs a lowering pass over a module.
@@ -174,17 +199,23 @@ impl AstLowerer {
 
     /// Perform a pass over the AST to simply resolve all top-level types.
     pub fn resolve_types(&mut self, module: ModuleId, scope: &mut Scope) -> Result<()> {
-        let nodes = self.module_nodes.get(&module).expect("module not found");
+        let nodes = self
+            .module_nodes
+            .get(&module)
+            .cloned()
+            .expect("module not found");
 
         // Do a pass over all types to identify them
-        for node in nodes {
+        for node in &nodes {
             if let Some((item_id, ty_def)) = self.pass_over_ty_def(module, node)? {
-                scope.types.insert(item_id, ty_def);
+                scope
+                    .items
+                    .insert(item_id, insert_lookup!(self, types, Type, ty_def));
             }
         }
 
         // Do a second pass to register and resolve types
-        for Spanned(node, _) in nodes.clone() {
+        for Spanned(node, _) in nodes {
             match node {
                 ast::Node::Struct(sct) => {
                     let sct_name = sct.name.clone();
@@ -193,11 +224,14 @@ impl AstLowerer {
                     let sty = self.lower_struct_def_into_ty(module, sct.clone(), scope)?;
 
                     // Update type parameters with their bounds
-                    if let Some(ty_def) = scope.types.get_mut(&item_id) {
+                    if let Some(ty_def) = self.hir.types.get_mut(&scope.lookup_id_or_panic(item_id))
+                    {
                         ty_def.ty_params = sty.ty_params.clone();
                     }
                     self.propagate_nonfatal(self.assert_item_unique(scope, &item_id, sct_name));
-                    scope.structs.insert(item_id, sty);
+                    scope
+                        .items
+                        .insert(item_id, insert_lookup!(self, structs, Struct, sty));
                 }
                 _ => (),
             }
@@ -236,9 +270,10 @@ impl AstLowerer {
                     return Err(Error::CircularTypeReference(cycle));
                 }
 
-                let fields = scope
+                let fields = self
+                    .hir
                     .structs
-                    .get(&pid)
+                    .get(&scope.lookup_id_or_panic(pid))
                     .cloned()
                     .expect("struct not found, this is a bug")
                     .into_adhoc_struct_ty_with_applied_ty_params(Some(dest.span()), args)?
@@ -246,9 +281,10 @@ impl AstLowerer {
                 removed.push(sid);
 
                 for child in &removed {
-                    let sty = scope
+                    let sty = self
+                        .hir
                         .structs
-                        .get_mut(&child)
+                        .get_mut(&scope.lookup_id_or_panic(*child))
                         .expect("struct not found, this is a bug");
 
                     let mut fields = fields.clone();
@@ -289,7 +325,9 @@ impl AstLowerer {
                 };
                 let item = ItemId(module, *ident.value());
                 self.propagate_nonfatal(self.assert_item_unique(scope, &item, name));
-                scope.consts.insert(item, cnst);
+                scope
+                    .items
+                    .insert(item, insert_lookup!(self, consts, Const, cnst));
             }
         }
         Ok(())
@@ -409,8 +447,12 @@ impl AstLowerer {
     /// struct A<__0> { a: __0 }
     /// ```
     fn desugar_inferred_types_in_structs(&mut self, scope: &mut Scope) {
-        for sty in scope.structs.values_mut() {
-            // Desugar inference type into generics that will be inferred anyways
+        for Lookup(kind, id) in scope.items.values() {
+            if *kind != ItemKind::Struct {
+                continue;
+            }
+            let sty = self.hir.structs.get_mut(id).unwrap();
+            // Desugar inference type into generics that will be inferred anyway
             for (i, ty) in sty
                 .fields
                 .iter_mut()
@@ -500,13 +542,17 @@ impl AstLowerer {
             ModuleId(Intern::from_ref(ty_module.as_slice()))
         };
 
-        let lookup = ItemId(mid, ident);
-        let ty_def = ctx
+        let err = Error::TypeNotFound(full_span, Spanned(tail, span), mid);
+        let Lookup(kind, id) = ctx
             .scope
-            .types
-            .get(&lookup)
-            .cloned()
-            .ok_or(Error::TypeNotFound(full_span, Spanned(tail, span), mid))?;
+            .items
+            .get(&ItemId(mid, ident))
+            .ok_or(err.clone())?;
+
+        if *kind != ItemKind::Type {
+            return Err(err.clone());
+        }
+        let ty_def = self.hir.types.get(id).ok_or(err)?;
 
         let ty_params = match application {
             Some(app) => app
@@ -595,7 +641,9 @@ impl AstLowerer {
                 };
                 let item = ItemId(module, *ident.value());
                 self.propagate_nonfatal(self.assert_item_unique(ctx.scope, &item, name));
-                scope.funcs.insert(item, func);
+                scope
+                    .items
+                    .insert(item, insert_lookup!(self, funcs, Func, func));
             }
         }
         Ok(())
@@ -1095,27 +1143,29 @@ impl AstLowerer {
         app: Option<GenericTyApp>,
     ) -> Result<Spanned<Expr>> {
         let item_id = ItemId(ctx.module(), *ident.value());
-        Ok(if let Some(cnst) = ctx.scope.consts.get(&item_id) {
-            // TODO: true const-eval instead of inline (this will be replaced by `alias`)
-            if let Some(app) = app {
-                return Err(Error::ExplicitTypeArgumentsNotAllowed(app.span()));
-            }
-            cnst.value.clone()
-        } else {
-            Expr::Ident(
-                ident,
-                app.map(|app| {
+        Ok(
+            if let Some(Lookup(ItemKind::Const, id)) = ctx.scope.items.get(&item_id) {
+                // TODO: true const-eval instead of inline (this will be replaced by `alias`)
+                if let Some(app) = app {
+                    return Err(Error::ExplicitTypeArgumentsNotAllowed(app.span()));
+                }
+                self.hir.consts[id].value.clone()
+            } else {
+                Expr::Ident(
+                    ident,
                     app.map(|app| {
-                        app.into_iter()
-                            .map(|ty| self.lower_ty(ctx, ty.into_value()))
-                            .collect::<Result<_>>()
+                        app.map(|app| {
+                            app.into_iter()
+                                .map(|ty| self.lower_ty(ctx, ty.into_value()))
+                                .collect::<Result<_>>()
+                        })
+                        .transpose()
                     })
-                    .transpose()
-                })
-                .transpose()?,
-            )
-            .spanned(ident.span())
-        })
+                    .transpose()?,
+                )
+                .spanned(ident.span())
+            },
+        )
     }
 
     #[inline]

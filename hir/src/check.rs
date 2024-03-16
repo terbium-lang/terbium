@@ -8,7 +8,7 @@ use crate::{
         BinaryIntIntrinsic, BoolIntrinsic, Constraint, Expr, IntIntrinsic, LocalEnv, Relation, Ty,
         TypedExpr, UnaryIntIntrinsic, UnificationTable,
     },
-    Hir, IntSign, ModuleId, Node, Op, Pattern, PrimitiveTy, Scope, ScopeId,
+    Hir, IntSign, Lookup, ModuleId, Node, Op, Pattern, PrimitiveTy, Scope, ScopeId,
 };
 use common::span::{Spanned, SpannedExt};
 
@@ -447,8 +447,11 @@ impl<'a> TypeChecker<'a> {
             .expect("scope not found");
 
         // Substitute over all functions in the scope
-        for (_, func) in &mut scope.funcs {
-            self.substitute_scope(module, func.body, table);
+        for (_, &Lookup(_, id)) in &scope.items {
+            let scope = self.thir_mut().funcs[&id].body;
+            self.substitute_scope(module, scope, table);
+
+            let func = self.thir_mut().funcs.get_mut(&id).unwrap();
             func.header.ret_ty.apply(&table.substitutions);
         }
 

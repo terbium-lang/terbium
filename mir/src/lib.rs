@@ -26,12 +26,12 @@ pub use hir::{
         BinaryIntIntrinsic, LocalEnv, Ty, /* TODO: monomorphize types */
         UnaryIntIntrinsic,
     },
-    IntSign, IntWidth, ModuleId, PrimitiveTy,
+    Ident, IntSign, IntWidth, LookupId, ModuleId, PrimitiveTy,
 };
 pub use lower::Lowerer;
 
 use common::span::Spanned;
-use hir::{FloatWidth, Ident, ItemId, ScopeId};
+use hir::{FloatWidth, ItemId, ScopeId};
 use indexmap::IndexMap;
 use std::{
     collections::HashMap,
@@ -95,14 +95,14 @@ impl LocalId {
 #[derive(Clone, Debug, Default)]
 pub struct Mir {
     /// All procedures, including the top-level and main procedures.
-    pub functions: HashMap<ItemId, Func>,
+    pub functions: HashMap<LookupId, Func>,
 }
 
 impl Display for Mir {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         self.functions
-            .values()
-            .map(|func| writeln!(f, "{func}"))
+            .iter()
+            .map(|(id, func)| writeln!(f, "[#{}] {func}", id.0))
             .collect()
     }
 }
@@ -216,7 +216,7 @@ pub enum Expr {
     Local(LocalId),
     IntIntrinsic(IntIntrinsic, IntSign, IntWidth),
     BoolIntrinsic(BoolIntrinsic),
-    Call(ItemId, Vec<Spanned<Self>>),
+    Call(LookupId, Vec<Spanned<Self>>),
 }
 
 impl Display for Expr {
@@ -229,7 +229,7 @@ impl Display for Expr {
             }
             Self::BoolIntrinsic(b) => write!(f, "{b}"),
             Self::Call(i, args) => {
-                write!(f, "{}(", i)?;
+                write!(f, "[#{}](", i.0)?;
                 write_comma_sep(f, args.iter())?;
                 write!(f, ")")
             }

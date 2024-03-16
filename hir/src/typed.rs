@@ -1,7 +1,7 @@
 use crate::{
     infer::{ExitAction, InferMetadata},
-    Ident, IntSign, IntWidth, Intrinsic, ItemId, Literal, Node, Op, Pattern, PrimitiveTy, ScopeId,
-    StaticOp, WithHir,
+    Ident, IntSign, IntWidth, Intrinsic, ItemId, Literal, LookupId, Node, Op, Pattern, PrimitiveTy,
+    ScopeId, StaticOp, WithHir,
 };
 use common::span::Spanned;
 use std::{
@@ -127,7 +127,7 @@ pub enum BoolIntrinsic {
 pub enum Expr {
     Literal(Literal),
     Local(Spanned<Ident>, Option<Spanned<Vec<Ty>>>, LocalEnv),
-    Func(Spanned<Ident>, Option<Spanned<Vec<Ty>>>, ItemId),
+    Func(Spanned<Ident>, Option<Spanned<Vec<Ty>>>, LookupId),
     Type(Spanned<Ty>),
     Tuple(Vec<E>),
     Array(Vec<E>),
@@ -135,7 +135,7 @@ pub enum Expr {
     BoolIntrinsic(BoolIntrinsic),
     Intrinsic(Intrinsic, Vec<E>),
     CallFunc {
-        func: ItemId,
+        func: LookupId,
         parent: Option<Ty>,
         args: Vec<E>,
         kwargs: Vec<(Ident, E)>,
@@ -222,10 +222,11 @@ impl Display for WithHir<'_, TypedExpr, InferMetadata> {
 
                 write!(
                     f,
-                    "{}{func}({args})",
+                    "{}{}({args})",
                     parent
                         .as_ref()
-                        .map_or_else(String::new, |ty| format!("{ty}."))
+                        .map_or_else(String::new, |ty| format!("{ty}.")),
+                    self.1.funcs[&func].header.name,
                 )
             }
             Expr::CallOp(op, slf, args) => {

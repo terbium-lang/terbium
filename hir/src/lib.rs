@@ -12,6 +12,7 @@
 //!   type checking and desugaring with the knowledge of the types of all expressions. This lowering
 //!   is performed by [`TypeChecker`].
 
+#![feature(hash_extract_if)]
 #![feature(let_chains)]
 #![feature(more_qualified_paths)]
 
@@ -92,7 +93,11 @@ impl From<Src> for ModuleId {
     }
 }
 
-/// The ID of a top-level item.
+/// Global item lookup ID.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct LookupId(pub usize);
+
+/// The ID of a top-level or order-agnostic item.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ItemId(
     /// The module in which the item is defined.
@@ -147,6 +152,16 @@ pub struct Hir<M: Metadata = LowerMetadata> {
     pub modules: HashMap<ModuleId, ScopeId>,
     /// A mapping of all lexical scopes within the program.
     pub scopes: HashMap<ScopeId, Scope<M>>,
+    /// A mapping of all functions in the program.
+    pub funcs: HashMap<LookupId, Func<M>>,
+    /// A mapping of all aliases in the program.
+    pub aliases: HashMap<LookupId, Alias<M::Expr>>,
+    /// A mapping of all constants in the program.
+    pub consts: HashMap<LookupId, Const<M>>,
+    /// A mapping of all raw structs within the program.
+    pub structs: HashMap<LookupId, StructTy<M>>,
+    /// A mapping of all types within the program.
+    pub types: HashMap<LookupId, TyDef<M::Ty>>,
 }
 
 impl<M: Metadata> Default for Hir<M> {
@@ -154,6 +169,11 @@ impl<M: Metadata> Default for Hir<M> {
         Self {
             modules: HashMap::new(),
             scopes: HashMap::new(),
+            funcs: HashMap::new(),
+            aliases: HashMap::new(),
+            consts: HashMap::new(),
+            structs: HashMap::new(),
+            types: HashMap::new(),
         }
     }
 }
@@ -239,6 +259,18 @@ pub enum Node<M: Metadata = LowerMetadata> {
     ImplicitReturn(Spanned<M::Expr>),
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum ItemKind {
+    Func,
+    Alias,
+    Const,
+    Struct,
+    Type,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct Lookup(pub ItemKind, pub LookupId);
+
 #[derive(Clone, Debug)]
 pub struct Scope<M: Metadata = LowerMetadata> {
     /// The module in which this scope is defined.
@@ -249,16 +281,8 @@ pub struct Scope<M: Metadata = LowerMetadata> {
     pub label: Option<Spanned<Ident>>,
     /// The children of this scope.
     pub children: Spanned<Vec<Spanned<Node<M>>>>,
-    /// A mapping of all top-level functions in the scope.
-    pub funcs: HashMap<ItemId, Func<M>>,
-    /// A mapping of all aliases in the scope.
-    pub aliases: HashMap<ItemId, Alias<M::Expr>>,
-    /// A mapping of all constants in the scope.
-    pub consts: HashMap<ItemId, Const<M>>,
-    /// A mapping of all raw structs within the scope.
-    pub structs: HashMap<ItemId, StructTy<M>>,
-    /// A mapping of all types within the scope.
-    pub types: HashMap<ItemId, TyDef<M::Ty>>,
+    /// A lookup of all items in the scope.
+    pub items: HashMap<ItemId, Lookup>,
 }
 
 impl<M: Metadata> Scope<M> {
@@ -277,12 +301,20 @@ impl<M: Metadata> Scope<M> {
             decorators: Vec::new(),
             label,
             children,
-            funcs: HashMap::new(),
-            aliases: HashMap::new(),
-            consts: HashMap::new(),
-            structs: HashMap::new(),
-            types: HashMap::new(),
+            items: HashMap::new(),
         }
+    }
+
+    #[inline]
+    #[must_use]
+    pub fn lookup_id(&self, id: ItemId) -> Option<LookupId> {
+        self.items.get(&id).map(|lookup| lookup.1)
+    }
+
+    #[inline]
+    #[must_use]
+    pub(crate) fn lookup_id_or_panic(&self, id: ItemId) -> LookupId {
+        self.items[&id].1
     }
 }
 
@@ -312,9 +344,9 @@ fn assert_equal_params_length(
     ty_name: Spanned<Ident>,
     ty_params_len: usize,
     ty_args_len: usize,
-) -> Result<(), error::Error> {
+) -> Result<(), Error> {
     if ty_args_len != ty_params_len {
-        return Err(error::Error::IncorrectTypeArgumentCount {
+        return Err(Error::IncorrectTypeArgumentCount {
             span,
             ty: ty_name.as_ref().map(ToString::to_string),
             expected: ty_params_len,
@@ -332,7 +364,7 @@ pub struct TyDef<T = Ty> {
 }
 
 impl<Ty: Clone + SubstituteTyParams<Ty>> TyDef<Ty> {
-    pub fn apply_params(&self, span: Span, params: Vec<Ty>) -> Result<Ty, error::Error> {
+    pub fn apply_params(&self, span: Span, params: Vec<Ty>) -> Result<Ty, Error> {
         assert_equal_params_length(
             span,
             self.name,
@@ -396,7 +428,7 @@ impl Display for FieldVisibility {
 impl FieldVisibility {
     pub fn from_ast(v: Spanned<ast::FieldVisibility>) -> error::Result<Self> {
         if v.0.get.0 < v.0.set.0 {
-            Err(error::Error::GetterLessVisibleThanSetter(v))
+            Err(Error::GetterLessVisibleThanSetter(v))
         } else {
             Ok(Self {
                 get: v.0.get.0,
@@ -700,7 +732,7 @@ impl StructTy {
         self,
         span: Option<Span>,
         params: Vec<Ty>,
-    ) -> Result<Self, error::Error> {
+    ) -> Result<Self, Error> {
         assert_equal_params_length(
             span.unwrap_or(self.name.span()),
             self.name,
@@ -947,22 +979,18 @@ where
         for decorator in &scope.decorators {
             format!("@!{decorator}").write_indent(f)?;
         }
-        for (item, func) in &scope.funcs {
-            writeln!(f, "{item}:")?;
-            WithHir(func, self).write_indent(f)?;
+
+        for (item_id, Lookup(kind, lookup)) in &scope.items {
+            writeln!(f, "{item_id}:")?;
+            match kind {
+                ItemKind::Func => WithHir(&self.funcs[&lookup], self).write_indent(f)?,
+                ItemKind::Alias => WithHir(&self.aliases[&lookup], self).write_indent(f)?,
+                ItemKind::Const => WithHir(&self.consts[&lookup], self).write_indent(f)?,
+                ItemKind::Struct => WithHir(&self.structs[&lookup], self).write_indent(f)?,
+                ItemKind::Type => continue,
+            }
         }
-        for (item, alias) in &scope.aliases {
-            writeln!(f, "{item}:")?;
-            WithHir(alias, self).write_indent(f)?;
-        }
-        for (item, cnst) in &scope.consts {
-            writeln!(f, "{item}:")?;
-            WithHir(cnst, self).write_indent(f)?;
-        }
-        for (item, strct) in &scope.structs {
-            writeln!(f, "{item}:")?;
-            WithHir(strct, self).write_indent(f)?;
-        }
+
         for line in scope.children.value() {
             WithHir(line, self).write_indent(f)?;
         }

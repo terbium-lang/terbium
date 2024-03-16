@@ -5,10 +5,11 @@ use crate::{
     Node, TypedHir,
 };
 use common::span::{Spanned, SpannedExt};
+use hir::infer::flatten_param;
 use hir::{
-    pat_errors, typed,
-    typed::{LocalEnv, Ty, TypedExpr},
-    Ident, IntSign, ItemId, Literal, ModuleId, Pattern, PrimitiveTy, ScopeId,
+    typed::{self, LocalEnv, Ty, TypedExpr},
+    Ident, IntSign, ItemId, ItemKind, Literal, Lookup, LookupId, ModuleId, Pattern, PrimitiveTy,
+    ScopeId,
 };
 use std::collections::HashMap;
 
@@ -21,6 +22,8 @@ pub struct Lowerer {
     pub mir: Mir,
     /// Non-fatal errors that occurred during lowering.
     pub errors: Vec<hir::Error>,
+    /// Cache of how to flatten calls to functions.
+    func_pats: HashMap<LookupId, Vec<Spanned<Pattern>>>,
 }
 
 pub struct Ctx<'a> {
@@ -74,6 +77,7 @@ impl Lowerer {
             thir,
             mir: Mir::default(),
             errors: Vec::new(),
+            func_pats: HashMap::new(),
         }
     }
 
@@ -102,7 +106,7 @@ impl Lowerer {
         ctx: &mut Ctx,
         Spanned(TypedExpr(expr, ty), span): Spanned<TypedExpr>,
     ) -> Spanned<Expr> {
-        type HirExpr = hir::typed::Expr;
+        type HirExpr = typed::Expr;
 
         // SAFETY: the context is valid for the duration of the function
         let bctx = unsafe { &mut *ctx.bctx };
@@ -288,8 +292,13 @@ impl Lowerer {
                 Expr::Local(result_local)
             }
             HirExpr::CallFunc { func, args, .. } => {
-                // TODO: flatten args
-                let args = args
+                let params = &self.func_pats[&func];
+                let mut flattened = Vec::new();
+                for (pat, arg) in params.iter().zip(args) {
+                    apply_arg(pat, arg, &mut flattened).unwrap();
+                }
+
+                let args = flattened
                     .into_iter()
                     .map(|arg| self.lower_expr(ctx, arg))
                     .collect();
@@ -316,8 +325,22 @@ impl Lowerer {
         let scope = self.thir.scopes.remove(&scope).expect("no such scope");
 
         // First, lower all static items in the scope
-        for (id, func) in scope.funcs {
-            let func = self.lower_func(id, func);
+        let mut funcs = Vec::new();
+        for (item, Lookup(kind, id)) in scope.items {
+            match kind {
+                ItemKind::Func => {
+                    let func = self.thir.funcs.remove(&id).expect("no such func");
+                    self.func_pats.insert(
+                        id,
+                        func.header.params.iter().map(|p| &p.pat).cloned().collect(),
+                    );
+                    funcs.push((id, item, func));
+                }
+                _ => continue, // TODO
+            }
+        }
+        for (id, item, func) in funcs {
+            let func = self.lower_func(item, func);
             self.mir.functions.insert(id, func);
         }
 
@@ -442,7 +465,7 @@ impl Lowerer {
         }
         Func {
             name: item_id,
-            params,
+            params: params.into_iter().map(|(i, b)| (i, b.ty)).collect(),
             ret_ty: header.ret_ty,
             blocks: self.lower_map(body, true),
         }
@@ -451,50 +474,17 @@ impl Lowerer {
     pub fn lower_module(&mut self, module: ModuleId) {
         let scope_id = self.thir.modules.get(&module).expect("no such module");
         let blocks = self.lower_map(*scope_id, true);
-        let name = ItemId(module, "__root".into());
+
         self.mir.functions.insert(
-            name,
+            LookupId(usize::MAX),
             Func {
-                name,
+                name: ItemId(module, "__root".into()),
                 params: Vec::new(),
                 ret_ty: Ty::VOID,
                 blocks,
             },
         );
     }
-}
-
-/// Flattens a pattern parameter into a list of bindings to prepare for MIR lowering.
-///
-/// # Example
-/// ```terbium
-/// func sum_tuple((a, b): (int, int)) = a + b;
-///
-/// // Lowered to:
-/// func sum_tuple(a: int, b: int) = a + b;
-/// ```
-pub fn flatten_param(
-    pat: &Spanned<Pattern>,
-    ty: Ty,
-    bindings: &mut Vec<(Ident, Ty)>,
-) -> hir::error::Result<()> {
-    match (pat.value(), ty) {
-        (Pattern::Ident { ident, .. }, ty) => bindings.push((ident.0, ty)),
-        (Pattern::Tuple(pats), Ty::Tuple(tys)) => {
-            if pats.len() != tys.len() {
-                return Err(
-                    pat_errors::tuple_len_mismatch(pats.len().spanned(pat.span()), tys.len(), None)
-                );
-            }
-            for (pat, ty) in pats.iter().zip(tys) {
-                flatten_param(pat, ty, bindings)?;
-            }
-        }
-        (Pattern::Tuple(_), ty) => {
-            return Err(pat_errors::tuple_mismatch(pat.span(), ty, None));
-        }
-    }
-    Ok(())
 }
 
 pub fn apply_arg(
