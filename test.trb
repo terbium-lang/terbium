@@ -1,8 +1,5 @@
-func a(x: int32, y: int32) -> int32 {
-    x + y
-}
+func double(x: int32) = 2 * x;
+func triple(x: int32) = 3 * x;
+func sum(a: int32, b: int32) = a + b;
 
-func b() {
-    a(6, 5) + 10
-}
-
+func test() = double(2) + triple(3) + sum(2, 3) + 1;

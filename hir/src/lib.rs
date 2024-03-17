@@ -260,7 +260,7 @@ pub enum Node<M: Metadata = LowerMetadata> {
     ImplicitReturn(Spanned<M::Expr>),
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ItemKind {
     Func,
     Alias,
@@ -268,9 +268,6 @@ pub enum ItemKind {
     Struct,
     Type,
 }
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct Lookup(pub ItemKind, pub LookupId);
 
 #[derive(Clone, Debug)]
 pub struct Scope<M: Metadata = LowerMetadata> {
@@ -283,7 +280,7 @@ pub struct Scope<M: Metadata = LowerMetadata> {
     /// The children of this scope.
     pub children: Spanned<Vec<Spanned<Node<M>>>>,
     /// A lookup of all items in the scope.
-    pub items: HashMap<ItemId, Lookup>,
+    pub items: HashMap<(ItemKind, ItemId), LookupId>,
 }
 
 impl<M: Metadata> Scope<M> {
@@ -306,16 +303,13 @@ impl<M: Metadata> Scope<M> {
         }
     }
 
-    #[inline]
-    #[must_use]
-    pub fn lookup_id(&self, id: ItemId) -> Option<LookupId> {
-        self.items.get(&id).map(|lookup| lookup.1)
+    pub(crate) fn get_lookup(&self, kind: ItemKind, id: ItemId) -> Option<LookupId> {
+        self.items.get(&(kind, id)).copied()
     }
 
-    #[inline]
-    #[must_use]
-    pub(crate) fn lookup_id_or_panic(&self, id: ItemId) -> LookupId {
-        self.items[&id].1
+    pub(crate) fn get_lookup_or_panic(&self, kind: ItemKind, id: ItemId) -> LookupId {
+        self.get_lookup(kind, id)
+            .expect(&format!("item {id} not found in scope"))
     }
 }
 
@@ -981,7 +975,7 @@ where
             format!("@!{decorator}").write_indent(f)?;
         }
 
-        for (item_id, Lookup(kind, lookup)) in &scope.items {
+        for ((kind, item_id), lookup) in &scope.items {
             writeln!(f, "{item_id}:")?;
             match kind {
                 ItemKind::Func => WithHir(&self.funcs[&lookup], self).write_indent(f)?,

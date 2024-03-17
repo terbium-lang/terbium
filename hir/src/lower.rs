@@ -1,8 +1,8 @@
 use crate::{
     error::{Error, Result},
     Const, Decorator, Expr, FieldVisibility, FloatWidth, Func, FuncHeader, FuncParam, Hir, Ident,
-    IntSign, IntWidth, ItemId, ItemKind, Literal, LogicalOp, Lookup, LookupId, ModuleId, Node, Op,
-    Pattern, PrimitiveTy, Scope, ScopeId, StructField, StructTy, Ty, TyDef, TyParam,
+    IntSign, IntWidth, ItemId, ItemKind, Literal, LogicalOp, LookupId, ModuleId, Node, Op, Pattern,
+    PrimitiveTy, Scope, ScopeId, StructField, StructTy, Ty, TyDef, TyParam,
 };
 use common::span::{Span, Spanned, SpannedExt};
 use grammar::{
@@ -87,10 +87,10 @@ fn ty_params_into_unbounded_ty_param(ty_params: &[ast::TyParam]) -> Vec<TyParam>
 }
 
 macro_rules! insert_lookup {
-    ($self:ident, $target:ident, $kind:ident, $e:expr) => {{
+    ($self:ident, $target:ident, $e:expr) => {{
         let id = $self.next_lookup_id();
         $self.hir.$target.insert(id, $e);
-        Lookup(ItemKind::$kind, id)
+        id
     }};
 }
 
@@ -131,13 +131,13 @@ impl AstLowerer {
     }
 
     #[inline]
-    fn get_item_name(&self, Lookup(kind, lookup): &Lookup) -> Option<Spanned<Ident>> {
+    fn get_item_name(&self, kind: ItemKind, id: LookupId) -> Option<Spanned<Ident>> {
         match kind {
-            ItemKind::Func => self.hir.funcs.get(lookup).map(|func| func.header.name),
-            ItemKind::Alias => self.hir.aliases.get(lookup).map(|alias| alias.name),
-            ItemKind::Const => self.hir.consts.get(lookup).map(|cnst| cnst.name),
-            ItemKind::Struct => self.hir.structs.get(lookup).map(|sty| sty.name),
-            ItemKind::Type => self.hir.types.get(lookup).map(|ty| ty.name),
+            ItemKind::Func => self.hir.funcs.get(&id).map(|func| func.header.name),
+            ItemKind::Alias => self.hir.aliases.get(&id).map(|alias| alias.name),
+            ItemKind::Const => self.hir.consts.get(&id).map(|cnst| cnst.name),
+            ItemKind::Struct => self.hir.structs.get(&id).map(|sty| sty.name),
+            ItemKind::Type => self.hir.types.get(&id).map(|ty| ty.name),
         }
     }
 
@@ -151,8 +151,9 @@ impl AstLowerer {
     ) -> Result<()> {
         if let Some(occupied) = scope
             .items
-            .get(item)
-            .and_then(|item| self.get_item_name(item))
+            .iter()
+            .find_map(|((kind, name), id)| (item == name).then_some((kind, id)))
+            .and_then(|(kind, id)| self.get_item_name(*kind, *id))
         {
             return Err(Error::NameConflict(occupied.span(), src));
         }
@@ -208,9 +209,10 @@ impl AstLowerer {
         // Do a pass over all types to identify them
         for node in &nodes {
             if let Some((item_id, ty_def)) = self.pass_over_ty_def(module, node)? {
-                scope
-                    .items
-                    .insert(item_id, insert_lookup!(self, types, Type, ty_def));
+                scope.items.insert(
+                    (ItemKind::Type, item_id),
+                    insert_lookup!(self, types, ty_def),
+                );
             }
         }
 
@@ -224,14 +226,18 @@ impl AstLowerer {
                     let sty = self.lower_struct_def_into_ty(module, sct.clone(), scope)?;
 
                     // Update type parameters with their bounds
-                    let ty_def = self.hir.types.get_mut(&scope.lookup_id_or_panic(item_id));
+                    let ty_def = self
+                        .hir
+                        .types
+                        .get_mut(&scope.get_lookup_or_panic(ItemKind::Type, item_id));
                     if let Some(ty_def) = ty_def {
                         ty_def.ty_params = sty.ty_params.clone();
                     }
                     self.propagate_nonfatal(self.assert_item_unique(scope, &item_id, sct_name));
-                    scope
-                        .items
-                        .insert(item_id, insert_lookup!(self, structs, Struct, sty));
+                    scope.items.insert(
+                        (ItemKind::Struct, item_id),
+                        insert_lookup!(self, structs, sty),
+                    );
                 }
                 _ => (),
             }
@@ -273,7 +279,7 @@ impl AstLowerer {
                 let fields = self
                     .hir
                     .structs
-                    .get(&scope.lookup_id_or_panic(pid))
+                    .get(&scope.get_lookup_or_panic(ItemKind::Struct, pid))
                     .cloned()
                     .expect("struct not found, this is a bug")
                     .into_adhoc_struct_ty_with_applied_ty_params(Some(dest.span()), args)?
@@ -284,7 +290,7 @@ impl AstLowerer {
                     let sty = self
                         .hir
                         .structs
-                        .get_mut(&scope.lookup_id_or_panic(*child))
+                        .get_mut(&scope.get_lookup_or_panic(ItemKind::Struct, *child))
                         .expect("struct not found, this is a bug");
 
                     let mut fields = fields.clone();
@@ -327,7 +333,7 @@ impl AstLowerer {
                 self.propagate_nonfatal(self.assert_item_unique(scope, &item, name));
                 scope
                     .items
-                    .insert(item, insert_lookup!(self, consts, Const, cnst));
+                    .insert((ItemKind::Const, item), insert_lookup!(self, consts, cnst));
             }
         }
         Ok(())
@@ -447,7 +453,7 @@ impl AstLowerer {
     /// struct A<__0> { a: __0 }
     /// ```
     fn desugar_inferred_types_in_structs(&mut self, scope: &mut Scope) {
-        for Lookup(kind, id) in scope.items.values() {
+        for ((kind, _), id) in &scope.items {
             if *kind != ItemKind::Struct {
                 continue;
             }
@@ -543,15 +549,12 @@ impl AstLowerer {
         };
 
         let err = Error::TypeNotFound(full_span, Spanned(tail, span), mid);
-        let Lookup(kind, id) = ctx
+        let id = ctx
             .scope
             .items
-            .get(&ItemId(mid, ident))
+            .get(&(ItemKind::Type, ItemId(mid, ident)))
             .ok_or(err.clone())?;
 
-        if *kind != ItemKind::Type {
-            return Err(err.clone());
-        }
         let ty_def = self.hir.types.get(id).ok_or(err)?;
 
         let ty_params = match application {
@@ -643,7 +646,7 @@ impl AstLowerer {
                 self.propagate_nonfatal(self.assert_item_unique(ctx.scope, &item, name));
                 scope
                     .items
-                    .insert(item, insert_lookup!(self, funcs, Func, func));
+                    .insert((ItemKind::Func, item), insert_lookup!(self, funcs, func));
             }
         }
         Ok(())
@@ -1144,7 +1147,7 @@ impl AstLowerer {
     ) -> Result<Spanned<Expr>> {
         let item_id = ItemId(ctx.module(), *ident.value());
         Ok(
-            if let Some(Lookup(ItemKind::Const, id)) = ctx.scope.items.get(&item_id) {
+            if let Some(id) = ctx.scope.items.get(&(ItemKind::Const, item_id)) {
                 // TODO: true const-eval instead of inline (this will be replaced by `alias`)
                 if let Some(app) = app {
                     return Err(Error::ExplicitTypeArgumentsNotAllowed(app.span()));

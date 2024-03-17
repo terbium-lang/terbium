@@ -86,11 +86,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 typeck.check_module(ModuleId::from(Src::None), &mut table);
 
                                 full += start.elapsed();
-                                // println!(
-                                //     "=== [ THIR ({:?} to check) ] ===\n\n{}",
-                                //     start.elapsed(),
-                                //     typeck.lower.thir
-                                // );
+                                println!(
+                                    "=== [ THIR ({:?} to check) ] ===\n\n{}",
+                                    start.elapsed(),
+                                    typeck.lower.thir
+                                );
                                 println!("typeck: {:?}", start.elapsed());
                                 for error in typeck.lower.errors.drain(..) {
                                     dwriter.write_diagnostic(
@@ -131,9 +131,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 type F = unsafe extern "C" fn() -> i32;
                                 let engine = module
                                     .create_jit_execution_engine(OptimizationLevel::Aggressive)?;
-                                let f = unsafe { engine.get_function::<F>("test")? };
-                                println!("evaluating test()...");
-                                println!("-> {}", unsafe { f.call() });
+                                if let Ok(f) = unsafe { engine.get_function::<F>("test") } {
+                                    println!("evaluating test()...");
+                                    println!("-> {}", unsafe { f.call() });
+                                }
 
                                 module.write_bitcode_to_path(&*PathBuf::from("out.bc"));
 

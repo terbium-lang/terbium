@@ -6,8 +6,7 @@ use crate::{
     },
     warning::Warning,
     Expr, FloatWidth, Func, FuncHeader, FuncParam, Hir, Ident, IntSign, IntWidth, ItemId, ItemKind,
-    Literal, LogicalOp, Lookup, LookupId, Metadata, ModuleId, Node, Pattern, PrimitiveTy, ScopeId,
-    TyParam,
+    Literal, LogicalOp, LookupId, Metadata, ModuleId, Node, Pattern, PrimitiveTy, ScopeId, TyParam,
 };
 use common::span::{Span, Spanned, SpannedExt};
 use std::{borrow::Cow, collections::HashMap};
@@ -351,8 +350,8 @@ impl TypeLowerer {
             if let Some(cnst) = self.hir.scopes.get(&scope.id).and_then(|scope| {
                 scope
                     .items
-                    .get(&item)
-                    .and_then(|Lookup(_, id)| self.hir.consts.get(id))
+                    .get(&(ItemKind::Const, item))
+                    .and_then(|id| self.hir.consts.get(id))
             }) {
                 return Ok(Binding {
                     def_span: cnst.name.span(),
@@ -1012,7 +1011,7 @@ impl TypeLowerer {
 
         let mut lowering = Vec::with_capacity(scope.items.len());
         let mut items = HashMap::with_capacity(scope.items.len());
-        for (name, lookup @ Lookup(_, id)) in scope.items.extract_if(|_, l| l.0 == ItemKind::Func) {
+        for ((kind, name), id) in scope.items.extract_if(|k, _| k.0 == ItemKind::Func) {
             let func = self.hir.funcs.remove(&id).expect("func not found");
             let header = self.lower_func_header(func.header)?;
             // register the function in the scope
@@ -1024,7 +1023,7 @@ impl TypeLowerer {
             };
             self.thir.funcs.insert(id, func.clone());
             lowering.push((id, func));
-            items.insert(name, lookup);
+            items.insert((kind, name), id);
         }
         for (id, func) in lowering {
             let ty = self.lower_func_scope(&func)?;

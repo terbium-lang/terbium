@@ -8,7 +8,7 @@ use crate::{
         BinaryIntIntrinsic, BoolIntrinsic, Constraint, Expr, IntIntrinsic, LocalEnv, Relation, Ty,
         TypedExpr, UnaryIntIntrinsic, UnificationTable,
     },
-    Hir, IntSign, Lookup, ModuleId, Node, Op, Pattern, PrimitiveTy, Scope, ScopeId,
+    Hir, IntSign, ItemKind, ModuleId, Node, Op, Pattern, PrimitiveTy, Scope, ScopeId,
 };
 use common::span::{Spanned, SpannedExt};
 
@@ -334,7 +334,7 @@ impl<'a> TypeChecker<'a> {
             }
             Expr::CallFunc { func, .. } => {
                 let func = self.thir_mut().funcs.get(func).unwrap();
-                *ty = func.header.ret_ty.clone();
+                table.unify_constraint(Constraint(ty.clone(), func.header.ret_ty.clone()));
             }
             _ => (),
         }
@@ -421,7 +421,6 @@ impl<'a> TypeChecker<'a> {
             }
             _ => (),
         }
-        // debug substitutions
         typed_expr.value_mut().1.apply(&table.substitutions);
     }
 
@@ -451,13 +450,18 @@ impl<'a> TypeChecker<'a> {
             .remove(&scope_id)
             .expect("scope not found");
 
-        // Substitute over all functions in the scope
-        for (_, &Lookup(_, id)) in &scope.items {
-            let scope = self.thir_mut().funcs[&id].body;
-            self.substitute_scope(module, scope, table);
+        // Substitute over all items in the scope
+        for ((kind, _), id) in &scope.items {
+            match kind {
+                ItemKind::Func => {
+                    let scope = self.thir_mut().funcs[&id].body;
+                    self.substitute_scope(module, scope, table);
 
-            let func = self.thir_mut().funcs.get_mut(&id).unwrap();
-            func.header.ret_ty.apply(&table.substitutions);
+                    let func = self.thir_mut().funcs.get_mut(&id).unwrap();
+                    func.header.ret_ty.apply(&table.substitutions);
+                }
+                _ => (),
+            }
         }
 
         // Substitute over the scope

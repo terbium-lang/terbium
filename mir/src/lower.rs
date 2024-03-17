@@ -8,8 +8,7 @@ use common::span::{Spanned, SpannedExt};
 use hir::infer::flatten_param;
 use hir::{
     typed::{self, LocalEnv, Ty, TypedExpr},
-    Ident, IntSign, ItemId, ItemKind, Literal, Lookup, LookupId, ModuleId, Pattern, PrimitiveTy,
-    ScopeId,
+    Ident, IntSign, ItemId, ItemKind, Literal, LookupId, ModuleId, Pattern, PrimitiveTy, ScopeId,
 };
 use std::collections::HashMap;
 
@@ -326,7 +325,7 @@ impl Lowerer {
 
         // First, lower all static items in the scope
         let mut funcs = Vec::new();
-        for (item, Lookup(kind, id)) in scope.items {
+        for ((kind, item), id) in scope.items {
             match kind {
                 ItemKind::Func => {
                     let func = self.thir.funcs.remove(&id).expect("no such func");
