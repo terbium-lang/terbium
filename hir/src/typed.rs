@@ -541,15 +541,19 @@ impl Ty {
         }
     }
 
-    pub fn apply(&mut self, substitutions: &VecDeque<Ty>) {
+    // check cycles with Vec over HashSet despite .contains checks since cycles are usually very
+    // small and the overhead of hashing is not worth it
+    #[inline]
+    fn apply_cyclic(&mut self, substitutions: &VecDeque<Ty>, cycle: &mut Vec<usize>) {
         match self {
             Self::Unknown(i) => {
+                cycle.push(*i);
                 match substitutions.get(*i) {
                     // If this substitution is a reference to another unknown, we need to apply that
-                    // substitution as well.
-                    Some(Self::Unknown(j)) if *j != *i => {
+                    // substitution as well
+                    Some(Self::Unknown(j)) if !cycle.contains(j) => {
                         *self = Self::Unknown(*j);
-                        self.apply(substitutions);
+                        self.apply_cyclic(substitutions, cycle);
                     }
                     Some(ty) => *self = ty.clone(),
                     None => (),
@@ -557,26 +561,31 @@ impl Ty {
             }
             Self::Tuple(tys) => {
                 for ty in tys {
-                    ty.apply(substitutions);
+                    ty.apply_cyclic(substitutions, cycle);
                 }
             }
             Self::Array(ty, len) => {
-                ty.apply(substitutions);
-                len.as_mut().map(|len| len.apply(substitutions));
+                ty.apply_cyclic(substitutions, cycle);
+                len.as_mut()
+                    .map(|len| len.apply_cyclic(substitutions, cycle));
             }
             Self::Struct(_, tys) => {
                 for ty in tys {
-                    ty.apply(substitutions);
+                    ty.apply_cyclic(substitutions, cycle);
                 }
             }
             Self::Func(params, ret) => {
                 for ty in params {
-                    ty.apply(substitutions);
+                    ty.apply_cyclic(substitutions, cycle);
                 }
-                ret.apply(substitutions);
+                ret.apply_cyclic(substitutions, cycle);
             }
             _ => {}
         }
+    }
+
+    pub fn apply(&mut self, substitutions: &VecDeque<Ty>) {
+        self.apply_cyclic(substitutions, &mut Vec::new());
     }
 
     pub fn has_any_unknown(&self) -> bool {

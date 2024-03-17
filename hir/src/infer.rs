@@ -929,11 +929,8 @@ impl TypeLowerer {
     }
 
     /// Runs type inference over a function.
-    ///
-    /// TODO: run type inference over parameters
-    pub fn lower_func(&mut self, func: Func) -> Result<Func<InferMetadata>> {
-        let header = func.header;
-        let mut header = FuncHeader::<InferMetadata> {
+    pub fn lower_func_header(&mut self, header: FuncHeader) -> Result<FuncHeader<InferMetadata>> {
+        Ok(FuncHeader {
             name: header.name,
             ty_params: header
                 .ty_params
@@ -965,10 +962,12 @@ impl TypeLowerer {
                 .collect::<Result<Vec<_>>>()?,
             ret_ty: self.lower_hir_ty(header.ret_ty),
             ret_ty_span: header.ret_ty_span,
-        };
+        })
+    }
 
+    pub fn lower_func_scope(&mut self, func: &Func<InferMetadata>) -> Result<Ty> {
         let mut bindings = Vec::new();
-        for param in &header.params {
+        for param in &func.header.params {
             if let Err(why) = flatten_param(&param.pat, param.ty.clone(), &mut bindings) {
                 self.err_nonfatal(why);
             }
@@ -977,17 +976,11 @@ impl TypeLowerer {
             func.body,
             ScopeKind::Func,
             bindings,
-            header.ty_params.clone(),
+            func.header.ty_params.clone(),
             true,
-            Some((header.ret_ty.clone(), header.ret_ty_span)),
+            Some((func.header.ret_ty.clone(), func.header.ret_ty_span)),
         )?;
-        header.ret_ty = self.resolution_lookup[&func.body].0.clone();
-
-        Ok(Func {
-            vis: func.vis,
-            header,
-            body: func.body,
-        })
+        Ok(self.resolution_lookup[&func.body].0.clone())
     }
 
     /// Runs type inference over a scope.
@@ -1017,16 +1010,30 @@ impl TypeLowerer {
             resolution,
         );
 
-        let mut items = HashMap::new();
+        let mut lowering = Vec::with_capacity(scope.items.len());
+        let mut items = HashMap::with_capacity(scope.items.len());
         for (name, lookup @ Lookup(_, id)) in scope.items.extract_if(|_, l| l.0 == ItemKind::Func) {
             let func = self.hir.funcs.remove(&id).expect("func not found");
-            let func = self.lower_func(func)?;
+            let header = self.lower_func_header(func.header)?;
             // register the function in the scope
-            self.scope_mut()
-                .funcs
-                .insert(name, (id, func.header.clone()));
-            self.thir.funcs.insert(id, func);
+            self.scope_mut().funcs.insert(name, (id, header.clone()));
+            let func = Func {
+                vis: func.vis,
+                header,
+                body: func.body,
+            };
+            self.thir.funcs.insert(id, func.clone());
+            lowering.push((id, func));
             items.insert(name, lookup);
+        }
+        for (id, func) in lowering {
+            let ty = self.lower_func_scope(&func)?;
+            let old = &mut self.thir.funcs.get_mut(&id).unwrap().header.ret_ty;
+            self.table
+                .constraints
+                .push_back(Constraint(old.clone(), ty.clone()));
+            let _ = self.table.unify_all();
+            *old = ty;
         }
 
         let mut exit_action = None;

@@ -43,13 +43,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         match nodes {
             Ok(nodes) => {
-                println!("{nodes:#?}");
-                for node in &nodes {
-                    println!("{node}");
-                    // for line in node.to_string().lines() {
-                    //     writeln!(file, "// {line}")?;
-                    // }
-                }
+                // println!("{nodes:#?}");
+                // for node in &nodes {
+                //     println!("{node}");
+                //     // for line in node.to_string().lines() {
+                //     //     writeln!(file, "// {line}")?;
+                //     // }
+                // }
 
                 let mut lowerer = AstLowerer::new(nodes);
 
@@ -60,22 +60,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ) {
                     Ok(_) => {
                         full += start.elapsed();
-                        println!(
-                            "=== [ HIR ({:?} to lower) ] ===\n\n{}",
-                            start.elapsed(),
-                            lowerer.hir
-                        );
+                        // println!(
+                        //     "=== [ HIR ({:?} to lower) ] ===\n\n{}",
+                        //     start.elapsed(),
+                        //     lowerer.hir
+                        // );
+                        println!("hir: {:?}", start.elapsed());
 
                         let start = std::time::Instant::now();
                         let mut ty_lowerer = TypeLowerer::new(lowerer.hir.clone());
                         match ty_lowerer.lower_module(ModuleId::from(Src::None)) {
                             Ok(_) => {
                                 full += start.elapsed();
-                                println!(
-                                    "=== [ THIR ({:?} to type) ] ===\n\n{}",
-                                    start.elapsed(),
-                                    ty_lowerer.thir
-                                );
+                                // println!(
+                                //     "=== [ THIR ({:?} to type) ] ===\n\n{}",
+                                //     start.elapsed(),
+                                //     ty_lowerer.thir
+                                // );
+                                println!("thir: {:?}", start.elapsed());
 
                                 let start = std::time::Instant::now();
                                 let mut typeck = TypeChecker::from_lowerer(&mut ty_lowerer);
@@ -84,11 +86,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 typeck.check_module(ModuleId::from(Src::None), &mut table);
 
                                 full += start.elapsed();
-                                println!(
-                                    "=== [ THIR ({:?} to check) ] ===\n\n{}",
-                                    start.elapsed(),
-                                    typeck.lower.thir
-                                );
+                                // println!(
+                                //     "=== [ THIR ({:?} to check) ] ===\n\n{}",
+                                //     start.elapsed(),
+                                //     typeck.lower.thir
+                                // );
+                                println!("typeck: {:?}", start.elapsed());
                                 for error in typeck.lower.errors.drain(..) {
                                     dwriter.write_diagnostic(
                                         &mut std::io::stdout(),
@@ -102,11 +105,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 mir_lowerer.lower_module(ModuleId::from(Src::None));
 
                                 full += start.elapsed();
-                                println!(
-                                    "=== [ MIR ({:?} to lower) ] ===\n\n{}",
-                                    start.elapsed(),
-                                    mir_lowerer.mir
-                                );
+                                // println!(
+                                //     "=== [ MIR ({:?} to lower) ] ===\n\n{}",
+                                //     start.elapsed(),
+                                //     mir_lowerer.mir
+                                // );
+                                println!("mir: {:?}", start.elapsed());
                                 for error in mir_lowerer.errors.drain(..) {
                                     dwriter.write_diagnostic(
                                         &mut std::io::stdout(),
@@ -120,8 +124,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 let module = compile_llvm(&ctx, mir_lowerer.mir.functions);
 
                                 full += start.elapsed();
-                                println!("=== [ LLVM IR ({:?} to compile) ] ===", start.elapsed());
-                                println!("{}", module.to_string());
+                                // println!("=== [ LLVM IR ({:?} to compile) ] ===", start.elapsed());
+                                // println!("{}", module.to_string());
+                                println!("llvm: {:?}", start.elapsed());
+                                println!("total cmptime: {full:?}");
+                                type F = unsafe extern "C" fn() -> i32;
+                                let engine = module
+                                    .create_jit_execution_engine(OptimizationLevel::Aggressive)?;
+                                let f = unsafe { engine.get_function::<F>("test")? };
+                                println!("evaluating test()...");
+                                println!("-> {}", unsafe { f.call() });
 
                                 module.write_bitcode_to_path(&*PathBuf::from("out.bc"));
 
@@ -147,15 +159,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 let assembly = buffer.as_slice().to_vec();
 
                                 full += start.elapsed();
-                                println!(
-                                    "=== {} ASM ({:?} to compile, {:?} total) ===",
-                                    TargetMachine::get_default_triple()
-                                        .as_str()
-                                        .to_string_lossy(),
-                                    start.elapsed(),
-                                    full
-                                );
-                                println!("{}", String::from_utf8_lossy(&assembly));
+                                // println!(
+                                //     "=== {} ASM ({:?} to compile, {:?} total) ===",
+                                //     TargetMachine::get_default_triple()
+                                //         .as_str()
+                                //         .to_string_lossy(),
+                                //     start.elapsed(),
+                                //     full
+                                // );
+                                // println!("{}", String::from_utf8_lossy(&assembly));
                                 machine.write_to_file(
                                     &module,
                                     FileType::Object,

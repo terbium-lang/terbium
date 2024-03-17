@@ -224,8 +224,8 @@ impl AstLowerer {
                     let sty = self.lower_struct_def_into_ty(module, sct.clone(), scope)?;
 
                     // Update type parameters with their bounds
-                    if let Some(ty_def) = self.hir.types.get_mut(&scope.lookup_id_or_panic(item_id))
-                    {
+                    let ty_def = self.hir.types.get_mut(&scope.lookup_id_or_panic(item_id));
+                    if let Some(ty_def) = ty_def {
                         ty_def.ty_params = sty.ty_params.clone();
                     }
                     self.propagate_nonfatal(self.assert_item_unique(scope, &item_id, sct_name));

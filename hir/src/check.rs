@@ -332,6 +332,10 @@ impl<'a> TypeChecker<'a> {
             Expr::CallOp(op, target, args) => {
                 Self::lower_op(*op, (**target).clone(), args.first().cloned(), expr, ty);
             }
+            Expr::CallFunc { func, .. } => {
+                let func = self.thir_mut().funcs.get(func).unwrap();
+                *ty = func.header.ret_ty.clone();
+            }
             _ => (),
         }
         // Unify the new type with the old type
@@ -417,6 +421,7 @@ impl<'a> TypeChecker<'a> {
             }
             _ => (),
         }
+        // debug substitutions
         typed_expr.value_mut().1.apply(&table.substitutions);
     }
 
@@ -484,9 +489,5 @@ impl<'a> TypeChecker<'a> {
     pub fn check_module(&mut self, module_id: ModuleId, table: &mut UnificationTable) {
         let scope_id = *self.thir().modules.get(&module_id).unwrap();
         self.substitute_scope(module_id, scope_id, table);
-
-        for (i, subst) in table.substitutions.iter().enumerate() {
-            println!("${} => {}", i, subst);
-        }
     }
 }

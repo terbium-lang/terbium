@@ -15,6 +15,7 @@
 #![feature(hash_extract_if)]
 #![feature(let_chains)]
 #![feature(more_qualified_paths)]
+#![feature(map_try_insert)]
 
 pub mod check;
 pub mod error;
