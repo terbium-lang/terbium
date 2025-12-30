@@ -12,10 +12,9 @@
 //!   type checking and desugaring with the knowledge of the types of all expressions. This lowering
 //!   is performed by [`TypeChecker`].
 
-#![feature(hash_extract_if)]
-#![feature(let_chains)]
 #![feature(more_qualified_paths)]
 #![feature(map_try_insert)]
+#![feature(try_blocks)]
 
 pub mod check;
 pub mod error;
@@ -155,6 +154,8 @@ pub struct Hir<M: Metadata = LowerMetadata> {
     pub scopes: HashMap<ScopeId, Scope<M>>,
     /// A mapping of all functions in the program.
     pub funcs: HashMap<LookupId, Func<M>>,
+    /// A mapping of all function lookup IDs to their defining item IDs.
+    pub func_ids: HashMap<LookupId, ItemId>,
     /// A mapping of all aliases in the program.
     pub aliases: HashMap<LookupId, Alias<M::Expr>>,
     /// A mapping of all constants in the program.
@@ -171,6 +172,7 @@ impl<M: Metadata> Default for Hir<M> {
             modules: HashMap::new(),
             scopes: HashMap::new(),
             funcs: HashMap::new(),
+            func_ids: HashMap::new(),
             aliases: HashMap::new(),
             consts: HashMap::new(),
             structs: HashMap::new(),
@@ -399,6 +401,15 @@ impl Display for Pattern {
     }
 }
 
+impl Pattern {
+    pub fn ident(&self) -> Option<Ident> {
+        match self {
+            Self::Ident { ident, .. } => Some(ident.0),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct FieldVisibility {
     pub get: MemberVisibility,
@@ -440,6 +451,13 @@ pub struct FuncParam<M: Metadata = LowerMetadata> {
     pub default: Option<Spanned<M::Expr>>,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum FuncKind {
+    Normal,
+    External(Span),
+    Internal(Span),
+}
+
 #[derive(Clone, Debug)]
 pub struct FuncHeader<M: Metadata = LowerMetadata> {
     /// The name of the function.
@@ -448,6 +466,8 @@ pub struct FuncHeader<M: Metadata = LowerMetadata> {
     pub ty_params: Vec<TyParam<M::Ty>>,
     /// The parameters of the function.
     pub params: Vec<FuncParam<M>>,
+    /// The keyword-only parameters of the function.
+    pub kw_params: Vec<FuncParam<M>>,
     /// The return type of the function.
     pub ret_ty: M::Ty,
     /// The span of the return type. `None` if the return type was not specified.
@@ -459,10 +479,12 @@ pub struct FuncHeader<M: Metadata = LowerMetadata> {
 pub struct Func<M: Metadata = LowerMetadata> {
     /// The visibility of the item.
     pub vis: ItemVisibility,
+    /// The kind of function declaration.
+    pub kind: FuncKind,
     /// The header of the function.
     pub header: FuncHeader<M>,
     /// The body of the function.
-    pub body: ScopeId,
+    pub body: Option<ScopeId>,
 }
 
 #[derive(Copy, Clone, Debug, Default, Eq, PartialEq, Ord, PartialOrd)]
@@ -528,6 +550,7 @@ pub enum PrimitiveTy {
     Bool,
     Char,
     Void,
+    String,
 }
 
 impl Display for PrimitiveTy {
@@ -553,6 +576,7 @@ impl Display for PrimitiveTy {
             Self::Bool => f.write_str("bool"),
             Self::Char => f.write_str("char"),
             Self::Void => f.write_str("void"),
+            Self::String => f.write_str("string"),
         }
     }
 }
@@ -584,14 +608,12 @@ impl SubstituteTyParams<Self> for Ty {
                     .map(|t| t.substitute(param, ty.clone()))
                     .collect(),
             ),
-            Self::Struct(item, tys) => {
-                Self::Struct(
-                    item,
-                    tys.into_iter()
-                        .map(|t| t.substitute(param, ty.clone()))
-                        .collect(),
-                )
-            }
+            Self::Struct(item, tys) => Self::Struct(
+                item,
+                tys.into_iter()
+                    .map(|t| t.substitute(param, ty.clone()))
+                    .collect(),
+            ),
             other => other,
         }
     }
@@ -759,6 +781,7 @@ pub enum Literal {
     Bool(bool),
     Char(char),
     String(String),
+    Bytes(Vec<u8>), // Bytestring literal, e.g. b"..."
     Void,
 }
 
@@ -771,6 +794,7 @@ impl Display for Literal {
             Self::Bool(b) => write!(f, "{b}"),
             Self::Char(c) => write!(f, "c{c:?}"),
             Self::String(s) => write!(f, "{s:?}"),
+            Self::Bytes(b) => write!(f, "b{:?}", String::from_utf8_lossy(b)),
             Self::Void => f.write_str("void"),
         }
     }
@@ -1199,31 +1223,37 @@ where
     M::Ty: Display,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let ty_params =
-            if self.0.ty_params.is_empty() {
-                String::new()
-            } else {
-                format!(
-                    "<{}>",
-                    self.0
-                        .ty_params
-                        .iter()
-                        .map(ToString::to_string)
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-            };
+        let ty_params = if self.0.ty_params.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "<{}>",
+                self.0
+                    .ty_params
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        };
         write!(
             f,
             "{}{}({}) -> {}",
             self.0.name,
             ty_params,
-            self.0
-                .params
-                .iter()
-                .map(|p| self.with(p).to_string())
-                .collect::<Vec<_>>()
-                .join(", "),
+            {
+                let mut params = self
+                    .0
+                    .params
+                    .iter()
+                    .map(|p| self.with(p).to_string())
+                    .collect::<Vec<_>>();
+                if !self.0.kw_params.is_empty() {
+                    params.push("*".to_string());
+                    params.extend(self.0.kw_params.iter().map(|p| self.with(p).to_string()));
+                }
+                params.join(", ")
+            },
             self.0.ret_ty
         )
     }
@@ -1239,7 +1269,21 @@ where
     M::Ty: Display,
 {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{} func {} ", self.0.vis, self.with(&self.0.header))?;
-        self.1.write_block(f, self.1.get_scope(self.0.body))
+        let kind = match self.0.kind {
+            FuncKind::Normal => "",
+            FuncKind::External(_) => "external ",
+            FuncKind::Internal(_) => "internal ",
+        };
+        write!(
+            f,
+            "{} {}func {} ",
+            self.0.vis,
+            kind,
+            self.with(&self.0.header)
+        )?;
+        match self.0.body {
+            Some(body) => self.1.write_block(f, self.1.get_scope(body)),
+            None => f.write_str(";"),
+        }
     }
 }

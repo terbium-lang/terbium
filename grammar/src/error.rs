@@ -134,7 +134,7 @@ pub enum HintAction {
 }
 
 /// A hint for how to fix the error.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Hint {
     /// The message to display to the user.
     pub message: String,
@@ -143,7 +143,7 @@ pub struct Hint {
 }
 
 /// Represents information about an error that occured during parsing.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ErrorInfo {
     /// An error occured during tokenization.
     Tokenization(TokenizationError),
@@ -173,6 +173,8 @@ pub enum ErrorInfo {
     UnknownEscapeSequence(char, Span),
     /// Invalid hex escape sequence encountered.
     InvalidHexEscapeSequence(String, Span),
+    /// Character literal must contain exactly one character.
+    InvalidCharLiteral { span: Span, len: usize },
     /// Encountered a positional argument after a named argument.
     UnexpectedPositionalArgument(Span),
     /// A constant was declared without a value. The span is the span of the semicolon.
@@ -207,6 +209,16 @@ impl Display for ErrorInfo {
             Self::InvalidHexEscapeSequence(s, _) => {
                 write!(f, "invalid hex escape sequence \\x{s}")
             }
+            Self::InvalidCharLiteral { len, .. } => {
+                if *len == 0 {
+                    f.write_str("empty character literal")
+                } else {
+                    write!(
+                        f,
+                        "character literal must contain exactly one character, found {len}"
+                    )
+                }
+            }
             Self::UnexpectedPositionalArgument(_) => {
                 write!(f, "positional argument found after named argument")
             }
@@ -239,11 +251,12 @@ impl ErrorInfo {
             Self::UnmatchedDelimiter { .. } => 3,
             Self::UnknownEscapeSequence(..) => 4,
             Self::InvalidHexEscapeSequence(..) => 5,
-            Self::UnexpectedPositionalArgument(_) => 6,
-            Self::ConstantWithoutValue(_) => 7,
-            Self::MutableAssignmentTarget(..) => 8,
-            Self::MultipleKeywordParameterSeparators(_) => 9,
-            Self::KeywordParameterNotIdent(_) => 10,
+            Self::InvalidCharLiteral { .. } => 6,
+            Self::UnexpectedPositionalArgument(_) => 7,
+            Self::ConstantWithoutValue(_) => 8,
+            Self::MutableAssignmentTarget(..) => 9,
+            Self::MultipleKeywordParameterSeparators(_) => 10,
+            Self::KeywordParameterNotIdent(_) => 11,
         }
     }
 
@@ -255,6 +268,7 @@ impl ErrorInfo {
             Self::UnmatchedDelimiter { opening_span, .. } => Some(*opening_span),
             Self::UnknownEscapeSequence(_, span) => Some(*span),
             Self::InvalidHexEscapeSequence(_, span) => Some(*span),
+            Self::InvalidCharLiteral { span, .. } => Some(*span),
             Self::UnexpectedPositionalArgument(span) => Some(*span),
             Self::ConstantWithoutValue(span) => Some(*span),
             Self::MutableAssignmentTarget(span, _) => Some(*span),
@@ -266,7 +280,7 @@ impl ErrorInfo {
 }
 
 /// An error that occurred during parsing.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Error {
     /// The kind and information of the error that occurred.
     pub info: ErrorInfo,
@@ -358,6 +372,27 @@ impl Error {
         }
     }
 
+    /// Character literal must contain exactly one character.
+    #[must_use]
+    pub fn invalid_char_literal(span: Span, len: usize) -> Self {
+        let message = if len == 0 {
+            "character literal must contain exactly one character"
+        } else {
+            "remove extra characters from the literal"
+        };
+
+        Self {
+            info: ErrorInfo::InvalidCharLiteral { span, len },
+            span,
+            label: None,
+            hint: Some(Hint {
+                action: HintAction::None,
+                message: message.to_string(),
+            }),
+            notes: Vec::new(),
+        }
+    }
+
     /// Unexpected positional argument.
     #[must_use]
     pub fn unexpected_positional_argument(span: Span) -> Self {
@@ -443,11 +478,10 @@ impl Error {
     /// Generates a v2 diagnostic.
     pub fn into_diagnostic(self) -> Diagnostic {
         let context_span = self.info.inner_span().unwrap_or(self.span);
-        let span =
-            match self.info {
-                ErrorInfo::UnexpectedEof => context_span.last_span(),
-                _ => context_span,
-            };
+        let span = match self.info {
+            ErrorInfo::UnexpectedEof => context_span.last_span(),
+            _ => context_span,
+        };
         let mut diagnostic = Diagnostic::new(Severity::Error(self.info.code()), "invalid syntax")
             .with_section(
                 Section::new().with_label(

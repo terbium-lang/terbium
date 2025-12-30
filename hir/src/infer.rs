@@ -1,12 +1,12 @@
 use crate::{
+    Expr, FloatWidth, Func, FuncHeader, FuncParam, Hir, Ident, IntSign, IntWidth, ItemId, ItemKind,
+    Literal, LogicalOp, LookupId, Metadata, ModuleId, Node, Pattern, PrimitiveTy, ScopeId, TyParam,
     error::{Error, Result},
     typed::{
         self, BoolIntrinsic, Constraint, InvalidTypeCause, LocalEnv, Relation, Ty, TypedExpr,
         UnificationTable,
     },
     warning::Warning,
-    Expr, FloatWidth, Func, FuncHeader, FuncParam, Hir, Ident, IntSign, IntWidth, ItemId, ItemKind,
-    Literal, LogicalOp, LookupId, Metadata, ModuleId, Node, Pattern, PrimitiveTy, ScopeId, TyParam,
 };
 use common::span::{Span, Spanned, SpannedExt};
 use std::{borrow::Cow, collections::HashMap};
@@ -167,13 +167,15 @@ pub struct TypeLowerer {
 impl TypeLowerer {
     /// Creates a new type lowerer over the given HIR.
     pub fn new(hir: Hir) -> Self {
+        let mut thir = Hir::default();
+        thir.func_ids = hir.func_ids.clone();
         Self {
             local_env: LocalEnv::Standard,
             scopes: Vec::new(),
             table: UnificationTable::default(),
             resolution_lookup: HashMap::new(),
             hir,
-            thir: Hir::default(),
+            thir,
             warnings: Vec::new(),
             errors: Vec::new(),
         }
@@ -204,20 +206,19 @@ impl TypeLowerer {
         resolution: Option<ScopeResolution>,
     ) {
         let resolution = resolution.unwrap_or_else(|| (self.table.new_unknown(), None));
-        let scope =
-            Scope {
-                id: scope_id,
-                module_id: module,
-                kind,
-                ty_params,
-                locals: bindings
-                    .into_iter()
-                    .map(|(ident, binding)| ((ident, self.local_env), Local::from_binding(binding)))
-                    .collect(),
-                funcs: HashMap::new(),
-                label,
-                exited: None,
-            };
+        let scope = Scope {
+            id: scope_id,
+            module_id: module,
+            kind,
+            ty_params,
+            locals: bindings
+                .into_iter()
+                .map(|(ident, binding)| ((ident, self.local_env), Local::from_binding(binding)))
+                .collect(),
+            funcs: HashMap::new(),
+            label,
+            exited: None,
+        };
         self.scopes.push(scope);
         self.resolution_lookup.insert(scope_id, resolution);
     }
@@ -234,8 +235,10 @@ impl TypeLowerer {
             local.ty.apply(&mut self.table.substitutions);
 
             if ident.to_string().chars().next() != Some('_') && !local.used {
-                self.warnings
-                    .push(Warning::UnusedVariable(Spanned(ident.to_string(), local.def_span)))
+                self.warnings.push(Warning::UnusedVariable(Spanned(
+                    ident.to_string(),
+                    local.def_span,
+                )))
             }
             if !local.mutated
                 && let Some(mutable) = local.mutable
@@ -304,7 +307,14 @@ impl TypeLowerer {
             }
             Literal::Float(_) => Ty::Primitive(PrimitiveTy::Float(FloatWidth::Float64)),
             Literal::Char(_) => Ty::Primitive(PrimitiveTy::Char),
-            Literal::String(_) => unimplemented!(),
+            Literal::String(_) => Ty::Primitive(PrimitiveTy::String),
+            Literal::Bytes(_) => Ty::Array(
+                Box::new(Ty::Primitive(PrimitiveTy::Int(
+                    IntSign::Unsigned,
+                    IntWidth::Int8,
+                ))),
+                None,
+            ),
         }
     }
 
@@ -328,13 +338,11 @@ impl TypeLowerer {
         ident: &Spanned<Ident>,
         args: &Option<Spanned<Vec<crate::Ty>>>,
     ) -> Result<Binding> {
-        if let Some(args) = args {
-            // TODO: function pointers, first-class types
-            return Err(Error::ExplicitTypeArgumentsNotAllowed(args.span()));
-        }
-
         // Search for the local variable
         if let Ok(local) = self.lower_local(ident) {
+            if let Some(args) = args {
+                return Err(Error::ExplicitTypeArgumentsNotAllowed(args.span()));
+            }
             return Ok(Binding {
                 def_span: local.def_span,
                 ty: local.ty.clone(),
@@ -353,6 +361,9 @@ impl TypeLowerer {
                     .get(&(ItemKind::Const, item))
                     .and_then(|id| self.hir.consts.get(id))
             }) {
+                if let Some(args) = args {
+                    return Err(Error::ExplicitTypeArgumentsNotAllowed(args.span()));
+                }
                 return Ok(Binding {
                     def_span: cnst.name.span(),
                     ty: self.lower_hir_ty(cnst.ty.clone()),
@@ -363,16 +374,44 @@ impl TypeLowerer {
             }
 
             if let Some((id, header)) = scope.funcs.get(&item).cloned() {
+                let ty_args = args.as_ref().map(|args| {
+                    args.value()
+                        .iter()
+                        .cloned()
+                        .map(|ty| self.lower_hir_ty(ty))
+                        .collect::<Vec<_>>()
+                });
+                if let Some(ty_args) = &ty_args {
+                    if ty_args.len() != header.ty_params.len() {
+                        return Err(Error::IncorrectTypeArgumentCount {
+                            span: args.as_ref().expect("checked above").span(),
+                            ty: header.name.as_ref().map(ToString::to_string),
+                            expected: header.ty_params.len(),
+                            actual: ty_args.len(),
+                        });
+                    }
+                }
+                let subs = ty_args
+                    .as_ref()
+                    .map(|ty_args| {
+                        header
+                            .ty_params
+                            .iter()
+                            .map(|param| param.name)
+                            .zip(ty_args.iter().cloned())
+                            .collect::<HashMap<_, _>>()
+                    })
+                    .unwrap_or_default();
+                let param_tys = header
+                    .params
+                    .iter()
+                    .chain(header.kw_params.iter())
+                    .map(|param| param.ty.substitute_generics(&subs))
+                    .collect::<Vec<_>>();
+                let ret_ty = header.ret_ty.substitute_generics(&subs);
                 return Ok(Binding {
                     def_span: header.name.span(),
-                    ty: Ty::Func(
-                        header
-                            .params
-                            .into_iter()
-                            .map(|param| self.lower_hir_ty(param.ty.into()))
-                            .collect(),
-                        Box::new(self.lower_hir_ty(header.ret_ty.into())),
-                    ),
+                    ty: Ty::Func(param_tys, Box::new(ret_ty)),
                     mutable: None,
                     initialized: true,
                     kind: BindingKind::Func(id),
@@ -477,28 +516,27 @@ impl TypeLowerer {
                 };
                 // "Evenness" check will be done at the typeck stage
                 let left_ty = self.lower_exit_in_context(left, false)?;
-                let ty =
-                    match right
-                        .map(|right| self.lower_exit_in_context(right, true))
-                        .transpose()?
-                    {
-                        Some(right_ty) => {
-                            #[allow(unused_parens)]
-                            if !left_ty.known()
-                                || matches!(
-                                    left_ty.relation_to(&right_ty),
-                                    (Relation::Eq | Relation::Super)
-                                )
-                            {
-                                left_ty
-                            } else {
-                                // Again, if left_ty != right_ty, check at the typeck stage.
-                                // The types may still be incompatible, but we don't know that yet.
-                                right_ty
-                            }
+                let ty = match right
+                    .map(|right| self.lower_exit_in_context(right, true))
+                    .transpose()?
+                {
+                    Some(right_ty) => {
+                        #[allow(unused_parens)]
+                        if !left_ty.known()
+                            || matches!(
+                                left_ty.relation_to(&right_ty),
+                                (Relation::Eq | Relation::Super)
+                            )
+                        {
+                            left_ty
+                        } else {
+                            // Again, if left_ty != right_ty, check at the typeck stage.
+                            // The types may still be incompatible, but we don't know that yet.
+                            right_ty
                         }
-                        None => Ty::VOID,
-                    };
+                    }
+                    None => Ty::VOID,
+                };
                 TypedExpr(typed::Expr::If(Box::new(cond), left, right), ty)
             }
             Expr::CallLogicalOp(op, lhs, rhs) => {
@@ -534,7 +572,7 @@ impl TypeLowerer {
                 let ty = lowered.value().1.clone();
 
                 let mut bindings = Vec::new();
-                Self::bind_pattern_to_ty(&target, ty.clone(), Some(&lowered), &mut bindings)?;
+                self.bind_pattern_to_ty(&target, ty.clone(), Some(&lowered), &mut bindings)?;
                 for (ident, binding) in bindings {
                     // SAFETY: the local should live as long as &mut self
                     let target = unsafe {
@@ -607,7 +645,11 @@ impl TypeLowerer {
                 ),
                 self.table.new_unknown(),
             ),
-            Expr::Call { callee, args, .. } => {
+            Expr::Call {
+                callee,
+                args,
+                kwargs,
+            } => {
                 let callee = self.lower_expr(*callee)?;
                 let callee_ty = callee.value().1.clone();
 
@@ -615,83 +657,180 @@ impl TypeLowerer {
                     .into_iter()
                     .map(|expr| self.lower_expr(expr))
                     .collect::<Result<Vec<_>>>()?;
+                let mut kwargs = kwargs
+                    .into_iter()
+                    .map(|(name, expr)| Ok((name, self.lower_expr(expr)?)))
+                    .collect::<Result<Vec<_>>>()?;
 
-                let (arg_tys, mut return_ty) = match callee_ty {
-                    Ty::Func(args, ret_ty) => (Some(args), *ret_ty),
-                    Ty::Unknown(i) => {
-                        let arg_tys = args
+                let (expr, return_ty) = match callee.value().0.clone() {
+                    typed::Expr::Func(_, ty_args, item) => {
+                        let header = self.thir.funcs[&item].header.clone();
+                        let ty_args = ty_args.map(|args| args.into_value());
+                        if let Some(ty_args) = &ty_args {
+                            if ty_args.len() != header.ty_params.len() {
+                                self.err_nonfatal(Error::IncorrectTypeArgumentCount {
+                                    span,
+                                    ty: header.name.as_ref().map(ToString::to_string),
+                                    expected: header.ty_params.len(),
+                                    actual: ty_args.len(),
+                                });
+                            }
+                        }
+                        let subs = ty_args
+                            .as_ref()
+                            .map(|ty_args| {
+                                header
+                                    .ty_params
+                                    .iter()
+                                    .map(|param| param.name)
+                                    .zip(ty_args.iter().cloned())
+                                    .collect::<HashMap<_, _>>()
+                            })
+                            .unwrap_or_default();
+                        let param_tys = header
+                            .params
                             .iter()
-                            .map(|expr| expr.value().1.clone())
+                            .map(|param| param.ty.substitute_generics(&subs))
                             .collect::<Vec<_>>();
-                        let return_ty = self.table.new_unknown();
-                        self.table
-                            .substitute(i, Ty::Func(arg_tys.clone(), Box::new(return_ty.clone())));
-                        (Some(arg_tys), return_ty)
+                        let kw_param_tys = header
+                            .kw_params
+                            .iter()
+                            .map(|param| param.ty.substitute_generics(&subs))
+                            .collect::<Vec<_>>();
+                        let ret_ty = header.ret_ty.substitute_generics(&subs);
+
+                        if args.len() != param_tys.len() {
+                            self.err_nonfatal(Error::IncorrectArgumentCount {
+                                span,
+                                expected: param_tys.len(),
+                                actual: args.len(),
+                            });
+                        }
+
+                        let mut kw_map = HashMap::new();
+                        for (name, arg) in kwargs.drain(..) {
+                            if kw_map.insert(name, arg).is_some() {
+                                self.err_nonfatal(Error::DuplicateKeywordArgument(span, name));
+                            }
+                        }
+
+                        let mut ordered_args = args;
+                        for param in &header.kw_params {
+                            let Some(name) = param.pat.value().ident() else {
+                                continue;
+                            };
+                            if let Some(arg) = kw_map.remove(&name) {
+                                ordered_args.push(arg);
+                            } else {
+                                self.err_nonfatal(Error::MissingKeywordArgument(span, name));
+                            }
+                        }
+                        for (name, _arg) in kw_map {
+                            self.err_nonfatal(Error::UnknownKeywordArgument(span, name));
+                        }
+
+                        let expected = param_tys.len() + kw_param_tys.len();
+                        if ordered_args.len() != expected {
+                            self.err_nonfatal(Error::IncorrectArgumentCount {
+                                span,
+                                expected,
+                                actual: ordered_args.len(),
+                            });
+                        }
+
+                        for (arg, ty) in ordered_args
+                            .iter()
+                            .zip(param_tys.into_iter().chain(kw_param_tys))
+                        {
+                            self.table
+                                .constraints
+                                .push_back(Constraint(arg.value().1.clone(), ty.clone()));
+
+                            if let Some(conflict) = self.table.unify_all() {
+                                self.err_nonfatal(Error::TypeConflict {
+                                    expected: (ty.into(), None),
+                                    actual: arg.as_ref().map(|expr| expr.1.clone().into()),
+                                    constraint: conflict,
+                                });
+                            }
+                        }
+
+                        for arg in &mut ordered_args {
+                            arg.value_mut().1.apply(&self.table.substitutions);
+                        }
+
+                        (
+                            typed::Expr::CallFunc {
+                                parent: None,
+                                func: item,
+                                args: ordered_args,
+                                kwargs: Vec::new(),
+                                ty_args,
+                            },
+                            ret_ty,
+                        )
                     }
                     _ => {
-                        self.err_nonfatal(Error::NotCallable(
-                            span,
-                            Spanned(callee_ty.into(), callee.span()),
-                        ));
-                        (None, self.table.new_unknown())
-                    }
-                };
-
-                // Unify arguments
-                if let Some(arg_tys) = arg_tys {
-                    if args.len() != arg_tys.len() {
-                        self.err_nonfatal(Error::IncorrectArgumentCount {
-                            span,
-                            expected: arg_tys.len(),
-                            actual: args.len(),
-                        });
-                    }
-
-                    for (arg, ty) in args.iter().zip(arg_tys) {
-                        self.table
-                            .constraints
-                            .push_back(Constraint(arg.value().1.clone(), ty.clone()));
-
-                        if let Some(conflict) = self.table.unify_all() {
-                            self.err_nonfatal(Error::TypeConflict {
-                                expected: (ty.into(), None),
-                                actual: arg.as_ref().map(|expr| expr.1.clone().into()),
-                                constraint: conflict,
-                            });
+                        if !kwargs.is_empty() {
+                            self.err_nonfatal(Error::UnknownKeywordArgument(span, kwargs[0].0));
                         }
-                    }
 
-                    for arg in &mut args {
-                        arg.value_mut().1.apply(&self.table.substitutions);
-                    }
-                }
+                        let (arg_tys, mut return_ty) = match callee_ty {
+                            Ty::Func(args, ret_ty) => (Some(args), *ret_ty),
+                            Ty::Unknown(i) => {
+                                let arg_tys = args
+                                    .iter()
+                                    .map(|expr| expr.value().1.clone())
+                                    .collect::<Vec<_>>();
+                                let return_ty = self.table.new_unknown();
+                                self.table.substitute(
+                                    i,
+                                    Ty::Func(arg_tys.clone(), Box::new(return_ty.clone())),
+                                );
+                                (Some(arg_tys), return_ty)
+                            }
+                            _ => {
+                                self.err_nonfatal(Error::NotCallable(
+                                    span,
+                                    Spanned(callee_ty.into(), callee.span()),
+                                ));
+                                (None, self.table.new_unknown())
+                            }
+                        };
 
-                // Deduce the type of call (is it an intrinsic, function/method call, or something else?)
-                let expr = match callee.value().0 {
-                    typed::Expr::Func(_, _, item) => {
-                        let header = &self.thir.funcs[&item].header;
-                        self.table
-                            .constraints
-                            .push_back(Constraint(header.ret_ty.clone(), return_ty.clone()));
-                        if let Some(conflict) = self.table.unify_all() {
-                            self.err_nonfatal(Error::TypeConflict {
-                                expected: (header.ret_ty.clone(), header.ret_ty_span),
-                                actual: Spanned(return_ty.clone().into(), span),
-                                constraint: conflict,
-                            });
+                        if let Some(arg_tys) = arg_tys {
+                            if args.len() != arg_tys.len() {
+                                self.err_nonfatal(Error::IncorrectArgumentCount {
+                                    span,
+                                    expected: arg_tys.len(),
+                                    actual: args.len(),
+                                });
+                            }
+
+                            for (arg, ty) in args.iter().zip(arg_tys) {
+                                self.table
+                                    .constraints
+                                    .push_back(Constraint(arg.value().1.clone(), ty.clone()));
+
+                                if let Some(conflict) = self.table.unify_all() {
+                                    self.err_nonfatal(Error::TypeConflict {
+                                        expected: (ty.into(), None),
+                                        actual: arg.as_ref().map(|expr| expr.1.clone().into()),
+                                        constraint: conflict,
+                                    });
+                                }
+                            }
+
+                            for arg in &mut args {
+                                arg.value_mut().1.apply(&self.table.substitutions);
+                            }
                         }
+
                         return_ty.apply(&self.table.substitutions);
 
-                        typed::Expr::CallFunc {
-                            parent: None,
-                            func: item,
-                            args,
-                            kwargs: Vec::new(),
-                        }
+                        (typed::Expr::CallIndirect(Box::new(callee), args), return_ty)
                     }
-                    _ => unimplemented!(),
                 };
-
                 TypedExpr(expr, return_ty)
             }
             _ => unimplemented!(),
@@ -700,6 +839,7 @@ impl TypeLowerer {
     }
 
     fn bind_pattern_to_ty(
+        &mut self,
         pat: &Spanned<Pattern>,
         ty: Ty,
         expr: Option<&Spanned<TypedExpr>>,
@@ -727,25 +867,70 @@ impl TypeLowerer {
                     ));
                 }
                 // Can we destructure the tuple further?
-                if let Some(Spanned(TypedExpr(typed::Expr::Tuple(ref exprs), _), _)) = expr {
+                if let Some(Spanned(TypedExpr(typed::Expr::Tuple(exprs), _), _)) = expr {
                     debug_assert_eq!(pats.len(), exprs.len());
                     for ((pat, ty), expr) in pats.iter().zip(tys).zip(exprs) {
-                        Self::bind_pattern_to_ty(pat, ty, Some(expr), bindings)?;
+                        self.bind_pattern_to_ty(pat, ty, Some(expr), bindings)?;
                     }
                 } else {
                     for (pat, ty) in pats.iter().zip(tys) {
-                        Self::bind_pattern_to_ty(pat, ty, expr, bindings)?;
+                        self.bind_pattern_to_ty(pat, ty, expr, bindings)?;
                     }
                 }
             }
-            // TODO: tuple structs/enum variants?
+            (Pattern::Tuple(pats), Ty::Struct(item_id, args)) => {
+                if let Some(field_tys) = self.struct_field_types(item_id, &args) {
+                    if pats.len() != field_tys.len() {
+                        return Err(pat_errors::tuple_len_mismatch(
+                            pats.len().spanned(pat.span()),
+                            field_tys.len(),
+                            expr.map(|expr| expr.span()),
+                        ));
+                    }
+                    for (pat, ty) in pats.iter().zip(field_tys) {
+                        self.bind_pattern_to_ty(pat, ty, expr, bindings)?;
+                    }
+                } else {
+                    return Err(pat_errors::tuple_mismatch(
+                        pat.span(),
+                        Ty::Struct(item_id, args),
+                        expr.map(|expr| expr.span()),
+                    ));
+                }
+            }
             (Pattern::Tuple(_), ty) => {
-                return Err(
-                    pat_errors::tuple_mismatch(pat.span(), ty, expr.map(|expr| expr.span()))
-                );
+                return Err(pat_errors::tuple_mismatch(
+                    pat.span(),
+                    ty,
+                    expr.map(|expr| expr.span()),
+                ));
             }
         }
         Ok(())
+    }
+
+    fn struct_field_types(&mut self, item: ItemId, args: &[Ty]) -> Option<Vec<Ty>> {
+        let scope_id = self.hir.modules.get(&item.0)?;
+        let scope = self.hir.scopes.get(scope_id)?;
+        let id = scope.items.get(&(ItemKind::Struct, item))?;
+        let sct = self.hir.structs.get(id)?.clone();
+
+        let subs = sct
+            .ty_params
+            .iter()
+            .map(|param| param.name)
+            .zip(args.iter().cloned())
+            .collect::<HashMap<_, _>>();
+
+        Some(
+            sct.fields
+                .iter()
+                .map(|field| {
+                    let ty = self.lower_hir_ty(field.ty.clone());
+                    ty.substitute_generics(&subs)
+                })
+                .collect(),
+        )
     }
 
     /// Runs type inference through a single node.
@@ -797,7 +982,7 @@ impl TypeLowerer {
                 } else {
                     (self.lower_hir_ty(ty), None)
                 };
-                Self::bind_pattern_to_ty(&pat, lower_ty.clone(), expr.as_ref(), &mut bindings)?;
+                self.bind_pattern_to_ty(&pat, lower_ty.clone(), expr.as_ref(), &mut bindings)?;
                 let node = Node::Let {
                     pat,
                     ty: lower_ty,
@@ -959,6 +1144,20 @@ impl TypeLowerer {
                     })
                 })
                 .collect::<Result<Vec<_>>>()?,
+            kw_params: header
+                .kw_params
+                .into_iter()
+                .map(|param| {
+                    Ok(FuncParam {
+                        pat: param.pat,
+                        ty: self.lower_hir_ty(param.ty),
+                        default: param
+                            .default
+                            .map(|expr| self.lower_expr(expr))
+                            .transpose()?,
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?,
             ret_ty: self.lower_hir_ty(header.ret_ty),
             ret_ty_span: header.ret_ty_span,
         })
@@ -966,20 +1165,28 @@ impl TypeLowerer {
 
     pub fn lower_func_scope(&mut self, func: &Func<InferMetadata>) -> Result<Ty> {
         let mut bindings = Vec::new();
-        for param in &func.header.params {
+        for param in func
+            .header
+            .params
+            .iter()
+            .chain(func.header.kw_params.iter())
+        {
             if let Err(why) = flatten_param(&param.pat, param.ty.clone(), &mut bindings) {
                 self.err_nonfatal(why);
             }
         }
+        let Some(body) = func.body else {
+            return Ok(func.header.ret_ty.clone());
+        };
         self.lower_scope(
-            func.body,
+            body,
             ScopeKind::Func,
             bindings,
             func.header.ty_params.clone(),
             true,
             Some((func.header.ret_ty.clone(), func.header.ret_ty_span)),
         )?;
-        Ok(self.resolution_lookup[&func.body].0.clone())
+        Ok(self.resolution_lookup[&body].0.clone())
     }
 
     /// Runs type inference over a scope.
@@ -1011,20 +1218,47 @@ impl TypeLowerer {
 
         let mut lowering = Vec::with_capacity(scope.items.len());
         let mut items = HashMap::with_capacity(scope.items.len());
-        for ((kind, name), id) in scope.items.extract_if(|k, _| k.0 == ItemKind::Func) {
-            let func = self.hir.funcs.remove(&id).expect("func not found");
-            let header = self.lower_func_header(func.header)?;
-            // register the function in the scope
-            self.scope_mut().funcs.insert(name, (id, header.clone()));
-            let func = Func {
-                vis: func.vis,
-                header,
-                body: func.body,
-            };
-            self.thir.funcs.insert(id, func.clone());
-            lowering.push((id, func));
-            items.insert((kind, name), id);
+        let mut func_aliases: HashMap<LookupId, Vec<ItemId>> =
+            HashMap::with_capacity(scope.items.len());
+
+        for ((kind, name), id) in &scope.items {
+            if *kind != ItemKind::Func {
+                continue;
+            }
+            func_aliases.entry(*id).or_default().push(*name);
         }
+
+        for (id, aliases) in func_aliases {
+            let primary = self.hir.func_ids.get(&id).copied().unwrap_or_else(|| {
+                aliases
+                    .iter()
+                    .copied()
+                    .find(|item| item.0 != scope.module_id)
+                    .unwrap_or_else(|| aliases[0])
+            });
+
+            let header = if let Some(func) = self.thir.funcs.get(&id) {
+                func.header.clone()
+            } else {
+                let func = self.hir.funcs.remove(&id).expect("func not found");
+                let header = self.lower_func_header(func.header)?;
+                let func = Func {
+                    vis: func.vis,
+                    kind: func.kind,
+                    header: header.clone(),
+                    body: func.body,
+                };
+                self.thir.funcs.insert(id, func.clone());
+                lowering.push((id, func));
+                header
+            };
+
+            for name in aliases {
+                self.scope_mut().funcs.insert(name, (id, header.clone()));
+            }
+            items.insert((ItemKind::Func, primary), id);
+        }
+
         for (id, func) in lowering {
             let ty = self.lower_func_scope(&func)?;
             let old = &mut self.thir.funcs.get_mut(&id).unwrap().header.ret_ty;
@@ -1063,15 +1297,14 @@ impl TypeLowerer {
                 items,
             },
         );
-        let exit_action =
-            exit_action.unwrap_or_else(|| {
-                self.unify_scope(scope_id, Ty::VOID, full_span);
-                self.exit_scope();
-                match kind {
-                    ScopeKind::Loop => ExitAction::NeverReturn,
-                    _ => ExitAction::FromBlock(None, Ty::VOID, full_span),
-                }
-            });
+        let exit_action = exit_action.unwrap_or_else(|| {
+            self.unify_scope(scope_id, Ty::VOID, full_span);
+            self.exit_scope();
+            match kind {
+                ScopeKind::Loop => ExitAction::NeverReturn,
+                _ => ExitAction::FromBlock(None, Ty::VOID, full_span),
+            }
+        });
 
         let first_span = children.peek().map(|child| child.span());
         let mut last_span = first_span;
@@ -1172,9 +1405,11 @@ pub fn flatten_param(
         )),
         (Pattern::Tuple(pats), Ty::Tuple(tys)) => {
             if pats.len() != tys.len() {
-                return Err(
-                    pat_errors::tuple_len_mismatch(pats.len().spanned(pat.span()), tys.len(), None)
-                );
+                return Err(pat_errors::tuple_len_mismatch(
+                    pats.len().spanned(pat.span()),
+                    tys.len(),
+                    None,
+                ));
             }
             for (pat, ty) in pats.iter().zip(tys) {
                 flatten_param(pat, ty, bindings)?;

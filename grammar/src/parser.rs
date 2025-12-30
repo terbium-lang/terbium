@@ -1,9 +1,9 @@
 use crate::{
     ast::{
         expr_as_block, AssignmentOperator, AssignmentTarget, Atom, BinaryOp, Decorator, Delimiter,
-        Expr, FieldVisibility, FuncParam, ItemVisibility, MemberVisibility, Node, Pattern,
-        StructDef, StructField, TokenTree, TyParam, TypeApplication, TypeConst, TypeExpr, TypePath,
-        TypePathSeg, UnaryOp, While,
+        Expr, FieldVisibility, FuncKind, FuncParam, ImportItem, ImportPath, ItemVisibility,
+        MemberVisibility, Node, Pattern, StructDef, StructField, TokenTree, TyParam,
+        TypeApplication, TypeConst, TypeExpr, TypePath, TypePathSeg, UnaryOp, While,
     },
     error::Error,
     token::{ChumskyTokenStreamer, Keyword, StringLiteralFlags, Token, TokenReader},
@@ -88,6 +88,24 @@ macro_rules! kw {
     }};
 }
 
+#[inline]
+fn handle_hex_sequence<T>(
+    sequence: &str,
+    pos: &mut usize,
+    length: usize,
+    span: Span,
+    out: impl FnOnce(u32, usize) -> Result<T>,
+) -> Result<T> {
+    let value = u32::from_str_radix(sequence, 16).map_err(|_| {
+        Error::invalid_hex_escape_sequence(
+            sequence.to_string(),
+            span.get_span(*pos - 1, *pos + 1 + length),
+        )
+    })?;
+    *pos += length;
+    out(value, *pos)
+}
+
 /// Resolves escape sequences in a string.
 fn resolve_string(content: String, flags: StringLiteralFlags, span: Span) -> Result<String> {
     if flags.is_raw() {
@@ -104,19 +122,13 @@ fn resolve_string(content: String, flags: StringLiteralFlags, span: Span) -> Res
 
             macro_rules! hex_sequence {
                 ($length:literal) => {{
-                    let sequence = chars.by_ref().take($length).collect::<String>();
-                    let value = u32::from_str_radix(&sequence, 16).map_err(|_| {
-                        Error::invalid_hex_escape_sequence(
-                            sequence.clone(),
+                    let seq = chars.by_ref().take($length).collect::<String>();
+                    handle_hex_sequence(&seq, &mut pos, $length, span, |value, pos| {
+                        char::from_u32(value).ok_or(Error::invalid_hex_escape_sequence(
+                            seq.to_string(),
                             span.get_span(pos - 1, pos + 1 + $length),
-                        )
-                    })?;
-
-                    pos += $length;
-                    char::from_u32(value).ok_or(Error::invalid_hex_escape_sequence(
-                        sequence,
-                        span.get_span(pos - 1, pos + 1 + $length),
-                    ))?
+                        ))
+                    })?
                 }};
             }
 
@@ -138,11 +150,71 @@ fn resolve_string(content: String, flags: StringLiteralFlags, span: Span) -> Res
                 'x' => hex_sequence!(2),
                 'u' => hex_sequence!(4),
                 'U' => hex_sequence!(8),
-                c => return Err(Error::unknown_escape_sequence(c, span.get_span(pos - 1, pos + 1))),
+                c => {
+                    return Err(Error::unknown_escape_sequence(
+                        c,
+                        span.get_span(pos - 1, pos + 1),
+                    ))
+                }
             };
         }
 
         result.push(c);
+        pos += 1;
+    }
+
+    Ok(result)
+}
+
+fn resolve_bytes(content: Vec<u8>, flags: StringLiteralFlags, span: Span) -> Result<Vec<u8>> {
+    if flags.is_raw() {
+        return Ok(content);
+    }
+
+    let mut result = Vec::new();
+    let mut bytes = content.into_iter();
+    let mut pos = span.start;
+
+    while let Some(mut b) = bytes.next() {
+        if b == b'\\' {
+            pos += 1;
+
+            b = match bytes.next().ok_or_else(|| {
+                Error::unexpected_eof(
+                    Span::single(span.src, pos),
+                    Some(('n', "insert an escape sequence")),
+                )
+            })? {
+                b'n' => b'\n',
+                b'r' => b'\r',
+                b't' => b'\t',
+                b'b' => b'\x08',
+                b'f' => b'\x0c',
+                b'0' => b'\0',
+                b'\'' => b'\'',
+                b'"' => b'"',
+                b'\\' => b'\\',
+                b'x' => {
+                    let seq = String::from_utf8_lossy_owned(bytes.by_ref().take(2).collect());
+                    handle_hex_sequence(&seq, &mut pos, 2, span, |value, pos| {
+                        u8::try_from(value).map_err(|_| {
+                            Error::invalid_hex_escape_sequence(
+                                seq.to_string(),
+                                span.get_span(pos - 1, pos + 3),
+                            )
+                        })
+                    })?
+                }
+                b => {
+                    return Err(Error::unknown_escape_sequence(
+                        b as char,
+                        span.get_span(pos - 1, pos + 1),
+                    ))
+                }
+            };
+        }
+
+        result.push(b);
         pos += 1;
     }
 
@@ -309,6 +381,11 @@ pub fn type_expr_parser<'a>() -> RecursiveParser<'a, Spanned<TypeExpr>> {
             .map_with_span(Spanned)
             .pad_ws();
 
+        let raw_ptr = kw!("rawptr")
+            .map_with_span(|_, span| span)
+            .then(ty.clone())
+            .map(|(span, ty)| TypeExpr::RawPtr(Box::new(ty)).spanned(span));
+
         let ty_application = select!(Token::Ident(name, _) => name)
             .map_with_span(Spanned)
             .then_ignore(just(Token::Equals).pad_ws())
@@ -331,9 +408,9 @@ pub fn type_expr_parser<'a>() -> RecursiveParser<'a, Spanned<TypeExpr>> {
                         .into_iter()
                         .map(|(name, ty)| {
                             Ok((
-                                name.ok_or_else(
-                                    || Error::unexpected_positional_argument(ty.span())
-                                )?,
+                                name.ok_or_else(|| {
+                                    Error::unexpected_positional_argument(ty.span())
+                                })?,
                                 ty,
                             ))
                         })
@@ -388,6 +465,7 @@ pub fn type_expr_parser<'a>() -> RecursiveParser<'a, Spanned<TypeExpr>> {
         let ty_atom = choice((
             ty.clone().delimited(Delimiter::Paren),
             infer_ty,
+            raw_ptr,
             path,
             tuple,
             array,
@@ -512,6 +590,38 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
         .map_with_span(Spanned)
         .pad_ws();
 
+        let outer_doc = select! {
+            Token::DocComment { content, is_inner: false } => content,
+        }
+        .pad_ws()
+        .repeated()
+        .at_least(1)
+        .map_with_span(|docs, span| {
+            Spanned(
+                Node::DocString {
+                    content: docs.join("\n"),
+                    is_inner: false,
+                },
+                span,
+            )
+        });
+
+        let inner_doc = select! {
+            Token::DocComment { content, is_inner: true } => content,
+        }
+        .pad_ws()
+        .repeated()
+        .at_least(1)
+        .map_with_span(|docs, span| {
+            Spanned(
+                Node::DocString {
+                    content: docs.join("\n"),
+                    is_inner: true,
+                },
+                span,
+            )
+        });
+
         // Expression as a statement, i.e. `f();`;
         let expression = expr
             .clone()
@@ -580,6 +690,73 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
             .labelled("const declaration")
             .boxed();
 
+        // `alias` declaration, for example `alias FOO = bar();`
+        let alias_decl = item_vis
+            .clone()
+            .then(kw!("alias").map_with_span(|_, span| span).pad_ws())
+            .then(ident.clone())
+            .then(just(Token::Equals).pad_ws().ignore_then(expr.clone()))
+            .then_ignore(just(Token::Semicolon))
+            .map_with_span(|(((vis, kw_span), name), value), span| {
+                Spanned(
+                    Node::Alias {
+                        vis,
+                        kw: kw_span,
+                        name,
+                        value,
+                    },
+                    span,
+                )
+            })
+            .labelled("alias declaration")
+            .boxed();
+
+        let import_segment = select!(Token::Ident(name, _) => name).map_with_span(Spanned);
+        let import_item = recursive(|import_item| {
+            let import_named = import_segment.clone().map_with_span(|name, span| {
+                Spanned(
+                    match name.value().as_str() {
+                        "self" => ImportItem::This,
+                        name => ImportItem::Named(name.to_string()),
+                    },
+                    span,
+                )
+            });
+
+            let import_path = import_segment
+                .clone()
+                .then_ignore(just(Token::Dot).pad_ws())
+                .repeated()
+                .at_least(1)
+                .then(import_item.clone())
+                .map_with_span(|(namespace, item), span| {
+                    ImportItem::Path(Box::new(ImportPath { namespace, item })).spanned(span)
+                });
+
+            let import_list = import_item
+                .clone()
+                .separated_by(just(Token::Comma).pad_ws())
+                .allow_trailing()
+                .delimited(Delimiter::Brace)
+                .map(ImportItem::List)
+                .map_with_span(Spanned);
+
+            choice((
+                just(Token::Asterisk).map_with_span(|_, span| Spanned(ImportItem::Wildcard, span)),
+                import_list,
+                import_path,
+                import_named,
+            ))
+        });
+        let import_decl = kw!(Import)
+            .map_with_span(|_, span| span)
+            .pad_ws()
+            .then(import_item)
+            .then_ignore(just(Token::Semicolon).pad_ws())
+            .map_with_span(|(kw, item), span| Spanned(Node::Import { kw, item }, span))
+            .labelled("import declaration")
+            .boxed();
+
         // Single function parameter
         let func_param = pat
             .then_ignore(just(Token::Colon).then_ws())
@@ -590,9 +767,9 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
                     .ignore_then(expr.clone())
                     .or_not(),
             )
-            .map_with_span(
-                |((pat, ty), default), span| Spanned(FuncParam { pat, ty, default }, span)
-            );
+            .map_with_span(|((pat, ty), default), span| {
+                Spanned(FuncParam { pat, ty, default }, span)
+            });
 
         let type_params = ident
             .clone()
@@ -633,9 +810,16 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
                 })
             });
 
+        let func_kind = kw!(@pad "external")
+            .map_with_span(|_, span| FuncKind::External(span))
+            .or(kw!(@pad "internal").map_with_span(|_, span| FuncKind::Internal(span)))
+            .or_not()
+            .map(|kind| kind.unwrap_or(FuncKind::Normal));
+
         // Function, i.e. `func f() {}` or `func f() = expr;`
         let func = item_vis
             .clone()
+            .then(func_kind)
             .then(func_header)
             .then(
                 body.delimited(Delimiter::Brace)
@@ -647,12 +831,14 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
                         .ignore_then(expr.clone())
                         .then_ignore(just(Token::Semicolon))
                         .map(expr_as_block)
-                        .pad_ws()),
+                        .pad_ws())
+                    .map(Some)
+                    .or(just(Token::Semicolon).map(|_| None)),
             )
             .try_map(
                 |(
                     (
-                        vis,
+                        (vis, kind),
                         FuncHeader {
                             name,
                             ty_params,
@@ -667,6 +853,7 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
                     Ok(Spanned(
                         Node::Func {
                             vis,
+                            kind,
                             name,
                             ty_params,
                             params,
@@ -744,28 +931,27 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
             .labelled("return")
             .boxed();
 
-        let struct_field =
-            field_vis
-                .then(ident.clone())
-                .then_ignore(just(Token::Colon).then_ws())
-                .then(ty.clone())
-                .then(
-                    just(Token::Equals)
-                        .pad_ws()
-                        .ignore_then(expr.clone())
-                        .or_not(),
+        let struct_field = field_vis
+            .then(ident.clone())
+            .then_ignore(just(Token::Colon).then_ws())
+            .then(ty.clone())
+            .then(
+                just(Token::Equals)
+                    .pad_ws()
+                    .ignore_then(expr.clone())
+                    .or_not(),
+            )
+            .map_with_span(|(((vis, name), ty), default), span| {
+                Spanned(
+                    StructField {
+                        vis,
+                        name,
+                        ty,
+                        default,
+                    },
+                    span,
                 )
-                .map_with_span(|(((vis, name), ty), default), span| {
-                    Spanned(
-                        StructField {
-                            vis,
-                            name,
-                            ty,
-                            default,
-                        },
-                        span,
-                    )
-                });
+            });
 
         // Struct declaration, i.e. `struct Foo { ... }`
         let struct_decl = item_vis
@@ -797,13 +983,17 @@ pub fn body_parser<'a>() -> RecursiveParser<'a, Vec<Spanned<Node>>> {
 
         choice((
             let_decl,
+            alias_decl,
             const_decl,
+            import_decl,
             func,
             struct_decl,
             break_stmt,
             continue_stmt,
             return_stmt,
             decorator,
+            outer_doc,
+            inner_doc,
             expression,
         ))
         .pad_ws()
@@ -874,49 +1064,46 @@ pub fn brace_ending_expr<'a>(
         .boxed();
 
     // While-loop, i.e. while cond { ... }
-    let while_loop =
-        block_label
-            .clone()
-            .then_ignore(kw!(While))
-            .then(expr)
-            .then(braced_body.clone())
-            .then(kw!(Else).ignore_then(braced_body.clone()).or_not())
-            .map_with_span(|(((label, cond), body), else_body), span| {
-                Spanned(
-                    Expr::While(While {
-                        label,
-                        cond: Box::new(cond),
-                        body,
-                        else_body,
-                    }),
-                    span,
-                )
-            })
-            .pad_ws()
-            .labelled("while-loop")
-            .boxed();
+    let while_loop = block_label
+        .clone()
+        .then_ignore(kw!(While))
+        .then(expr)
+        .then(braced_body.clone())
+        .then(kw!(Else).ignore_then(braced_body.clone()).or_not())
+        .map_with_span(|(((label, cond), body), else_body), span| {
+            Spanned(
+                Expr::While(While {
+                    label,
+                    cond: Box::new(cond),
+                    body,
+                    else_body,
+                }),
+                span,
+            )
+        })
+        .pad_ws()
+        .labelled("while-loop")
+        .boxed();
 
     let simple_block = |f: BlockFn| move |(label, body), span| Spanned(f(label, body), span);
 
     // Loop-expression, i.e. loop { ... }
-    let loop_expr =
-        block_label
-            .clone()
-            .then_ignore(kw!(Loop))
-            .then(braced_body.clone())
-            .map_with_span(simple_block(|label, body| Expr::Loop { label, body }))
-            .pad_ws()
-            .labelled("loop-expression")
-            .boxed();
+    let loop_expr = block_label
+        .clone()
+        .then_ignore(kw!(Loop))
+        .then(braced_body.clone())
+        .map_with_span(simple_block(|label, body| Expr::Loop { label, body }))
+        .pad_ws()
+        .labelled("loop-expression")
+        .boxed();
 
     // Standard block, i.e. { ... }
-    let block_expr =
-        block_label
-            .then(braced_body)
-            .map_with_span(simple_block(|label, body| Expr::Block { label, body }))
-            .pad_ws()
-            .labelled("block-expression")
-            .boxed();
+    let block_expr = block_label
+        .then(braced_body)
+        .map_with_span(simple_block(|label, body| Expr::Block { label, body }))
+        .pad_ws()
+        .labelled("block-expression")
+        .boxed();
 
     choice((braced_if, while_loop, loop_expr, block_expr))
 }
@@ -967,10 +1154,20 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
                     Token::StringLiteral(content, flags, inner_span) => {
                         Atom::String(resolve_string(content, flags, inner_span)?)
                     }
-                    // FIXME: this needs to raise an error whenever a char literal has more than one character
+                    Token::ByteStringLiteral(content, flags, inner_span) => {
+                        Atom::Bytes(resolve_bytes(content, flags, inner_span)?)
+                    }
                     Token::CharLiteral(content, inner_span) => {
                         let content = resolve_string(content, StringLiteralFlags(0), inner_span)?;
-                        Atom::Char(content.chars().next().unwrap())
+                        let mut chars = content.chars();
+                        let Some(first) = chars.next() else {
+                            return Err(Error::invalid_char_literal(inner_span, 0));
+                        };
+                        if chars.next().is_some() {
+                            let len = 2 + chars.count();
+                            return Err(Error::invalid_char_literal(inner_span, len));
+                        }
+                        Atom::Char(first)
                     }
                     Token::Ident(ref name, _) => match name.as_str() {
                         "true" => Atom::Bool(true),
@@ -1115,28 +1312,27 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
             .boxed();
 
         // Prefix unary operators: -a, +a, !a
-        let unary =
-            just(Token::Minus)
-                .to(UnaryOp::Minus)
-                .or(just(Token::Plus).to(UnaryOp::Plus))
-                .or(just(Token::Not).to(UnaryOp::Not))
-                .map_with_span(Spanned)
-                .pad_ws()
-                .repeated()
-                .then(chain.clone())
-                .foldr(|op, expr| {
-                    let span = op.span().merge(expr.span());
+        let unary = just(Token::Minus)
+            .to(UnaryOp::Minus)
+            .or(just(Token::Plus).to(UnaryOp::Plus))
+            .or(just(Token::Not).to(UnaryOp::Not))
+            .map_with_span(Spanned)
+            .pad_ws()
+            .repeated()
+            .then(chain.clone())
+            .foldr(|op, expr| {
+                let span = op.span().merge(expr.span());
 
-                    Spanned(
-                        Expr::UnaryOp {
-                            op,
-                            expr: Box::new(expr),
-                        },
-                        span,
-                    )
-                })
-                .labelled("unary expression")
-                .boxed();
+                Spanned(
+                    Expr::UnaryOp {
+                        op,
+                        expr: Box::new(expr),
+                    },
+                    span,
+                )
+            })
+            .labelled("unary expression")
+            .boxed();
 
         // Type cast, e.g. `a to b`
         let cast = unary
@@ -1380,9 +1576,9 @@ pub fn expr_parser(body: RecursiveDef<Vec<Spanned<Node>>>) -> RecursiveParser<Sp
             just(Token::Asterisk)
                 .then_ws()
                 .ignore_then(expr)
-                .map_with_span(
-                    |expr, span| Spanned(AssignmentTarget::Pointer(Box::new(expr)), span)
-                ),
+                .map_with_span(|expr, span| {
+                    Spanned(AssignmentTarget::Pointer(Box::new(expr)), span)
+                }),
         ));
 
         // Assignment expressions, i.e. a = b, a += b

@@ -162,3 +162,26 @@ fn test_tokenizer_float_disambiguation() {
         Token::Ident("test".into(), false) => 63..67,
     }
 }
+
+#[test]
+fn test_tokenizer_byte_strings() {
+    let span = |start, end| Span::new(Src::None, start, end);
+
+    assert_tokens! {
+        "b\"abc\" b~\"raw\" b#\"hash\"#",
+        Token::ByteStringLiteral(b"abc".to_vec(), StringLiteralFlags(0), span(2, 5)) => 0..6,
+        Token::ByteStringLiteral(b"raw".to_vec(), StringLiteralFlags(1), span(10, 13)) => 7..14,
+        Token::ByteStringLiteral(b"hash".to_vec(), StringLiteralFlags(0), span(18, 22)) => 15..24,
+    }
+}
+
+#[test]
+fn test_tokenizer_char_literal_guard() {
+    let span = |start, end| Span::new(Src::None, start, end);
+
+    assert_tokens! {
+        "cat 'foo'",
+        Token::Ident("cat".into(), false) => 0..3,
+        Token::StringLiteral("foo".into(), StringLiteralFlags(0), span(5, 8)) => 4..9,
+    }
+}

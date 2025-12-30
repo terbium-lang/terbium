@@ -1,0 +1,10 @@
+[target.aarch64-apple-darwin]
+rustflags = [
+    "-C", "link-args=-mmacosx-version-min=15.0",
+    "-L", "/opt/homebrew/opt/llvm/lib",
+    "-l", "LLVM",
+    "-Clink-arg=-Wl,-rpath,/opt/homebrew/opt/llvm/lib"
+]
+
+[env]
+LLVM_SYS_180_PREFIX = "/opt/homebrew/opt/llvm" 

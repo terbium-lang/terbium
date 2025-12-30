@@ -8,7 +8,7 @@ use inkwell::{
     passes::PassManager,
     types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, IntType, StringRadix},
     values::{AnyValue, BasicValue, BasicValueEnum, FunctionValue, PointerValue},
-    IntPredicate,
+    AddressSpace, IntPredicate,
 };
 use mir::{
     BlockId, Constant, Expr, Func, Ident, IntIntrinsic, IntSign, IntWidth, LocalEnv, LocalId,
@@ -56,7 +56,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
     }
 
     /// Lowers a constant value.
-    pub fn lower_constant(&self, constant: Constant) -> BasicValueEnum<'ctx> {
+    pub fn lower_constant(&mut self, constant: Constant) -> BasicValueEnum<'ctx> {
         match constant {
             Constant::Int(i, sign, width) if width as usize <= 64 => BasicValueEnum::IntValue(
                 self.get_int_type(width as _)
@@ -77,7 +77,41 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             Constant::Bool(b) => {
                 BasicValueEnum::IntValue(self.context.bool_type().const_int(b as u64, false))
             }
-            Constant::Void => unimplemented!("void constants should be handled as a special-case"),
+            Constant::Void => BasicValueEnum::PointerValue(
+                self.context.ptr_type(AddressSpace::default()).const_null(),
+            ),
+            Constant::String(s) => {
+                // Create a global string constant
+                let string_type = self.context.i8_type().array_type(s.len() as u32);
+                let string_value = self.context.const_string(s.as_bytes(), true);
+                let global = self
+                    .module
+                    .add_global(string_type, None, &self.next_increment());
+                global.set_initializer(&string_value);
+                BasicValueEnum::PointerValue(global.as_pointer_value())
+            }
+            Constant::Slice(elements) => {
+                // Create a global array constant
+                let element_type = self.context.i8_type();
+                let array_type = element_type.array_type(elements.len() as u32);
+                let values = elements
+                    .iter()
+                    .map(|element| match element {
+                        Constant::Int(i, sign, width) if *width as usize <= 64 => {
+                            element_type.const_int(*i as u64, sign.is_signed())
+                        }
+                        Constant::Char(c) => element_type.const_int(*c as u64, false),
+                        Constant::Bool(b) => element_type.const_int(*b as u64, false),
+                        _ => element_type.const_zero(),
+                    })
+                    .collect::<Vec<_>>();
+                let array_value = element_type.const_array(&values);
+                let global = self
+                    .module
+                    .add_global(array_type, None, &self.next_increment());
+                global.set_initializer(&array_value);
+                BasicValueEnum::PointerValue(global.as_pointer_value())
+            }
             _ => todo!(),
         }
     }
@@ -101,8 +135,8 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                 let next = self.next_increment();
                 let val = self.lower_expr(*val)?.into_int_value();
                 BasicValueEnum::IntValue(match op {
-                    UnaryIntIntrinsic::Neg => self.builder.build_int_neg(val, &next),
-                    UnaryIntIntrinsic::BitNot => self.builder.build_not(val, &next),
+                    UnaryIntIntrinsic::Neg => self.builder.build_int_neg(val, &next).ok()?,
+                    UnaryIntIntrinsic::BitNot => self.builder.build_not(val, &next).ok()?,
                 })
             }
             IntIntrinsic::Binary(op, lhs, rhs) => {
@@ -149,7 +183,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                     B::Shr => self.builder.build_right_shift(lhs, rhs, false, &next),
                     _ => unreachable!(),
                 };
-                BasicValueEnum::IntValue(int_value)
+                BasicValueEnum::IntValue(int_value.ok()?)
             }
         })
     }
@@ -161,6 +195,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                 let ptr = self.locals[&id]?;
                 self.builder
                     .build_load(ptr.ty, ptr.value, &self.next_increment())
+                    .ok()?
             }
             Expr::Constant(c) => self.lower_constant(c),
             Expr::IntIntrinsic(intr, sign, _) => self.lower_int_intrinsic(intr, sign)?,
@@ -181,7 +216,11 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
                     B::Xor(lhs, rhs) => lower!(lhs, rhs => self.builder.build_xor(lhs, rhs, &next)),
                     B::Not(val) => lower!(val => self.builder.build_not(val, &next)),
                 };
-                BasicValueEnum::IntValue(bool_value)
+                BasicValueEnum::IntValue(bool_value.ok()?)
+            }
+            Expr::FuncRef(id) => {
+                let func = self.functions.get(&id)?;
+                BasicValueEnum::PointerValue(func.as_global_value().as_pointer_value())
             }
             Expr::Call(func, args) => {
                 let args = args
@@ -191,6 +230,33 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
                 self.builder
                     .build_call(self.functions[&func], &args, &self.next_increment())
+                    .ok()?
+                    .try_as_basic_value()
+                    .left()
+                    .unwrap()
+            }
+            Expr::CallIndirect(callee, args, callee_ty) => {
+                let callee = self.lower_expr(*callee)?.into_pointer_value();
+                let args = args
+                    .into_iter()
+                    .map(|arg| self.lower_expr(arg).unwrap().into())
+                    .collect::<Vec<_>>();
+                let (params, ret) = match callee_ty {
+                    Ty::Func(params, ret) => (params, ret),
+                    _ => return None,
+                };
+                let param_tys = params
+                    .iter()
+                    .map(|ty| self.lower_ty(ty).into())
+                    .collect::<Vec<BasicMetadataTypeEnum>>();
+                let fn_ty = if ret.is_zst() {
+                    self.context.void_type().fn_type(&param_tys, false)
+                } else {
+                    self.lower_ty(&ret).fn_type(&param_tys, false)
+                };
+                self.builder
+                    .build_indirect_call(fn_ty, callee, &args, &self.next_increment())
+                    .ok()?
                     .try_as_basic_value()
                     .left()
                     .unwrap()
@@ -211,7 +277,10 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             Node::Register(loc, expr, ty) => {
                 let local = self.lower_expr(expr).map(|expr| {
                     let ty = self.lower_ty(&ty);
-                    let ptr = self.builder.build_alloca(ty, &loc.name());
+                    let ptr = self
+                        .builder
+                        .build_alloca(ty, &loc.name())
+                        .expect("failed to create alloca");
                     self.builder.build_store(ptr, expr);
 
                     Local { value: ptr, ty }
@@ -221,7 +290,10 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             Node::Local(id, ty) => {
                 let local = ty.is_zst().not().then(|| {
                     let ty = self.lower_ty(&ty);
-                    let ptr = self.builder.build_alloca(ty, &id.name());
+                    let ptr = self
+                        .builder
+                        .build_alloca(ty, &id.name())
+                        .expect("failed to create alloca");
                     Local { value: ptr, ty }
                 });
                 self.locals.insert(id, local);
@@ -253,7 +325,8 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
     /// Lowers a block given its ID.
     pub fn lower_block(&mut self, block_id: BlockId) {
-        let block = self.lowering_mut().blocks.remove(&block_id).unwrap();
+        let blocks = self.lowering_mut().blocks.as_mut().expect("missing blocks");
+        let block = blocks.remove(&block_id).unwrap();
         self.builder
             .position_at_end(*self.blocks.get(&block_id).unwrap());
 
@@ -271,7 +344,24 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         match ty {
             P(PrimitiveTy::Int(_, width)) => BasicTypeEnum::IntType(self.get_int_type(*width)),
             P(PrimitiveTy::Bool) => BasicTypeEnum::IntType(self.context.bool_type()),
-            _ => todo!(),
+            P(PrimitiveTy::String) => {
+                // String is represented as a pointer to a null-terminated array of i8
+                BasicTypeEnum::PointerType(self.context.ptr_type(AddressSpace::default()))
+            }
+            Ty::Func(params, ret) => {
+                let param_tys = params
+                    .iter()
+                    .map(|ty| self.lower_ty(ty).into())
+                    .collect::<Vec<BasicMetadataTypeEnum>>();
+                let fn_ty = if ret.is_zst() {
+                    self.context.void_type().fn_type(&param_tys, false)
+                } else {
+                    self.lower_ty(ret).fn_type(&param_tys, false)
+                };
+                BasicTypeEnum::PointerType(fn_ty.ptr_type(AddressSpace::default()))
+            }
+            // Default to a generic pointer type for any other primitive types
+            _ => BasicTypeEnum::PointerType(self.context.ptr_type(AddressSpace::default())),
         }
     }
 
@@ -289,7 +379,9 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             None => builder.position_at_end(entry),
         }
 
-        builder.build_alloca(ty, name)
+        builder
+            .build_alloca(ty, name)
+            .expect("failed to create alloca")
     }
 
     #[inline]
@@ -324,7 +416,9 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
 
     /// Compiles the body of the given function.
     fn compile_fn(&mut self, fn_value: FunctionValue<'ctx>, func: Func, names: Vec<Ident>) {
-        let block_ids = func.blocks.keys().copied().collect::<Vec<_>>();
+        let mut func = func;
+        let blocks = func.blocks.take().expect("missing function body");
+        let block_ids = blocks.keys().copied().collect::<Vec<_>>();
         self.lowering = MaybeUninit::new(func);
         self.fn_value.write(fn_value);
         self.locals.clear();
@@ -357,6 +451,7 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         }
 
         // Compile body
+        self.lowering_mut().blocks = Some(blocks);
         block_ids.into_iter().for_each(|id| self.lower_block(id));
         self.fn_value().print_to_string();
         unsafe { self.lowering.assume_init_drop() };
@@ -367,6 +462,63 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
         } else {
             unsafe {
                 self.fn_value().delete();
+            }
+        }
+    }
+
+    fn get_fputs(&self) -> FunctionValue<'ctx> {
+        if let Some(func) = self.module.get_function("fputs") {
+            return func;
+        }
+        let i8_ptr = self.context.ptr_type(AddressSpace::default());
+        let i32 = self.context.i32_type();
+        let ty = i32.fn_type(&[i8_ptr.into(), i8_ptr.into()], false);
+        self.module.add_function("fputs", ty, None)
+    }
+
+    fn get_stdio_ptr(&self, name: &str) -> PointerValue<'ctx> {
+        let i8_ptr = self.context.ptr_type(AddressSpace::default());
+        let global = self
+            .module
+            .get_global(name)
+            .unwrap_or_else(|| self.module.add_global(i8_ptr, None, name));
+        global.as_pointer_value()
+    }
+
+    fn compile_internal_fn(&mut self, fn_value: FunctionValue<'ctx>, func: &Func) {
+        let name = func.name.to_string();
+        let (stream_name, param_name) = match name.as_str() {
+            "core.intrinsics.write_stdout" => ("stdout", "s"),
+            "core.intrinsics.write_stderr" => ("stderr", "s"),
+            _ => return,
+        };
+
+        let entry = self.context.append_basic_block(fn_value, "entry");
+        self.builder.position_at_end(entry);
+
+        let param = fn_value.get_first_param().expect("missing arg");
+        param.set_name(param_name);
+
+        let fputs = self.get_fputs();
+        let stream = self
+            .builder
+            .build_load(
+                self.context.ptr_type(AddressSpace::default()),
+                self.get_stdio_ptr(stream_name),
+                "stream",
+            )
+            .expect("failed to load stdio stream")
+            .into_pointer_value();
+
+        self.builder
+            .build_call(fputs, &[param.into(), stream.into()], "call");
+        self.builder.build_return(None);
+
+        if fn_value.verify(true) {
+            self.fpm.run_on(&fn_value);
+        } else {
+            unsafe {
+                fn_value.delete();
             }
         }
     }
@@ -397,6 +549,13 @@ impl<'a, 'ctx> Compiler<'a, 'ctx> {
             names.push(compiler.register_fn(*id, func));
         }
         for ((id, func), names) in functions.into_iter().zip(names) {
+            if matches!(func.kind, mir::FuncKind::Internal(_)) {
+                compiler.compile_internal_fn(compiler.functions[&id], &func);
+                continue;
+            }
+            if func.blocks.is_none() {
+                continue;
+            };
             compiler.compile_fn(compiler.functions[&id], func, names);
         }
     }

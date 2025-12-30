@@ -1,6 +1,6 @@
 use crate::{
-    typed::{self, Constraint},
     Ident, ModuleId, PrimitiveTy, Ty,
+    typed::{self, Constraint},
 };
 use common::span::{Span, Spanned};
 use diagnostics::{Action, Diagnostic, Fix, Label, Section, Severity};
@@ -16,16 +16,14 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[inline]
 #[must_use]
 pub const fn pluralize<'a>(count: usize, singular: &'a str, plural: &'a str) -> &'a str {
-    if count == 1 {
-        singular
-    } else {
-        plural
-    }
+    if count == 1 { singular } else { plural }
 }
 
 /// Represents an error that occurred during the lowering of AST to HIR.
 #[derive(Clone, Debug)]
 pub enum Error {
+    /// Invalid syntax. (Could not parse module file)
+    InvalidGrammar(grammar::Error, ModuleId),
     /// The provided type is not a concrete struct. Structs may only extend fields from other
     /// structs.
     CannotExtendFieldsFromType(Spanned<TypeExpr>),
@@ -90,6 +88,8 @@ pub enum Error {
     ExplicitTypeArgumentsNotAllowed(Span),
     /// Unresolved identifier.
     UnresolvedIdentifier(Spanned<String>),
+    /// Item not found in this module.
+    FailedNamespaceLookup(Spanned<String>, ModuleId),
     /// Cannot bind pattern to the given value.
     PatternMismatch {
         /// The description of the pattern attempted to be bound to.
@@ -117,11 +117,24 @@ pub enum Error {
     UseOfUninitializedVariable(Span, Spanned<Ident>),
     /// Provided arguments to a decorator that takes no arguments.
     BareDecoratorWithArguments(Spanned<String>, Span),
+    /// A function body was required but not provided.
+    MissingFunctionBody(Span),
+    /// A function body was provided where it is not allowed.
+    FunctionBodyNotAllowed(Span),
+    /// Unknown keyword argument was provided.
+    UnknownKeywordArgument(Span, Ident),
+    /// Duplicate keyword argument was provided.
+    DuplicateKeywordArgument(Span, Ident),
+    /// Required keyword argument is missing.
+    MissingKeywordArgument(Span, Ident),
 }
 
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::InvalidGrammar(_, module_id) => {
+                write!(f, "invalid syntax in {module_id}")
+            }
             Self::CannotExtendFieldsFromType(ty) => {
                 write!(f, "cannot extend fields from type `{ty}`")
             }
@@ -199,6 +212,9 @@ impl Display for Error {
             Self::UnresolvedIdentifier(name) => {
                 write!(f, "unresolved identifier `{name}`")
             }
+            Self::FailedNamespaceLookup(name, module) => {
+                write!(f, "could not find `{name}` in module `{module}`")
+            }
             Self::PatternMismatch { pat, value, .. } => {
                 write!(f, "cannot bind {value} to {pat}")
             }
@@ -226,6 +242,21 @@ impl Display for Error {
             Self::BareDecoratorWithArguments(name, _) => {
                 write!(f, "bare decorator @{name} cannot have arguments")
             }
+            Self::MissingFunctionBody(_) => {
+                write!(f, "missing function body")
+            }
+            Self::FunctionBodyNotAllowed(_) => {
+                write!(f, "function body is not allowed here")
+            }
+            Self::UnknownKeywordArgument(_, name) => {
+                write!(f, "unknown keyword argument `{name}`")
+            }
+            Self::DuplicateKeywordArgument(_, name) => {
+                write!(f, "duplicate keyword argument `{name}`")
+            }
+            Self::MissingKeywordArgument(_, name) => {
+                write!(f, "missing keyword argument `{name}`")
+            }
         }
     }
 }
@@ -236,6 +267,7 @@ impl Error {
     /// A simple message describing the error.
     pub const fn simple_message(&self) -> &'static str {
         match self {
+            Self::InvalidGrammar(..) => "invalid syntax",
             Self::CannotExtendFieldsFromType(_) => "cannot extend fields from this type",
             Self::NameConflict(..) => "item name conflict",
             Self::IntegerLiteralOverflow(..) => "integer literal will overflow 128 bits",
@@ -254,6 +286,7 @@ impl Error {
                 "explicit generic type arguments are not allowed in this context"
             }
             Self::UnresolvedIdentifier(..) => "unresolved identifier",
+            Self::FailedNamespaceLookup(..) => "failed namespace lookup",
             Self::PatternMismatch { .. } => "pattern mismatch",
             Self::ConditionNotBool(..) => "condition is not `bool`",
             Self::ReassignmentToImmutable(..) => "cannot reassign to immutable variable",
@@ -263,12 +296,18 @@ impl Error {
             Self::LabelNotFound(_) => "cannot find label",
             Self::UseOfUninitializedVariable(..) => "use of potentially uninitialized variable",
             Self::BareDecoratorWithArguments(..) => "decorator cannot have arguments",
+            Self::MissingFunctionBody(..) => "missing function body",
+            Self::FunctionBodyNotAllowed(..) => "function body not allowed",
+            Self::UnknownKeywordArgument(..) => "unknown keyword argument",
+            Self::DuplicateKeywordArgument(..) => "duplicate keyword argument",
+            Self::MissingKeywordArgument(..) => "missing keyword argument",
         }
     }
 
     /// The error code used to identify this error in the error index.
     pub const fn error_code(&self) -> usize {
         match self {
+            Self::InvalidGrammar(inner, _) => inner.info.code(),
             Self::CannotExtendFieldsFromType(_) => 100,
             Self::NameConflict(..) => 101,
             Self::IntegerLiteralOverflow(..) => 102,
@@ -288,6 +327,8 @@ impl Error {
             Self::IncorrectArgumentCount { .. } => 124,
             Self::ExplicitTypeArgumentsNotAllowed(_) => 112,
             Self::UnresolvedIdentifier(..) => 113,
+            // NOTE: added after 129
+            Self::FailedNamespaceLookup(..) => 130,
             Self::PatternMismatch { .. } => 114,
             Self::ConditionNotBool(_) => 115,
             Self::ReassignmentToImmutable(..) => 116,
@@ -297,6 +338,11 @@ impl Error {
             Self::LabelNotFound(_) => 120,
             Self::UseOfUninitializedVariable(..) => 121,
             Self::BareDecoratorWithArguments(..) => 122,
+            Self::MissingFunctionBody(..) => 125,
+            Self::FunctionBodyNotAllowed(..) => 126,
+            Self::UnknownKeywordArgument(..) => 127,
+            Self::DuplicateKeywordArgument(..) => 128,
+            Self::MissingKeywordArgument(..) => 129,
         }
     }
 
@@ -305,6 +351,7 @@ impl Error {
         let mut diagnostic =
             Diagnostic::new(Severity::Error(self.error_code()), self.simple_message());
         diagnostic = match self {
+            Self::InvalidGrammar(inner, _) => inner.into_diagnostic(),
             Self::CannotExtendFieldsFromType(ty) => {
                 diagnostic
                     .with_section(Section::new()
@@ -430,11 +477,12 @@ impl Error {
                                 ", leading to a circular type reference"
                             } else { "" }))
                         )
-                        .with_note("circular type references occur when a type references itself, either directly or indirectly")
                     );
                 }
 
-                diagnostic.with_help("try adding a level of indirection or removing the circular type completely")
+                diagnostic
+                    .with_note("circular type references occur when a type references itself")
+                    .with_help("try adding a level of indirection or removing the circular type completely")
             }
             Self::GetterLessVisibleThanSetter(Spanned(vis, span)) => {
                 let mut section = Section::new();
@@ -564,6 +612,15 @@ impl Error {
                     )
                     .with_help("check the spelling of the identifier")
             }
+            Self::FailedNamespaceLookup(Spanned(name, span), module) => {
+                diagnostic
+                    .with_section(Section::new()
+                        .with_label(Label::at(span)
+                            .with_message(format!("could not find `{name}` in module `{module}`"))
+                        )
+                    )
+                    .with_help("check the spelling of the item")
+            }
             Self::PatternMismatch { pat, pat_span, value, value_span } => {
                 let mut section = Section::new()
                     .with_label(Label::at(pat_span)
@@ -691,6 +748,39 @@ impl Error {
                         .with_message(format!("remove the arguments passed into @{name}"))
                     )
             }
+            Self::MissingFunctionBody(span) => {
+                diagnostic.with_section(
+                    Section::new().with_label(
+                        Label::at(span).with_message("function declaration is missing a body"),
+                    ),
+                )
+            }
+            Self::FunctionBodyNotAllowed(span) => {
+                diagnostic.with_section(
+                    Section::new().with_label(
+                        Label::at(span).with_message("function body is not allowed here"),
+                    ),
+                )
+            }
+            Self::UnknownKeywordArgument(span, name) => diagnostic
+                .with_section(
+                    Section::new().with_label(Label::at(span).with_message(format!(
+                        "unknown keyword argument `{name}`"
+                    ))),
+                )
+                .with_help("check the argument name or use a positional argument"),
+            Self::DuplicateKeywordArgument(span, name) => diagnostic.with_section(
+                Section::new().with_label(Label::at(span).with_message(format!(
+                    "duplicate keyword argument `{name}`"
+                ))),
+            ),
+            Self::MissingKeywordArgument(span, name) => diagnostic
+                .with_section(
+                    Section::new().with_label(Label::at(span).with_message(format!(
+                        "missing keyword argument `{name}`"
+                    ))),
+                )
+                .with_help("provide a value for this argument"),
         };
         diagnostic
     }

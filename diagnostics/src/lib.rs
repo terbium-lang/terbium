@@ -1,7 +1,5 @@
 //! Terbium diagnostic reporting.
 
-#![feature(let_chains)]
-
 use common::span::Span;
 
 pub mod span;

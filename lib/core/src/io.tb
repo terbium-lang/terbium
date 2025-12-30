@@ -1,0 +1,6 @@
+//! Basic I/O helpers.
+
+// import core.intrinsics.write_stdout;
+// import core.intrinsics.write_stderr;
+
+func tuffness() -> int32 { 1 }

@@ -26,7 +26,7 @@ pub use hir::{
         BinaryIntIntrinsic, LocalEnv, Ty, /* TODO: monomorphize types */
         UnaryIntIntrinsic,
     },
-    Ident, IntSign, IntWidth, LookupId, ModuleId, PrimitiveTy,
+    FuncKind, Ident, IntSign, IntWidth, LookupId, ModuleId, PrimitiveTy,
 };
 pub use lower::Lowerer;
 
@@ -112,12 +112,18 @@ pub struct Func {
     pub name: ItemId,
     pub params: Vec<(Ident, Ty)>,
     pub ret_ty: Ty,
-    pub blocks: BlockMap,
+    pub kind: FuncKind,
+    pub blocks: Option<BlockMap>,
 }
 
 impl Display for Func {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "func {}(", self.name)?;
+        let kind = match self.kind {
+            FuncKind::Normal => "",
+            FuncKind::External(_) => "external ",
+            FuncKind::Internal(_) => "internal ",
+        };
+        write!(f, "{kind}func {}(", self.name)?;
         write_comma_sep(
             f,
             self.params
@@ -125,10 +131,12 @@ impl Display for Func {
                 .map(|(p, ty)| format!("%local.{p}: {ty}")),
         )?;
         writeln!(f, ") -> {} {{", self.ret_ty)?;
-        for (id, block) in &self.blocks {
-            writeln!(f, "{id}:")?;
-            for node in block {
-                writeln!(f, "    {node}")?;
+        if let Some(blocks) = &self.blocks {
+            for (id, block) in blocks {
+                writeln!(f, "{id}:")?;
+                for node in block {
+                    writeln!(f, "    {node}")?;
+                }
             }
         }
         write!(f, "}}")
@@ -145,6 +153,8 @@ pub enum Constant {
     Char(char),
     Tuple(Vec<Self>),
     Array(Vec<Self>),
+    Slice(Vec<Self>),
+    String(String),
 }
 
 impl Display for Constant {
@@ -172,6 +182,12 @@ impl Display for Constant {
                 write_comma_sep(f, a.iter())?;
                 write!(f, "]")
             }
+            Self::Slice(s) => {
+                write!(f, "[")?;
+                write_comma_sep(f, s.iter())?;
+                write!(f, "]")
+            }
+            Self::String(s) => write!(f, "\"{s}\""),
         }
     }
 }
@@ -214,9 +230,11 @@ impl Display for BoolIntrinsic {
 pub enum Expr {
     Constant(Constant),
     Local(LocalId),
+    FuncRef(LookupId),
     IntIntrinsic(IntIntrinsic, IntSign, IntWidth),
     BoolIntrinsic(BoolIntrinsic),
     Call(LookupId, Vec<Spanned<Self>>),
+    CallIndirect(Box<Spanned<Self>>, Vec<Spanned<Self>>, Ty),
 }
 
 impl Display for Expr {
@@ -224,12 +242,18 @@ impl Display for Expr {
         match self {
             Self::Constant(c) => write!(f, "{c}"),
             Self::Local(l) => write!(f, "{l}"),
+            Self::FuncRef(i) => write!(f, "[#{}]", i.0),
             Self::IntIntrinsic(i, sign, width) => {
                 write!(f, "<{}{}>{i}", sign.type_name(), *width as usize)
             }
             Self::BoolIntrinsic(b) => write!(f, "{b}"),
             Self::Call(i, args) => {
                 write!(f, "[#{}](", i.0)?;
+                write_comma_sep(f, args.iter())?;
+                write!(f, ")")
+            }
+            Self::CallIndirect(callee, args, _) => {
+                write!(f, "{}(", callee)?;
                 write_comma_sep(f, args.iter())?;
                 write!(f, ")")
             }

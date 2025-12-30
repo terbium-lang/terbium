@@ -1,19 +1,23 @@
 use crate::{
-    error::{Error, Result},
     Const, Decorator, Expr, FieldVisibility, FloatWidth, Func, FuncHeader, FuncParam, Hir, Ident,
     IntSign, IntWidth, ItemId, ItemKind, Literal, LogicalOp, LookupId, ModuleId, Node, Op, Pattern,
     PrimitiveTy, Scope, ScopeId, StructField, StructTy, Ty, TyDef, TyParam,
+    error::{Error, Result},
 };
-use common::span::{Span, Spanned, SpannedExt};
+use common::span::{Provider, Span, Spanned, SpannedExt};
 use grammar::{
     ast::{
         self, AssignmentOperator, AssignmentTarget, Atom, GenericTyApp, StructDef, TypeExpr,
         TypePath, While,
     },
+    parser::Parser,
     token::IntLiteralInfo,
 };
 use internment::Intern;
-use std::collections::HashMap;
+use std::{
+    collections::{HashMap, HashSet},
+    path::PathBuf,
+};
 
 type NamedTyDef = (ItemId, TyDef);
 
@@ -29,6 +33,8 @@ pub struct AstLowerer {
     outer_decorators: Vec<Spanned<Decorator>>,
     /// Increment of global lookup ID.
     lookup_id: usize,
+    /// Modules currently in resolution to avoid import cycles.
+    resolving_modules: HashSet<ModuleId>,
     /// The HIR being constructed.
     pub hir: Hir,
     /// Non-fatal errors that occurred during lowering.
@@ -102,6 +108,7 @@ impl AstLowerer {
             sty_needs_field_resolution: HashMap::new(),
             outer_decorators: Vec::new(),
             lookup_id: 0,
+            resolving_modules: HashSet::new(),
             hir: Hir::default(),
             errors: Vec::new(),
         }
@@ -162,13 +169,13 @@ impl AstLowerer {
 
     /// Creates a new context for the given scope.
     #[inline]
-    pub fn scope_ctx(&self, scope: ScopeId) -> Ctx {
+    pub fn scope_ctx(&self, scope: ScopeId) -> Ctx<'_> {
         Ctx::new(self.hir.scopes.get(&scope).unwrap())
     }
 
     /// Creates a new context for the given module.
     #[inline]
-    pub fn module_ctx(&self, module: ModuleId) -> Ctx {
+    pub fn module_ctx(&self, module: ModuleId) -> Ctx<'_> {
         let scope_id = self.hir.modules.get(&module).unwrap();
         self.scope_ctx(*scope_id)
     }
@@ -182,19 +189,266 @@ impl AstLowerer {
 
     /// Completely performs a lowering pass over a module.
     pub fn resolve_module(&mut self, module: ModuleId, span: Span) -> Result<()> {
-        // SAFETY: `children` is set later in this function.
-        let mut scope = Scope::from_module_id(module);
-        self.resolve_types(module, &mut scope)?;
-        self.resolve_consts(module, &mut scope)?;
-        self.resolve_funcs(module, &mut scope)?;
+        if self.hir.modules.contains_key(&module) {
+            return Ok(());
+        }
+        if !self.resolving_modules.insert(module) {
+            let module_name = module.to_string();
+            return Err(Error::ModuleNotFound(Spanned(module_name, span)));
+        }
+        let result = try {
+            // SAFETY: `children` is set later in this function.
+            let mut scope = Scope::from_module_id(module);
+            self.resolve_imports(module, &mut scope)?;
+            self.resolve_types(module, &mut scope)?;
+            self.resolve_aliases(module, &mut scope)?;
+            self.resolve_consts(module, &mut scope)?;
+            self.resolve_funcs(module, &mut scope)?;
 
-        let ctx = Ctx::new(&scope);
-        let nodes = std::mem::replace(self.module_nodes.get_mut(&module).unwrap(), Vec::new());
-        scope.children = self.lower_ast_nodes(&ctx, nodes)?.spanned(span);
+            let ctx = Ctx::new(&scope);
+            let nodes = std::mem::replace(self.module_nodes.get_mut(&module).unwrap(), Vec::new());
+            scope.children = self.lower_ast_nodes(&ctx, nodes)?.spanned(span);
 
-        let scope_id = self.register_scope(scope);
-        self.hir.modules.insert(module, scope_id);
+            let scope_id = self.register_scope(scope);
+            self.hir.modules.insert(module, scope_id);
+        };
+        self.resolving_modules.remove(&module);
+        result
+    }
 
+    fn import_path_span(path: &[Spanned<String>]) -> Span {
+        path.iter()
+            .map(Spanned::span)
+            .reduce(|acc, span| acc.merge(span))
+            .unwrap_or(Span::PLACEHOLDER)
+    }
+
+    fn import_path_string(path: &[Spanned<String>]) -> String {
+        path.iter()
+            .map(|segment| segment.value().as_str())
+            .collect::<Vec<_>>()
+            .join(".")
+    }
+
+    fn import_module_id(path: &[Spanned<String>]) -> ModuleId {
+        let segments = path
+            .iter()
+            .map(|segment| segment.value().clone())
+            .collect::<Vec<_>>();
+        ModuleId(Intern::new(segments))
+    }
+
+    fn core_module_path(path: &[Spanned<String>]) -> Option<PathBuf> {
+        if path.first().is_none_or(|seg| seg.value() != "core") {
+            return None;
+        }
+        let mut module_path = PathBuf::from("lib/core/src");
+        if path.len() == 1 {
+            module_path.push("prelude.tb");
+        } else {
+            for segment in &path[1..] {
+                module_path.push(segment.value());
+            }
+            module_path.set_extension("tb");
+        }
+        Some(module_path)
+    }
+
+    fn load_import_module(
+        &mut self,
+        path: &[Spanned<String>],
+        module: ModuleId,
+        span: Span,
+    ) -> Result<()> {
+        if self.hir.modules.contains_key(&module) {
+            return Ok(());
+        }
+        if self.resolving_modules.contains(&module) {
+            let module_name = Self::import_path_string(path);
+            return Err(Error::ModuleNotFound(Spanned(module_name, span)));
+        }
+        if !self.module_nodes.contains_key(&module) {
+            let module_path = Self::core_module_path(path).ok_or_else(|| {
+                Error::ModuleNotFound(Spanned(Self::import_path_string(path), span))
+            })?;
+            let provider = Provider::read_from_file(&module_path).map_err(|_| {
+                Error::ModuleNotFound(Spanned(Self::import_path_string(path), span))
+            })?;
+            let mut parser = Parser::from_provider(&provider);
+            let nodes = match parser.consume_body_until_end() {
+                Ok(ast) => ast,
+                Err(errors) => {
+                    for err in errors {
+                        self.err_nonfatal(Error::InvalidGrammar(err, module));
+                    }
+                    return Ok(());
+                }
+            };
+            self.module_nodes.insert(module, nodes);
+            let module_span = provider.eof().merge(Span::begin(provider.src()));
+            return self.resolve_module(module, module_span);
+        }
+        self.resolve_module(module, span)
+    }
+
+    fn import_item(
+        &mut self,
+        scope: &mut Scope,
+        module: ModuleId,
+        name: Spanned<String>,
+        import_span: Span,
+    ) -> Result<()> {
+        let items = self.module_items(module, import_span)?;
+        self.import_module_originals(scope, module, import_span)?;
+        let ident = get_ident_from_ref(name.value());
+        let mut found = false;
+
+        for (kind, item, lookup) in items {
+            if item.1 != ident {
+                continue;
+            }
+            found = true;
+            let alias_item = ItemId(scope.module_id, ident);
+            self.insert_import_item(scope, kind, alias_item, lookup, name.span());
+        }
+
+        if !found {
+            return Err(Error::FailedNamespaceLookup(name, module));
+        }
+        Ok(())
+    }
+
+    fn ensure_module_loaded(&mut self, path: &[Spanned<String>], span: Span) -> Result<ModuleId> {
+        if path.is_empty() {
+            return Ok(ModuleId::root());
+        }
+        let module_id = Self::import_module_id(path);
+        self.load_import_module(path, module_id, span)?;
+        Ok(module_id)
+    }
+
+    fn resolve_import_item(
+        &mut self,
+        scope: &mut Scope,
+        base: &[Spanned<String>],
+        item: Spanned<ast::ImportItem>,
+        import_span: Span,
+    ) -> Result<()> {
+        match item.value() {
+            ast::ImportItem::Path(path) => {
+                let mut namespace = base.to_vec();
+                namespace.extend(path.namespace.iter().cloned());
+                self.resolve_import_item(scope, &namespace, path.item.clone(), import_span)?;
+            }
+            ast::ImportItem::Named(name) => {
+                let path_span = if base.is_empty() {
+                    item.span()
+                } else {
+                    Self::import_path_span(base).merge(item.span())
+                };
+                let module_id = self.ensure_module_loaded(base, path_span)?;
+                self.import_item(
+                    scope,
+                    module_id,
+                    Spanned(name.clone(), item.span()),
+                    import_span,
+                )?;
+            }
+            ast::ImportItem::List(items) => {
+                for item in items {
+                    self.resolve_import_item(scope, base, item.clone(), import_span)?;
+                }
+            }
+            ast::ImportItem::This | ast::ImportItem::Wildcard => {
+                let path_span = if base.is_empty() {
+                    item.span()
+                } else {
+                    Self::import_path_span(base).merge(item.span())
+                };
+                let module_id = self.ensure_module_loaded(base, path_span)?;
+                self.import_all_from_module(scope, module_id, import_span)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn import_all_from_module(
+        &mut self,
+        scope: &mut Scope,
+        module: ModuleId,
+        import_span: Span,
+    ) -> Result<()> {
+        let items = self.module_items(module, import_span)?;
+        self.import_module_originals(scope, module, import_span)?;
+        for (kind, item, id) in items {
+            let alias_item = ItemId(scope.module_id, item.1);
+            self.insert_import_item(scope, kind, alias_item, id, import_span);
+        }
+        Ok(())
+    }
+
+    fn insert_import_item(
+        &mut self,
+        scope: &mut Scope,
+        kind: ItemKind,
+        item: ItemId,
+        id: LookupId,
+        import_span: Span,
+    ) {
+        if let Some(existing) = scope.items.get(&(kind, item)) {
+            if *existing == id {
+                return;
+            }
+        }
+        let name = Spanned(item.1.to_string(), import_span);
+        self.propagate_nonfatal(self.assert_item_unique(scope, &item, name));
+        scope.items.insert((kind, item), id);
+    }
+
+    fn module_items(
+        &self,
+        module: ModuleId,
+        import_span: Span,
+    ) -> Result<Vec<(ItemKind, ItemId, LookupId)>> {
+        let Some(scope_id) = self.hir.modules.get(&module).copied() else {
+            let module_name = module.to_string();
+            return Err(Error::ModuleNotFound(Spanned(module_name, import_span)));
+        };
+        let module_scope = self.hir.scopes.get(&scope_id).expect("scope not found");
+        Ok(module_scope
+            .items
+            .iter()
+            .map(|((kind, item), id)| (*kind, *item, *id))
+            .collect())
+    }
+
+    fn import_module_originals(
+        &mut self,
+        scope: &mut Scope,
+        module: ModuleId,
+        import_span: Span,
+    ) -> Result<()> {
+        let items = self.module_items(module, import_span)?;
+        for (kind, item, id) in items {
+            self.insert_import_item(scope, kind, item, id, import_span);
+        }
+        Ok(())
+    }
+
+    /// Perform a pass over the AST to resolve all import statements.
+    pub fn resolve_imports(&mut self, module: ModuleId, scope: &mut Scope) -> Result<()> {
+        let nodes = self
+            .module_nodes
+            .get(&module)
+            .cloned()
+            .expect("module not found");
+
+        for Spanned(node, span) in nodes {
+            let ast::Node::Import { item, .. } = node else {
+                continue;
+            };
+            self.resolve_import_item(scope, &[], item, span)?;
+        }
         Ok(())
     }
 
@@ -248,10 +502,9 @@ impl AstLowerer {
 
         // Do a pass over all structs to resolve parent fields
         while !sty_parents.is_empty() {
-            let mut seen =
-                HashMap::<_, (Spanned<Ident>, Spanned<TypePath>, ItemId)>::with_capacity(
-                    sty_parents.len(),
-                );
+            let mut seen = HashMap::<_, (Spanned<Ident>, Spanned<TypePath>, ItemId)>::with_capacity(
+                sty_parents.len(),
+            );
             // Grab the next struct item ID to resolve
             let mut key = unsafe {
                 // SAFETY: sty_parents is guaranteed to have elements
@@ -334,6 +587,33 @@ impl AstLowerer {
                 scope
                     .items
                     .insert((ItemKind::Const, item), insert_lookup!(self, consts, cnst));
+            }
+        }
+        Ok(())
+    }
+
+    /// Perform a pass over the AST to resolve all top-level aliases.
+    pub fn resolve_aliases(&mut self, module: ModuleId, scope: &mut Scope) -> Result<()> {
+        let nodes = self.module_nodes.get(&module).expect("module not found");
+
+        for node in nodes.clone() {
+            if let ast::Node::Alias {
+                vis, name, value, ..
+            } = node.into_value()
+            {
+                let ctx = Ctx::new(scope);
+                let ident = name.as_ref().map(get_ident_from_ref);
+                let alias = crate::Alias {
+                    vis,
+                    name: ident,
+                    value: self.lower_expr(&ctx, value)?,
+                };
+                let item = ItemId(module, *ident.value());
+                self.propagate_nonfatal(self.assert_item_unique(scope, &item, name));
+                scope.items.insert(
+                    (ItemKind::Alias, item),
+                    insert_lookup!(self, aliases, alias),
+                );
             }
         }
         Ok(())
@@ -571,9 +851,7 @@ impl AstLowerer {
 
     pub fn lower_ty_ident_into_primitive(s: &str) -> Option<PrimitiveTy> {
         macro_rules! int_ty {
-            ($sign:ident $w:ident) => {{
-                Some(PrimitiveTy::Int(IntSign::$sign, IntWidth::$w))
-            }};
+            ($sign:ident $w:ident) => {{ Some(PrimitiveTy::Int(IntSign::$sign, IntWidth::$w)) }};
         }
 
         match s {
@@ -595,6 +873,7 @@ impl AstLowerer {
             "bool" => Some(PrimitiveTy::Bool),
             "char" => Some(PrimitiveTy::Char),
             "void" => Some(PrimitiveTy::Void),
+            "string" => Some(PrimitiveTy::String),
             _ => None,
         }
     }
@@ -606,10 +885,11 @@ impl AstLowerer {
         for node in nodes.clone() {
             if let ast::Node::Func {
                 vis,
+                kind,
                 name,
                 ty_params,
                 params,
-                kw_params: _, // TODO
+                kw_params,
                 ret,
                 body,
             } = node.into_value()
@@ -634,19 +914,51 @@ impl AstLowerer {
                             })
                         })
                         .collect::<Result<Vec<_>>>()?,
+                    kw_params: kw_params
+                        .into_iter()
+                        .map(|Spanned(ast::FuncParam { pat, ty, default }, _)| {
+                            Ok(FuncParam {
+                                pat: self.lower_pat(pat),
+                                ty: self.lower_ty(&ctx, ty.0)?,
+                                default: default
+                                    .map(|expr| self.lower_expr(&ctx, expr))
+                                    .transpose()?,
+                            })
+                        })
+                        .collect::<Result<Vec<_>>>()?,
                     ret_ty_span: ret.as_ref().map(|ret| ret.span()),
                     ret_ty: self.lower_ty_or_infer(&ctx, ret.map(Spanned::into_value))?,
                 };
+                let body = match (kind, body) {
+                    (ast::FuncKind::Normal, None) => {
+                        self.err_nonfatal(Error::MissingFunctionBody(name.span()));
+                        None
+                    }
+                    (ast::FuncKind::External(_) | ast::FuncKind::Internal(_), Some(_)) => {
+                        self.err_nonfatal(Error::FunctionBodyNotAllowed(name.span()));
+                        None
+                    }
+                    (_, body) => body,
+                };
+                let body = body
+                    .map(|body| self.lower_body(&ctx, &None, body))
+                    .transpose()?;
+
                 let func = Func {
                     vis,
+                    kind: match kind {
+                        ast::FuncKind::Normal => crate::FuncKind::Normal,
+                        ast::FuncKind::External(span) => crate::FuncKind::External(span),
+                        ast::FuncKind::Internal(span) => crate::FuncKind::Internal(span),
+                    },
                     header,
-                    body: self.lower_body(&ctx, &None, body)?,
+                    body,
                 };
                 let item = ItemId(module, *ident.value());
                 self.propagate_nonfatal(self.assert_item_unique(ctx.scope, &item, name));
-                scope
-                    .items
-                    .insert((ItemKind::Func, item), insert_lookup!(self, funcs, func));
+                let lookup = insert_lookup!(self, funcs, func);
+                self.hir.func_ids.insert(lookup, item);
+                scope.items.insert((ItemKind::Func, item), lookup);
             }
         }
         Ok(())
@@ -702,16 +1014,14 @@ impl AstLowerer {
                 );
                 self.desugar_conditional_ctrl(ctx, cond, Spanned(base, span))?
             }
-            ast::Node::Continue { label, cond, .. } => {
-                self.desugar_conditional_ctrl(
-                    ctx,
-                    cond,
-                    Spanned(
-                        Node::Continue(label.map(|label| label.map(get_ident))),
-                        span,
-                    ),
-                )?
-            }
+            ast::Node::Continue { label, cond, .. } => self.desugar_conditional_ctrl(
+                ctx,
+                cond,
+                Spanned(
+                    Node::Continue(label.map(|label| label.map(get_ident))),
+                    span,
+                ),
+            )?,
             ast::Node::Return { value, cond, .. } => {
                 let base =
                     Node::Return(value.map(|value| self.lower_expr(ctx, value)).transpose()?);
@@ -736,16 +1046,15 @@ impl AstLowerer {
             return None;
         };
 
-        let mut assert_no_args =
-            |out: Decorator| {
-                if let Some(Spanned(_, span)) = &decorator.args {
-                    self.err_nonfatal(Error::BareDecoratorWithArguments(
-                        name.value().clone().spanned(path_span),
-                        *span,
-                    ));
-                }
-                Some(out)
-            };
+        let mut assert_no_args = |out: Decorator| {
+            if let Some(Spanned(_, span)) = &decorator.args {
+                self.err_nonfatal(Error::BareDecoratorWithArguments(
+                    name.value().clone().spanned(path_span),
+                    *span,
+                ));
+            }
+            Some(out)
+        };
 
         match (loc, name.value().as_str()) {
             // third-party decorators cannot be named any built-in decorators,
@@ -762,17 +1071,16 @@ impl AstLowerer {
 
     /// Lowers a pattern into an HIR pattern.
     pub fn lower_pat(&mut self, Spanned(pat, span): Spanned<ast::Pattern>) -> Spanned<Pattern> {
-        let pat =
-            match pat {
-                ast::Pattern::Ident { ident, mut_kw } => Pattern::Ident {
-                    ident: ident.map(get_ident),
-                    mut_kw,
-                },
-                ast::Pattern::Tuple(_variant, pats) => {
-                    Pattern::Tuple(pats.into_iter().map(|pat| self.lower_pat(pat)).collect())
-                }
-                _ => todo!(),
-            };
+        let pat = match pat {
+            ast::Pattern::Ident { ident, mut_kw } => Pattern::Ident {
+                ident: ident.map(get_ident),
+                mut_kw,
+            },
+            ast::Pattern::Tuple(_variant, pats) => {
+                Pattern::Tuple(pats.into_iter().map(|pat| self.lower_pat(pat)).collect())
+            }
+            _ => todo!(),
+        };
         Spanned(pat, span)
     }
 
@@ -945,12 +1253,10 @@ impl AstLowerer {
                     },
                 }
             }
-            E::Attr { subject, attr, .. } => {
-                Expr::GetAttr(
-                    Box::new(self.lower_expr(ctx, *subject)?),
-                    attr.map(get_ident),
-                )
-            }
+            E::Attr { subject, attr, .. } => Expr::GetAttr(
+                Box::new(self.lower_expr(ctx, *subject)?),
+                attr.map(get_ident),
+            ),
             E::Index { subject, index } => Expr::CallOp(
                 Op::Index.spanned(index.span()),
                 Box::new(self.lower_expr(ctx, *subject)?),
@@ -1123,18 +1429,17 @@ impl AstLowerer {
                 ))
             });
 
-        let scope_id =
-            self.register_scope(Scope::new(
-                ctx.module(),
-                stmt.label
-                    .as_ref()
-                    .map(|l| l.as_ref().map(get_ident_from_ref)),
-                vec![Node::Expr(
-                    Expr::If(Box::new(cond), then, Some(else_body)).spanned(body_span),
-                )
-                .spanned(body_span)]
-                .spanned(body_span),
-            ));
+        let scope_id = self.register_scope(Scope::new(
+            ctx.module(),
+            stmt.label
+                .as_ref()
+                .map(|l| l.as_ref().map(get_ident_from_ref)),
+            vec![
+                Node::Expr(Expr::If(Box::new(cond), then, Some(else_body)).spanned(body_span))
+                    .spanned(body_span),
+            ]
+            .spanned(body_span),
+        ));
         Ok(Expr::Loop(scope_id))
     }
 
@@ -1147,7 +1452,12 @@ impl AstLowerer {
     ) -> Result<Spanned<Expr>> {
         let item_id = ItemId(ctx.module(), *ident.value());
         Ok(
-            if let Some(id) = ctx.scope.items.get(&(ItemKind::Const, item_id)) {
+            if let Some(id) = ctx.scope.items.get(&(ItemKind::Alias, item_id)) {
+                if let Some(app) = app {
+                    return Err(Error::ExplicitTypeArgumentsNotAllowed(app.span()));
+                }
+                self.hir.aliases[id].value.clone()
+            } else if let Some(id) = ctx.scope.items.get(&(ItemKind::Const, item_id)) {
                 // TODO: true const-eval instead of inline (this will be replaced by `alias`)
                 if let Some(app) = app {
                     return Err(Error::ExplicitTypeArgumentsNotAllowed(app.span()));
@@ -1202,25 +1512,24 @@ impl AstLowerer {
         let (atom, span) = atom.into_inner();
         Ok(Spanned(
             match atom {
-                Atom::Int(int, IntLiteralInfo { unsigned, .. }) => {
-                    Expr::Literal(if unsigned {
-                        Literal::UInt(
-                            int.parse()
-                                .map_err(|_| Error::IntegerLiteralOverflow(span, int))?,
-                        )
-                    } else {
-                        Literal::Int(
-                            int.parse()
-                                .map_err(|_| Error::IntegerLiteralOverflow(span, int))?,
-                        )
-                    })
-                }
+                Atom::Int(int, IntLiteralInfo { unsigned, .. }) => Expr::Literal(if unsigned {
+                    Literal::UInt(
+                        int.parse()
+                            .map_err(|_| Error::IntegerLiteralOverflow(span, int))?,
+                    )
+                } else {
+                    Literal::Int(
+                        int.parse()
+                            .map_err(|_| Error::IntegerLiteralOverflow(span, int))?,
+                    )
+                }),
                 Atom::Float(f) => {
                     Expr::Literal(Literal::Float(f.parse::<f64>().unwrap().to_bits()))
                 }
                 Atom::Bool(b) => Expr::Literal(Literal::Bool(b)),
                 Atom::Char(c) => Expr::Literal(Literal::Char(c)),
                 Atom::String(s) => Expr::Literal(Literal::String(s)),
+                Atom::Bytes(b) => Expr::Literal(Literal::Bytes(b)),
                 Atom::Void => Expr::Literal(Literal::Void),
             },
             span,

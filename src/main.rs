@@ -1,15 +1,15 @@
 use codegen::{
-    compile_llvm, CodeModel, FileType, InitializationConfig, OptimizationLevel, RelocMode, Target,
-    TargetMachine,
+    CodeModel, FileType, InitializationConfig, OptimizationLevel, RelocMode, Target, TargetMachine,
+    compile_llvm,
 };
 use common::span::{Span, Src};
 use diagnostics::write::DiagnosticWriter;
 use grammar::parser::Parser;
 use grammar::span::Provider;
+use hir::ModuleId;
 use hir::check::TypeChecker;
 use hir::infer::TypeLowerer;
 use hir::lower::AstLowerer;
-use hir::ModuleId;
 use std::path::PathBuf;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -40,6 +40,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let mut dwriter = DiagnosticWriter::new();
         dwriter.add_provider(provider.clone());
+        dwriter.add_provider(Provider::read_from_file("lib/core/src/intrinsics.tb")?);
+        dwriter.add_provider(Provider::read_from_file("lib/core/src/io.tb")?);
 
         match nodes {
             Ok(nodes) => {
@@ -99,17 +101,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     )?;
                                 }
 
+                                for c in table.constraints.drain(..) {
+                                    println!("{}: {}", c.0, c.1);
+                                }
+                                for (i, s) in table.substitutions.drain(..).enumerate() {
+                                    println!("${i:?} -> {s}");
+                                }
+
                                 let start = std::time::Instant::now();
                                 let mut mir_lowerer =
                                     mir::Lowerer::from_thir(typeck.lower.thir.clone());
                                 mir_lowerer.lower_module(ModuleId::from(Src::None));
 
                                 full += start.elapsed();
-                                // println!(
-                                //     "=== [ MIR ({:?} to lower) ] ===\n\n{}",
-                                //     start.elapsed(),
-                                //     mir_lowerer.mir
-                                // );
+                                println!(
+                                    "=== [ MIR ({:?} to lower) ] ===\n\n{}",
+                                    start.elapsed(),
+                                    mir_lowerer.mir
+                                );
                                 println!("mir: {:?}", start.elapsed());
                                 for error in mir_lowerer.errors.drain(..) {
                                     dwriter.write_diagnostic(
@@ -124,22 +133,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 let module = compile_llvm(&ctx, mir_lowerer.mir.functions);
 
                                 full += start.elapsed();
-                                // println!("=== [ LLVM IR ({:?} to compile) ] ===", start.elapsed());
-                                // println!("{}", module.to_string());
+                                println!("=== [ LLVM IR ({:?} to compile) ] ===", start.elapsed());
+                                println!("{}", module.to_string());
                                 println!("llvm: {:?}", start.elapsed());
                                 println!("total cmptime: {full:?}");
-                                type F = unsafe extern "C" fn() -> i32;
-                                let engine = module
-                                    .create_jit_execution_engine(OptimizationLevel::Aggressive)?;
-                                if let Ok(f) = unsafe { engine.get_function::<F>("test") } {
-                                    println!("evaluating test()...");
-                                    println!("-> {}", unsafe { f.call() });
-                                }
-
-                                module.write_bitcode_to_path(&*PathBuf::from("out.bc"));
-
-                                //let engine = module.create_execution_engine()?;
-                                //let entrypoint = module.get_function("__root").unwrap();
 
                                 let start = std::time::Instant::now();
                                 Target::initialize_native(&InitializationConfig::default())?;
@@ -154,6 +151,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         CodeModel::Default,
                                     )
                                     .unwrap();
+
+                                const PASSES: &str = "instcombine,reassociate,gvn,simplifycfg,mem2reg,instcombine,reassociate";
+                                module.run_passes(
+                                    PASSES,
+                                    &machine,
+                                    codegen::PassBuilderOptions::create(),
+                                )?;
+                                println!("\n=== after passes ===\n{}", module.to_string());
+
+                                type F = unsafe extern "C" fn() -> i32;
+                                let engine = module
+                                    .create_jit_execution_engine(OptimizationLevel::Aggressive)?;
+                                if let Ok(f) = unsafe { engine.get_function::<F>("test") } {
+                                    println!("evaluating test()...");
+                                    println!("-> {}", unsafe { f.call() });
+                                }
+
+                                module.write_bitcode_to_path(&*PathBuf::from("out.bc"));
+
+                                //let engine = module.create_execution_engine()?;
+                                //let entrypoint = module.get_function("__root").unwrap();
 
                                 let buffer =
                                     machine.write_to_memory_buffer(&module, FileType::Assembly)?;
@@ -197,6 +215,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                     Err(error) => {
+                        for error in lowerer.errors {
+                            dwriter.write_diagnostic(
+                                &mut std::io::stdout(),
+                                error.into_diagnostic(),
+                            )?;
+                        }
                         dwriter
                             .write_diagnostic(&mut std::io::stdout(), error.into_diagnostic())?;
                     }

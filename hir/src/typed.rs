@@ -1,12 +1,12 @@
 use crate::{
-    infer::{ExitAction, InferMetadata},
     Ident, IntSign, IntWidth, Intrinsic, ItemId, Literal, LookupId, Node, Op, Pattern, PrimitiveTy,
     ScopeId, StaticOp, WithHir,
+    infer::{ExitAction, InferMetadata},
 };
 use common::span::Spanned;
 use std::{
     cmp::Ordering,
-    collections::VecDeque,
+    collections::{HashMap, VecDeque},
     fmt::{self, Display, Formatter},
 };
 
@@ -139,7 +139,9 @@ pub enum Expr {
         parent: Option<Ty>,
         args: Vec<E>,
         kwargs: Vec<(Ident, E)>,
+        ty_args: Option<Vec<Ty>>,
     },
+    CallIndirect(Box<E>, Vec<E>),
     CallOp(Spanned<Op>, Box<E>, Vec<E>),
     CallStaticOp(StaticOp, Ty, Vec<E>),
     Cast(Box<E>, Ty),
@@ -161,8 +163,8 @@ impl Display for WithHir<'_, TypedExpr, InferMetadata> {
                 .join(", ")
         };
 
-        write!(f, "({}) ", self.0 .1)?;
-        match &self.0 .0 {
+        write!(f, "({}) ", self.0.1)?;
+        match &self.0.0 {
             Expr::Literal(l) => write!(f, "{l}"),
             Expr::Local(i, args, _) | Expr::Func(i, args, _) => {
                 write!(f, "{i}")?;
@@ -208,6 +210,7 @@ impl Display for WithHir<'_, TypedExpr, InferMetadata> {
                 parent,
                 args,
                 kwargs,
+                ty_args,
             } => {
                 let args = args
                     .iter()
@@ -222,12 +225,24 @@ impl Display for WithHir<'_, TypedExpr, InferMetadata> {
 
                 write!(
                     f,
-                    "{}{}({args})",
+                    "{}{}{}({args})",
                     parent
                         .as_ref()
                         .map_or_else(String::new, |ty| format!("{ty}.")),
                     self.1.funcs[&func].header.name,
+                    ty_args.as_ref().map_or_else(String::new, |args| {
+                        format!(
+                            "<{}>",
+                            args.iter()
+                                .map(|ty| ty.to_string())
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        )
+                    }),
                 )
+            }
+            Expr::CallIndirect(callee, args) => {
+                write!(f, "{}({})", self.with(&**callee), comma_sep(args))
             }
             Expr::CallOp(op, slf, args) => {
                 write!(f, "{}.<{op}>({})", self.with(&**slf), comma_sep(args))
@@ -586,6 +601,37 @@ impl Ty {
 
     pub fn apply(&mut self, substitutions: &VecDeque<Ty>) {
         self.apply_cyclic(substitutions, &mut Vec::new());
+    }
+
+    pub fn substitute_generics(&self, subs: &HashMap<Ident, Ty>) -> Ty {
+        match self {
+            Self::Generic(id) => subs.get(id).cloned().unwrap_or_else(|| self.clone()),
+            Self::Tuple(tys) => {
+                Self::Tuple(tys.iter().map(|ty| ty.substitute_generics(subs)).collect())
+            }
+            Self::Array(ty, len) => Self::Array(
+                Box::new(ty.substitute_generics(subs)),
+                len.as_ref()
+                    .map(|len| Box::new(len.substitute_generics(subs))),
+            ),
+            Self::Struct(id, tys) => Self::Struct(
+                *id,
+                tys.iter().map(|ty| ty.substitute_generics(subs)).collect(),
+            ),
+            Self::Func(params, ret) => Self::Func(
+                params
+                    .iter()
+                    .map(|ty| ty.substitute_generics(subs))
+                    .collect(),
+                Box::new(ret.substitute_generics(subs)),
+            ),
+            Self::Const(val) => Self::Const(Box::new(TyConst {
+                value: val.value.clone(),
+                ty: val.ty.substitute_generics(subs),
+            })),
+            Self::Exit(exit) => Self::Exit(exit.clone()),
+            other => other.clone(),
+        }
     }
 
     pub fn has_any_unknown(&self) -> bool {

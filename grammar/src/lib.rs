@@ -29,13 +29,12 @@
     reason = "items are not usually accessed directly"
 )]
 #![feature(const_trait_impl)]
-#![feature(lint_reasons)]
 #![feature(never_type)]
 #![feature(let_chains)]
 #![feature(trait_alias)]
-#![feature(lazy_cell)]
 #![feature(unboxed_closures)]
 #![feature(fn_traits)]
+#![feature(string_from_utf8_lossy_owned)]
 
 pub mod ast;
 pub mod error;
@@ -44,4 +43,5 @@ pub mod token;
 pub mod tree;
 
 pub use common::span;
+pub use error::Error;
 pub use parser::Parser;

@@ -98,6 +98,7 @@ pub enum Keyword {
     Let,
     Mut,
     Const,
+    Import,
 }
 
 impl fmt::Display for Keyword {
@@ -116,6 +117,7 @@ impl fmt::Display for Keyword {
             Self::Let => write!(f, "let"),
             Self::Mut => write!(f, "mut"),
             Self::Const => write!(f, "const"),
+            Self::Import => write!(f, "import"),
         }
     }
 }
@@ -137,6 +139,7 @@ impl Keyword {
             "let" => Self::Let,
             "mut" => Self::Mut,
             "const" => Self::Const,
+            "import" => Self::Import,
             _ => return None,
         })
     }
@@ -261,8 +264,9 @@ impl fmt::Display for Token {
                 write!(f, "\"{}\"", string)
             }
             Self::ByteStringLiteral(bytes, flags, _) => {
+                f.write_str("b")?;
                 write_str_literal_flags(f, *flags)?;
-                write!(f, "b\"{}\"", String::from_utf8_lossy(bytes))
+                write!(f, "\"{}\"", String::from_utf8_lossy(bytes))
             }
             Self::CharLiteral(c, _) => write!(f, "c'{c}'"),
             Self::IntLiteral(int, info) => write!(
@@ -491,7 +495,7 @@ impl<'a> TokenReader<'a> {
                     let line = self.consume_line();
                     Some(Spanned(
                         Token::DocComment {
-                            content: line,
+                            content: line.trim().to_string(),
                             is_inner: c == '!',
                         },
                         Span::new(self.src, start, self.cursor.pos()),
@@ -557,7 +561,7 @@ impl<'a> TokenReader<'a> {
 
     /// Possibly consumes a character literal. Returns None if no character was found.
     fn consume_char_literal(&mut self) -> Option<Spanned<Token>> {
-        if self.cursor.peek()? != 'c' && self.cursor.peek_second()? != '\'' {
+        if self.cursor.peek()? != 'c' || self.cursor.peek_second()? != '\'' {
             return None;
         }
 
@@ -578,24 +582,55 @@ impl<'a> TokenReader<'a> {
 
     /// Possibly consumes a string literal. Returns None if no string was found.
     fn consume_string_literal(&mut self) -> Option<Spanned<Token>> {
+        let start = self.cursor.pos();
+        let Some((content, flags, content_span)) = self.consume_string_literal_like() else {
+            return None;
+        };
+
+        Some(Spanned(
+            Token::StringLiteral(content, flags, content_span),
+            Span::new(self.src, start, self.pos()),
+        ))
+    }
+
+    /// Possibly consumes a byte string literal. Returns None if no byte string was found.
+    fn consume_byte_string_literal(&mut self) -> Option<Spanned<Token>> {
+        if self.cursor.peek()? != 'b' {
+            return None;
+        }
+
+        let original = self.cursor.clone();
+        let start = self.cursor.pos();
+        self.cursor.advance()?;
+
+        let Some((content, flags, content_span)) = self.consume_string_literal_like() else {
+            self.cursor = original;
+            return None;
+        };
+
+        Some(Spanned(
+            Token::ByteStringLiteral(content.into_bytes(), flags, content_span),
+            Span::new(self.src, start, self.pos()),
+        ))
+    }
+
+    /// Consumes a string literal with optional raw/interpolated markers.
+    fn consume_string_literal_like(&mut self) -> Option<(String, StringLiteralFlags, Span)> {
         let next = self.cursor.peek()?;
         if !matches!(next, '"' | '\'' | '$' | '~' | '#') {
             return None;
         }
 
-        let (is_raw, is_interpolated) = match (next, self.cursor.peek_second()?) {
-            ('$', '~') | ('~', '$') => (true, true),
+        let (is_raw, is_interpolated) = match (next, self.cursor.peek_second()) {
+            ('$', Some('~')) | ('~', Some('$')) => (true, true),
             ('~', _) => (true, false),
             ('$', _) => (false, true),
             _ => (false, false),
         };
 
         // Capture the current state so we can still recover later tokens.
-        // Note that when propagating .advance()? or .peek()? we don't need to restore the cursor
-        // since there is nothing else for the cursor to read nevertheless.
         let original = self.cursor.clone();
 
-        let start = self.cursor.pos();
         // Advance to hashes or quote
         if is_raw {
             self.cursor.advance();
@@ -610,7 +645,10 @@ impl<'a> TokenReader<'a> {
             self.cursor.advance();
         }
 
-        let quote = self.cursor.advance()?;
+        let Some(quote) = self.cursor.advance() else {
+            self.cursor = original;
+            return None;
+        };
         if !matches!(quote, '"' | '\'') {
             self.cursor = original;
             return None;
@@ -630,10 +668,7 @@ impl<'a> TokenReader<'a> {
             flags |= StringLiteralFlags::INTERPOLATED;
         }
 
-        Some(Spanned(
-            Token::StringLiteral(content, flags, content_span),
-            Span::new(self.src, start, self.pos()),
-        ))
+        Some((content, flags, content_span))
     }
 
     /// Consumes a number (integer/float literal), returning None if no number was found.
@@ -676,10 +711,12 @@ impl<'a> TokenReader<'a> {
         }
 
         let radix = if next == '0' {
-            match self.cursor.peek_second()? {
-                'x' | 'X' => advance_then!('0'..='9' | 'a'..='f' | 'A'..='F' => Radix::Hexadecimal),
-                'o' | 'O' => advance_then!('0'..='7' => Radix::Octal),
-                'b' | 'B' => advance_then!('0' | '1' => Radix::Binary),
+            match self.cursor.peek_second() {
+                Some('x' | 'X') => {
+                    advance_then!('0'..='9' | 'a'..='f' | 'A'..='F' => Radix::Hexadecimal)
+                }
+                Some('o' | 'O') => advance_then!('0'..='7' => Radix::Octal),
+                Some('b' | 'B') => advance_then!('0' | '1' => Radix::Binary),
                 _ => Radix::Decimal,
             }
         } else {
@@ -856,7 +893,10 @@ impl Iterator for TokenReader<'_> {
         let start = self.pos();
 
         if self.consume_whitespace() {
-            return Some(Spanned(Token::Whitespace, Span::new(self.src, start, self.pos())));
+            return Some(Spanned(
+                Token::Whitespace,
+                Span::new(self.src, start, self.pos()),
+            ));
         }
 
         macro_rules! consider {
@@ -873,6 +913,7 @@ impl Iterator for TokenReader<'_> {
 
         consider! {
             self.consume_char_literal(),
+            self.consume_byte_string_literal(),
             self.consume_string_literal(),
             self.consume_number(),
             self.consume_ident(),

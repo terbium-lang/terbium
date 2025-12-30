@@ -1,5 +1,30 @@
-func double(x: int32) = 2 * x;
-func triple(x: int32) = 3 * x;
-func sum(a: int32, b: int32) = a + b;
+// func fib(n: int32) -> int32 
+//     = if n <= 1 then n else fib(n - 1) + fib(n - 2);
 
-func test() = double(2) + triple(3) + sum(2, 3) + 1;
+// func test() -> int32 {
+//     fib(42)
+// }
+
+// func main() {
+//     let n = 1;
+//     while n <= 20 {
+//         println(fib(n) to string);
+//         n += 1;
+//     }
+// }
+
+// external func printf(fmt: rawptr int8) -> int32;
+// printf("Hello");
+
+// import std.io.println;
+
+import core.io.tuffness;
+
+func fib(n: int32) -> int32 
+    = if n <= 1 then n else fib(n - 1) + fib(n - 2);
+
+func test() -> int32 {
+    tuffness()
+}
+
+

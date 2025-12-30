@@ -297,6 +297,8 @@ pub enum TypeExpr {
     /// The `to` modifier which allows any type that has a cast function to the given type,
     /// e.g. `to Type` or `to string`.
     To(Box<Spanned<TypeExpr>>),
+    /// An immutable raw pointer to the given type, e.g. `rawptr int8`.
+    RawPtr(Box<Spanned<TypeExpr>>),
 }
 
 impl Display for TypeExpr {
@@ -360,6 +362,7 @@ impl Display for TypeExpr {
             Self::Not(ty) => write!(f, "!{ty}"),
             Self::To(ty) => write!(f, "to {ty}"),
             Self::Mut(ty) => write!(f, "mut {ty}"),
+            Self::RawPtr(ty) => write!(f, "rawptr {ty}"),
         }
     }
 }
@@ -402,6 +405,8 @@ pub enum Atom {
     Float(String),
     /// A string literal. This is after resolving escape sequences.
     String(String),
+    /// A byte-string literal. This is after resolving escape sequences.
+    Bytes(Vec<u8>),
     /// A char literal. This is after resolving escape sequences.
     Char(char),
     /// A boolean literal.
@@ -416,6 +421,7 @@ impl Display for Atom {
             Self::Int(s, info) => fmt_int_literal(f, s, info),
             Self::Float(s) => write!(f, "{s}"),
             Self::String(s) => write!(f, "{s:?}"),
+            Self::Bytes(s) => write!(f, "b{:?}", String::from_utf8_lossy(s)),
             Self::Char(c) => write!(f, "c{c:?}"),
             Self::Bool(b) => write!(f, "{b}"),
             Self::Void => write!(f, "void"),
@@ -1252,6 +1258,86 @@ pub struct FuncParam {
     pub default: Option<Spanned<Expr>>,
 }
 
+/// The kind of a function declaration.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum FuncKind {
+    /// A normal function with a body.
+    Normal,
+    /// An external function declared without a body.
+    External(Span),
+    /// An internal compiler function declared without a body.
+    Internal(Span),
+}
+
+impl FuncKind {
+    pub fn keyword(self) -> Option<&'static str> {
+        match self {
+            Self::Normal => None,
+            Self::External(_) => Some("external"),
+            Self::Internal(_) => Some("internal"),
+        }
+    }
+}
+
+/// An item in an import path.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ImportItem {
+    /// A nested path, used inside lists.
+    Path(Box<ImportPath>),
+    /// A named item.
+    Named(String),
+    /// A list of items.
+    List(Vec<Spanned<Self>>),
+    /// The current module.
+    This,
+    /// A glob import.
+    Wildcard,
+}
+
+/// A path within an import statement.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ImportPath {
+    /// The module namespace prefix.
+    pub namespace: Vec<Spanned<String>>,
+    /// The item being imported.
+    pub item: Spanned<ImportItem>,
+}
+
+impl Display for ImportItem {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Path(path) => write!(f, "{path}"),
+            Self::Named(name) => f.write_str(name),
+            Self::List(items) => {
+                let items = items
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                write!(f, "{{{items}}}")
+            }
+            Self::This => f.write_str("self"),
+            Self::Wildcard => f.write_str("*"),
+        }
+    }
+}
+
+impl Display for ImportPath {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        if self.namespace.is_empty() {
+            write!(f, "{}", self.item)
+        } else {
+            let namespace = self
+                .namespace
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(".");
+            write!(f, "{namespace}.{}", self.item)
+        }
+    }
+}
+
 impl Display for FuncParam {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}: {}", self.pat, self.ty)?;
@@ -1452,6 +1538,13 @@ pub enum Node {
         /// The value of the constant.
         value: Spanned<Expr>,
     },
+    /// An import declaration.
+    Import {
+        /// The span of the import keyword.
+        kw: Span,
+        /// The item to import. At the top level, only `ImportItem::Path` and `ImportItem::List` is valid.
+        item: Spanned<ImportItem>,
+    },
     /// An explicit return statement. These return from the closest function.
     Return {
         /// The span of the return keyword.
@@ -1492,6 +1585,8 @@ pub enum Node {
     Func {
         /// The visibility of the function.
         vis: ItemVisibility,
+        /// The kind of function declaration.
+        kind: FuncKind,
         /// The name of the function.
         name: Spanned<String>,
         /// The type parameters of the function.
@@ -1502,8 +1597,8 @@ pub enum Node {
         kw_params: Vec<Spanned<FuncParam>>,
         /// The return type of the function, if it is specified.
         ret: Option<Spanned<TypeExpr>>,
-        /// The body of the function.
-        body: Spanned<Vec<Spanned<Node>>>,
+        /// The body of the function. May not be specified for external functions.
+        body: Option<Spanned<Vec<Spanned<Node>>>>,
     },
     /// A struct declaration.
     Struct(StructDef),
@@ -1511,6 +1606,13 @@ pub enum Node {
     OuterDecorator(Decorator),
     /// Inner decorator on an item.
     InnerDecorator(Decorator),
+    /// Docstring.
+    DocString {
+        /// The content of the docstring.
+        content: String,
+        /// Whether the docstring is an inner docstring.
+        is_inner: bool,
+    },
 }
 
 impl Display for Node {
@@ -1557,6 +1659,7 @@ impl Display for Node {
                 write!(f, " = {value};")
             }
             Self::Alias { name, value, .. } => write!(f, "alias {name} = {value};"),
+            Self::Import { item, .. } => write!(f, "import {item};"),
             Self::Return { value, cond, .. } => {
                 write_control_flow_stmt(f, "return", None, value, cond)
             }
@@ -1576,6 +1679,7 @@ impl Display for Node {
             }
             Self::Func {
                 vis,
+                kind,
                 name,
                 ty_params,
                 params,
@@ -1583,7 +1687,11 @@ impl Display for Node {
                 ret,
                 body,
             } => {
-                write!(f, "{vis} func {name}")?;
+                let prefix = kind
+                    .keyword()
+                    .map(|kw| format!("{kw} "))
+                    .unwrap_or_default();
+                write!(f, "{vis} {prefix}func {name}")?;
                 if !ty_params.is_empty() {
                     let params = ty_params
                         .iter()
@@ -1606,15 +1714,29 @@ impl Display for Node {
                 if let Some(ret) = ret {
                     write!(f, " -> {ret}")?;
                 }
-                writeln!(f, " {{")?;
-                for node in body.value() {
-                    node.write_indent(f)?;
+                if let Some(body) = body {
+                    writeln!(f, " {{")?;
+                    for node in body.value() {
+                        node.write_indent(f)?;
+                    }
+                    f.write_str("}")
+                } else {
+                    f.write_str(";")
                 }
-                f.write_str("}")
             }
             Self::Struct(s) => write!(f, "{s}"),
             Self::OuterDecorator(d) => write!(f, "@{d}"),
             Self::InnerDecorator(d) => write!(f, "@!{d}"),
+            Self::DocString { content, is_inner } => {
+                for line in content.lines() {
+                    if *is_inner {
+                        writeln!(f, "//! {line}")?;
+                    } else {
+                        writeln!(f, "/// {line}")?;
+                    }
+                }
+                Ok(())
+            }
         }
     }
 }
