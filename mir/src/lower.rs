@@ -287,6 +287,19 @@ impl Lowerer {
                 })
             }
             HirExpr::Local(local, _, env) => Expr::Local(LocalId(local.into_value(), env)),
+            HirExpr::Assign(target, value) => {
+                let value = self.lower_expr(ctx, *value);
+                match target.value() {
+                    Pattern::Ident { ident, .. } => {
+                        let local = LocalId(*ident.value(), LocalEnv::Standard);
+                        ctx.current
+                            .push(Node::Store(local, Box::new(value)).spanned(span));
+                        Expr::Local(local)
+                    }
+                    _ => Expr::Constant(Constant::Void),
+                }
+            }
+            HirExpr::AssignPtr(_, _) => Expr::Constant(Constant::Void),
             // In order to lower a block with a potential result,
             // create a temporary local `result` and jump to a new block
             // that will assign the result to the local and jump to the continuation block.
@@ -557,7 +570,7 @@ impl Lowerer {
                         Spanned(
                             Pattern::Ident {
                                 ident,
-                                mut_kw: None,
+                                mut_kw,
                             },
                             _,
                         ),
@@ -565,9 +578,31 @@ impl Lowerer {
                     value: Some(value),
                     ..
                 } => {
-                    let value = self.lower_expr(&mut ctx, value);
                     let local = LocalId(*ident.value(), LocalEnv::Standard);
-                    Node::Register(local, value, ty)
+                    if mut_kw.is_some() {
+                        ctx.current.push(Node::Local(local, ty).spanned(span));
+                        let value = self.lower_expr(&mut ctx, value);
+                        Node::Store(local, Box::new(value))
+                    } else {
+                        let value = self.lower_expr(&mut ctx, value);
+                        Node::Register(local, value, ty)
+                    }
+                }
+                hir::Node::Let {
+                    pat:
+                        Spanned(
+                            Pattern::Ident {
+                                ident,
+                                mut_kw: _,
+                            },
+                            _,
+                        ),
+                    ty,
+                    value: None,
+                    ..
+                } => {
+                    let local = LocalId(*ident.value(), LocalEnv::Standard);
+                    Node::Local(local, ty)
                 }
                 _ => todo!(),
             };
