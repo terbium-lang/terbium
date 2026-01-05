@@ -7,6 +7,8 @@ This is the rewrite branch of Terbium. See legacy Terbium [here](https://github.
 
 A semi-formal language specification can be found [here](https://jay3332.gitbook.io/terbium/spec). The specification may be outdated with this specific implementation.
 
+_2026 update: Terbium is being reformalized [here](https://typst.app/project/rkheT58bdtLIx8m7uL66Yv)!_
+
 ## Installation
 
 Terbium is still a work in progress. If you want to:
